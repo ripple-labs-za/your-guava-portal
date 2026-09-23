@@ -569,4 +569,32 @@ describe('UploadDetail', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: /back to data health/i }))
     expect(await screen.findByText('Data Health page')).toBeInTheDocument()
   })
+
+  it('shows only the overlaps of the latest dialog opening when an earlier request answers late', async () => {
+    mockUploadDetail()
+    const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>
+    let answerFirst: (value: unknown) => void = () => {}
+    let overlapCalls = 0
+    apiMock.get.mockImplementation((url: string, config?: unknown) => {
+      if (url === '/uploads/u1/overlaps') {
+        overlapCalls += 1
+        if (overlapCalls === 1) return new Promise((resolve) => { answerFirst = resolve })
+        return Promise.resolve({ data: { success: true, overlaps: [{ uploadId: 'u2', fileName: 'overlap-b.csv' }], more: 0 } })
+      }
+      return detailGet(url, config)
+    })
+
+    renderUploadDetail()
+    await screen.findByText('export.csv')
+    fireEvent.click(screen.getByRole('button', { name: /delete this upload/i }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: /delete upload/i })).getByRole('button', { name: /^cancel$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete this upload/i }))
+    const dialog = screen.getByRole('dialog', { name: /delete upload/i })
+    expect(await within(dialog).findByText(/overlap-b\.csv/)).toBeInTheDocument()
+
+    answerFirst({ data: { success: true, overlaps: [{ uploadId: 'u9', fileName: 'stale-first-open.csv' }], more: 0 } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(within(dialog).queryByText(/stale-first-open\.csv/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/overlap-b\.csv/)).toBeInTheDocument()
+  })
 })

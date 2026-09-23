@@ -166,6 +166,8 @@ export default function UploadDetail() {
   const [overlapsMore, setOverlapsMore] = useState(0)
   const [deleteOutcome, setDeleteOutcome] = useState<string | null>(null)
   const [remapOutcome, setRemapOutcome] = useState<string | null>(null)
+  // Each dialog opening numbers its overlaps request; a late answer to an earlier opening is ignored.
+  const overlapsRequestRef = useRef(0)
   const [remapping, setRemapping] = useState(false)
   const [showRemapConfirm, setShowRemapConfirm] = useState(false)
   const [remapError, setRemapError] = useState<string | null>(null)
@@ -603,9 +605,11 @@ export default function UploadDetail() {
                 setShowDeleteConfirm(true)
                 setOverlaps([])
                 setOverlapsMore(0)
+                const request = ++overlapsRequestRef.current
                 // A failure leaves the list empty: the dialog still works, it just cannot name the overlaps.
                 api.get<{ overlaps?: UploadOverlap[]; more?: number }>(`/uploads/${id}/overlaps`)
                   .then((response) => {
+                    if (request !== overlapsRequestRef.current) return
                     setOverlaps(response?.data?.overlaps ?? [])
                     setOverlapsMore(response?.data?.more ?? 0)
                   })
