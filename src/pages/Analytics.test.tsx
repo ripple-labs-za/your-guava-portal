@@ -268,6 +268,42 @@ describe('Analytics', () => {
     expect(screen.getByTitle('Sun 08:00 - R0 avg')).toBeInTheDocument()
   })
 
+  const zeroGrid = () => {
+    const heatmap: Array<Record<string, number>> = [] // typed: tsconfig.app.json type-checks test files too (strict)
+    for (let day = 0; day <= 6; day++) {
+      for (let hour = 6; hour <= 22; hour++) heatmap.push({ dayOfWeek: day, hour, revenue: 0, transactions: 0, observedDays: 0 })
+    }
+    return heatmap
+  }
+
+  it('says the sales have dates but no times instead of drawing an empty heatmap', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/heatmap')) {
+        return Promise.resolve({ data: { success: true, heatmap: zeroGrid(),
+          meta: { timeOfDay: { transactionsWithTime: 0, transactionsWithoutTime: 120 } } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+    expect(await screen.findByText(/dates but no times/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no trading activity in this window/i)).not.toBeInTheDocument()
+  })
+
+  it('notes how many sales the heatmap leaves out for having no time', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/heatmap')) {
+        return Promise.resolve({ data: { success: true,
+          heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
+          meta: { timeOfDay: { transactionsWithTime: 30, transactionsWithoutTime: 12 } } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+    expect(await screen.findByText(/12 sales in this window came from exports with dates but no times/i)).toBeInTheDocument()
+  })
+
   it('shows tipping rate as percentage (no double-multiply)', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/customers')) {

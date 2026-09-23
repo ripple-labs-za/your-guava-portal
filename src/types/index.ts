@@ -504,6 +504,11 @@ export interface ItemPerformance {
   trend: number
 }
 
+/** GET /analytics/heatmap meta: how many sales in the window had a time of day (BE-03-T06). */
+export interface HeatmapMeta {
+  timeOfDay?: { transactionsWithTime: number; transactionsWithoutTime: number }
+}
+
 export interface HeatmapCell {
   dayOfWeek: number
   hour: number

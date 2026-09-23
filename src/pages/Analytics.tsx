@@ -36,6 +36,7 @@ import type {
   RevenueData,
   ItemPerformance,
   HeatmapCell,
+  HeatmapMeta,
   CustomerInsights,
 } from '@/types'
 
@@ -643,6 +644,8 @@ function HeatmapTab({ period }: { period: PeriodId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [hoveredCell, setHoveredCell] = useState<HeatmapCell | null>(null)
+  // Sales from exports with dates but no times: the server leaves them out of every cell and says how many.
+  const [withoutTime, setWithoutTime] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -650,8 +653,11 @@ function HeatmapTab({ period }: { period: PeriodId }) {
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[] }>(`/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
-      .then(({ data }) => setCells(data.heatmap || data.data || []))
+      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: HeatmapMeta }>(`/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .then(({ data }) => {
+        setCells(data.heatmap || data.data || [])
+        setWithoutTime(data.meta?.timeOfDay?.transactionsWithoutTime ?? 0)
+      })
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load heatmap data') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
@@ -776,6 +782,23 @@ function HeatmapTab({ period }: { period: PeriodId }) {
                 ))}
                 <span className="text-[10px] text-muted ml-1">More</span>
               </div>
+              {withoutTime > 0 && (
+                <p className="mt-3 text-xs text-muted">
+                  {withoutTime.toLocaleString('en-ZA')} sales in this window came from exports with dates but no times, so
+                  they are not in this heatmap.
+                </p>
+              )}
+            </div>
+          ) : withoutTime > 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <p className="text-text text-sm font-medium">No time of day in these sales</p>
+              <p className="text-muted text-sm mt-1 max-w-sm">
+                The sales in this window came from exports with dates but no times, so there is no hour-of-day pattern to
+                show. Map a Time column the next time you upload.
+              </p>
+              <Button asChild variant="outline" size="sm" className="mt-4">
+                <Link to="/data-health">Upload sales data</Link>
+              </Button>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
