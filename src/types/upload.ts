@@ -100,3 +100,15 @@ export interface StageUploadResponse {
   mappingAssistedByAi?: boolean;
   mappingCreditsUsed?: number;
 }
+
+/** Another completed upload whose days meet this one's (GET /uploads/:id/overlaps, BE-03-T02). */
+export interface UploadOverlap { uploadId: string; fileName: string; firstDateKey?: string; lastDateKey?: string }
+
+/** Rows re-admitted from overlapping uploads after a delete or remap. */
+export interface ReadmissionSummary { rows: number; uploads: { uploadId: string; fileName: string; rows: number }[] }
+
+export interface DeleteUploadResponse {
+  success: true
+  readmitted?: ReadmissionSummary
+  readmissionQueued?: { uploadId: string; fileName: string }[]
+}

@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
-import { deleteUploadConsequence } from '@/lib/uploadMessages'
+import { deleteUploadConsequence, overlapNotice, readmissionOutcome } from '@/lib/uploadMessages'
 import api from '@/lib/api'
 import { confirmUpload, confirmationKeyFor } from '@/lib/uploads'
-import type { Upload, ColumnMapping, ItemsMode, UploadRowError } from '@/types/upload'
+import type {
+  Upload, ColumnMapping, ItemsMode, UploadRowError, UploadOverlap, DeleteUploadResponse,
+} from '@/types/upload'
 
 interface Row {
   _id: string
@@ -159,6 +161,11 @@ export default function UploadDetail() {
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  // Uploads sharing this one's days, named in the delete dialog; and what the delete re-imported (BE-03-T02).
+  const [overlaps, setOverlaps] = useState<UploadOverlap[]>([])
+  const [overlapsMore, setOverlapsMore] = useState(0)
+  const [deleteOutcome, setDeleteOutcome] = useState<string | null>(null)
+  const [remapOutcome, setRemapOutcome] = useState<string | null>(null)
   const [remapping, setRemapping] = useState(false)
   const [showRemapConfirm, setShowRemapConfirm] = useState(false)
   const [remapError, setRemapError] = useState<string | null>(null)
@@ -174,9 +181,9 @@ export default function UploadDetail() {
     mapping: ColumnMapping,
     itemsMode: ItemsMode,
     allowPartialImport = false
-  ): Promise<void> => {
+  ): Promise<Partial<DeleteUploadResponse> | undefined> => {
     try {
-      await api.patch(`/uploads/${id}/mapping`, {
+      const response = await api.patch<Partial<DeleteUploadResponse>>(`/uploads/${id}/mapping`, {
         columnMapping: mapping,
         itemsMode,
         allowPartialImport,
@@ -185,6 +192,7 @@ export default function UploadDetail() {
         // so the second call is recognised as the same request rather than a new one.
         headers: { 'Idempotency-Key': confirmationKeyFor(`remap:${id}`) },
       })
+      return response.data
     } catch (err: unknown) {
       const details = severePartialDetails(err)
       if (details && !allowPartialImport) {
@@ -193,8 +201,7 @@ export default function UploadDetail() {
           'Import only the valid rows anyway? You can review the rejected-row report afterward.'
         )
         if (proceed) {
-          await saveRemapping(mapping, itemsMode, true)
-          return
+          return saveRemapping(mapping, itemsMode, true)
         }
       }
       throw err
@@ -275,7 +282,14 @@ export default function UploadDetail() {
     setDeleting(true)
     setDeleteError(null)
     try {
-      await api.delete(`/uploads/${id}`)
+      const response = await api.delete(`/uploads/${id}`)
+      const outcome = readmissionOutcome(response?.data as Partial<DeleteUploadResponse> | undefined)
+      if (outcome) {
+        // Say what came back from the overlapping uploads before leaving the page.
+        setDeleteOutcome(outcome)
+        setDeleting(false)
+        return
+      }
       navigate('/data-health')
     } catch (err: unknown) {
       setDeleteError(extractApiError(err, 'Delete failed.'))
@@ -585,7 +599,17 @@ export default function UploadDetail() {
               className="text-guava-red-text"
               onClick={() => {
                 setDeleteError(null)
+                setDeleteOutcome(null)
                 setShowDeleteConfirm(true)
+                setOverlaps([])
+                setOverlapsMore(0)
+                // A failure leaves the list empty: the dialog still works, it just cannot name the overlaps.
+                api.get<{ overlaps?: UploadOverlap[]; more?: number }>(`/uploads/${id}/overlaps`)
+                  .then((response) => {
+                    setOverlaps(response?.data?.overlaps ?? [])
+                    setOverlapsMore(response?.data?.more ?? 0)
+                  })
+                  .catch(() => {})
               }}
               disabled={deleting}
             >
@@ -594,6 +618,7 @@ export default function UploadDetail() {
           )}
           {deleteError && <p className="text-red-400 text-xs mt-2">{deleteError}</p>}
           {remapError && <p className="text-red-400 text-xs mt-2">{remapError}</p>}
+          {remapOutcome && <p role="status" className="text-sm text-muted mt-2">{remapOutcome}</p>}
         </div>
       </div>
 
@@ -680,7 +705,8 @@ export default function UploadDetail() {
           onConfirm={async (mapping: ColumnMapping, itemsMode: ItemsMode) => {
             try {
               setRemapError(null)
-              await saveRemapping(mapping, itemsMode)
+              const remapped = readmissionOutcome(await saveRemapping(mapping, itemsMode))
+              setRemapOutcome(remapped ? remapped.replace(/^Upload deleted\. /, '') : null)
               setRemapping(false)
               // A hard reload threw away every bit of context about what had
               // just changed. Re-fetching shows the new stats in place.
@@ -711,9 +737,18 @@ export default function UploadDetail() {
                 <h2 id="delete-upload-title" className="text-lg font-semibold text-text">
                   Delete upload?
                 </h2>
-                <p className="mt-1 text-sm text-muted">
-                  {deleteUploadConsequence(upload.fileName, upload.stats.imported)}
-                </p>
+                {deleteOutcome ? (
+                  <p role="status" className="mt-1 text-sm text-text">{deleteOutcome}</p>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm text-muted">
+                      {deleteUploadConsequence(upload.fileName, upload.stats.imported)}
+                    </p>
+                    {overlapNotice(overlaps, overlapsMore) && (
+                      <p className="mt-2 text-sm text-muted">{overlapNotice(overlaps, overlapsMore)}</p>
+                    )}
+                  </>
+                )}
                 {deleteError && (
                   <p className="mt-3 rounded-lg border border-red-900/30 bg-red-900/10 px-3 py-2 text-sm text-red-400">
                     {deleteError}
@@ -723,17 +758,23 @@ export default function UploadDetail() {
             </div>
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleDelete} disabled={deleting}>
-                {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Delete upload
-              </Button>
+              {deleteOutcome ? (
+                <Button onClick={() => navigate('/data-health')}>Back to Data Health</Button>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleDelete} disabled={deleting}>
+                    {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Delete upload
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

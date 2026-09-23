@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import UploadDetail from './UploadDetail'
@@ -528,5 +528,45 @@ describe('UploadDetail', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('names the uploads that share days before deleting, and says what was re-imported', async () => {
+    mockUploadDetail()
+    const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>
+    apiMock.get.mockImplementation((url: string, config?: unknown) => {
+      if (url === '/uploads/u1/overlaps') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            overlaps: [{ uploadId: 'u2', fileName: 'overlap-b.csv', firstDateKey: '2026-01-15', lastDateKey: '2026-02-15' }],
+            more: 0,
+          },
+        })
+      }
+      return detailGet(url, config)
+    })
+    apiMock.delete.mockResolvedValue({
+      data: {
+        success: true,
+        readmitted: { rows: 34, uploads: [{ uploadId: 'u2', fileName: 'overlap-b.csv', rows: 34 }] },
+        readmissionQueued: [],
+      },
+    })
+
+    renderUploadDetail()
+    await screen.findByText('export.csv')
+    fireEvent.click(screen.getByRole('button', { name: /delete this upload/i }))
+
+    const dialog = screen.getByRole('dialog', { name: /delete upload/i })
+    expect(await within(dialog).findByText(/overlap-b\.csv/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/re-imported from it/i)).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^delete upload$/i }))
+
+    expect(await screen.findByText(/34 sales were re-imported from overlap-b\.csv/i)).toBeInTheDocument()
+    expect(screen.queryByText('Data Health page')).not.toBeInTheDocument()
+    // The page header already has a "Back to Data Health" button; the one under test is the dialog's.
+    fireEvent.click(within(dialog).getByRole('button', { name: /back to data health/i }))
+    expect(await screen.findByText('Data Health page')).toBeInTheDocument()
   })
 })
