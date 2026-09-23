@@ -234,6 +234,46 @@ describe('Connect', () => {
     expect(screen.getByText('510')).toBeInTheDocument()
   })
 
+  it('says how many sales were already imported and from which file', async () => {
+    mockPost.mockImplementation((url: string) => {
+      if (url.includes('/transactions/upload')) {
+        return Promise.resolve({
+          data: {
+            uploadId: 'mock-id',
+            posType: 'wizard',
+            columnMapping: { date: 'Date', total: 'Total' },
+            itemsMode: 'packed',
+            headers: ['Date', 'Total'],
+            preview: [],
+            needsConfirmation: false,
+          },
+        })
+      }
+      if (url.includes('/uploads/mock-id/confirm')) {
+        return Promise.resolve({
+          data: {
+            stats: { imported: 14, skipped: 15, errors: 0, totalRows: 29 },
+            overlap: { rows: 15, uploads: [{ uploadId: 'a1', fileName: 'receiptless-a.csv', rows: 15 }] },
+          },
+        })
+      }
+      return Promise.reject(new Error('Unknown URL'))
+    })
+
+    render(<Connect />)
+    await waitFor(() => {
+      expect(screen.getByText(/drop your sales csv/i)).toBeInTheDocument()
+    })
+    const file = new File(['col1,col2\n1,2'], 'receiptless-b.csv', { type: 'text/csv' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Import successful')).toBeInTheDocument()
+    })
+    expect(screen.getByText(/15 sales were already in Your Guava from receiptless-a\.csv/i)).toBeInTheDocument()
+  })
+
   it('opens the mapping wizard when needsConfirmation is true', async () => {
     mockPost.mockImplementation((url: string) => {
       if (url === '/transactions/upload') {

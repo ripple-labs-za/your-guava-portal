@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
-import { deleteUploadConsequence, overlapNotice, readmissionOutcome } from '@/lib/uploadMessages'
+import { deleteUploadConsequence, overlapNotice, overlapSkipMessage, readmissionOutcome } from '@/lib/uploadMessages'
 import api from '@/lib/api'
 import { confirmUpload, confirmationKeyFor } from '@/lib/uploads'
 import type {
@@ -382,6 +382,9 @@ export default function UploadDetail() {
                 skipped because the Status column did not read as a completed sale.
               </p>
             ) : null}
+            {overlapSkipMessage(upload.overlap) && (
+              <p className="mt-3 text-sm text-muted">{overlapSkipMessage(upload.overlap)}</p>
+            )}
             {upload.dateRange?.firstDate && (
               <p className="text-sm text-muted mt-3">
                 Date range: {new Date(upload.dateRange.firstDate).toLocaleDateString('en-ZA')}

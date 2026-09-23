@@ -530,6 +530,29 @@ describe('UploadDetail', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('says which upload already held the rows this file skipped', async () => {
+    mockUploadDetail()
+    const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>
+    apiMock.get.mockImplementation(async (url: string, config?: unknown) => {
+      const res = (await detailGet(url, config)) as { data: { upload?: Record<string, unknown> } }
+      if (!res.data.upload) return res
+      return {
+        data: {
+          ...res.data,
+          upload: {
+            ...res.data.upload,
+            stats: { imported: 14, skipped: 15, errors: 0, totalRows: 29 },
+            overlap: { rows: 15, uploads: [{ uploadId: 'a1', fileName: 'receiptless-a.csv', rows: 15 }] },
+          },
+        },
+      }
+    })
+
+    renderUploadDetail()
+    await screen.findByText('export.csv')
+    expect(screen.getByText(/15 sales were already in Your Guava from receiptless-a\.csv/i)).toBeInTheDocument()
+  })
+
   it('names the uploads that share days before deleting, and says what was re-imported', async () => {
     mockUploadDetail()
     const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>

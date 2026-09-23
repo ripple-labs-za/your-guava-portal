@@ -1,4 +1,4 @@
-import type { DeleteUploadResponse, UploadOverlap } from '@/types/upload'
+import type { DeleteUploadResponse, UploadOverlap, UploadOverlapStats } from '@/types/upload'
 
 // Copy shown when a chosen file is refused before it is sent. Kept in one place
 // because the .xls message is load-bearing: production's backend cannot import
@@ -52,4 +52,14 @@ export const readmissionOutcome = (response: Partial<DeleteUploadResponse> | und
       'background, and those days fill in within the hour.')
   }
   return `Upload deleted. ${parts.join(' ')}`
+}
+
+/** Which earlier imports already held the sales this file skipped, or null when none did. */
+export const overlapSkipMessage = (overlap?: UploadOverlapStats): string | null => {
+  if (!overlap || overlap.rows <= 0) return null
+  const files = overlap.uploads.map((u) => u.fileName).filter((name): name is string => Boolean(name))
+  const from = files.length > 0 ? files.join(', ') : 'earlier imports'
+  const count = overlap.rows.toLocaleString('en-ZA')
+  return `${count} sale${overlap.rows === 1 ? ' was' : 's were'} already in Your Guava from ${from}, so ` +
+    `${overlap.rows === 1 ? 'it was' : 'they were'} skipped rather than counted twice.`
 }

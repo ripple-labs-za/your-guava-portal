@@ -43,6 +43,13 @@ export interface UploadDateRange {
   lastDateKey?: string;
 }
 
+/** Rows this upload skipped because another upload already held the same sales (BE-03-T03).
+ *  uploadId and fileName are null for rows stored before uploads were recorded on them. */
+export interface UploadOverlapStats {
+  rows: number;
+  uploads: { uploadId: string | null; fileName: string | null; rows: number }[];
+}
+
 export interface Upload {
   _id: string;
   cafeId: string;
@@ -60,6 +67,7 @@ export interface Upload {
   /** How the column mapping was arrived at. Absent on uploads staged before this was recorded. */
   mappingSource?: 'yoco' | 'saved' | 'ai' | 'manual' | 'none';
   stats: UploadStats;
+  overlap?: UploadOverlapStats;
   dateRange: UploadDateRange;
   errorMessage?: string;
   rowErrors?: UploadRowError[];

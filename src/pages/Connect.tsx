@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import api, { isSessionRejection } from '@/lib/api'
-import { XLS_GUIDANCE, INVALID_TYPE } from '@/lib/uploadMessages'
+import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage } from '@/lib/uploadMessages'
 import { confirmUpload as confirmUploadRequest, type ConfirmUploadResponse } from '@/lib/uploads'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -59,6 +59,7 @@ interface ImportResult {
   lastDate: string
   rowErrors: UploadRowError[]
   maintenanceStatus?: 'not_started' | 'queued' | 'running' | 'completed' | 'partial_failure'
+  overlap?: ConfirmUploadResponse['overlap']
   replayed?: boolean
 }
 
@@ -457,6 +458,7 @@ export default function Connect() {
       lastDate: confirmed.dateRange?.lastDateKey ?? confirmed.dateRange?.lastDate ?? '',
       rowErrors: confirmed.rowErrors || [],
       maintenanceStatus: confirmed.maintenance?.status,
+      overlap: confirmed.overlap,
       replayed: confirmed.replayed,
     })
     setUploadState('success')
@@ -825,6 +827,12 @@ export default function Connect() {
                             {importedDaysCount ? ` covering ${importedDaysCount} day${importedDaysCount === 1 ? '' : 's'}` : ''}
                           </span>
                         </li>
+                        {overlapSkipMessage(result.overlap) && (
+                          <li className="flex items-start gap-2 text-muted text-sm">
+                            <span className="text-guava-green mt-0.5">•</span>
+                            <span>{overlapSkipMessage(result.overlap)}</span>
+                          </li>
+                        )}
                         {actualsWereFilled && (
                           <li className="flex items-start gap-2 text-muted text-sm">
                             <span className="text-guava-red-text mt-0.5">•</span>

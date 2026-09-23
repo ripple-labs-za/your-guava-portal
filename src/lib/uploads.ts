@@ -3,6 +3,7 @@ import type {
   ColumnMapping,
   ItemsMode,
   Upload as UploadRecord,
+  UploadOverlapStats,
   UploadRowError,
 } from '@/types/upload'
 
@@ -18,6 +19,7 @@ export interface ConfirmUploadResponse {
   }
   rowErrors?: UploadRowError[]
   maintenance?: UploadRecord['maintenance']
+  overlap?: UploadOverlapStats
   replayed?: boolean
 }
 
@@ -85,6 +87,7 @@ const recoverCompletedConfirmation = async (
           dateRange: data.upload.dateRange,
           rowErrors: data.upload.rowErrors,
           maintenance: data.upload.maintenance,
+          overlap: data.upload.overlap,
           replayed: true,
         }
       }
