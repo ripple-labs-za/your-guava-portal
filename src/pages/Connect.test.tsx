@@ -30,6 +30,8 @@ vi.mock('@/components/upload/UploadHistoryCard', () => ({
 // makes vitest throw the moment one is touched.
 const mockGet = vi.fn()
 const mockPost = vi.fn()
+vi.mock('@/components/upload/SavedMappingCard', () => ({ SavedMappingCard: () => <div data-testid="saved-mapping-card" /> }))
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
@@ -76,6 +78,7 @@ describe('Connect', () => {
     await waitFor(() => {
       expect(screen.getByText(/drop your sales csv/i)).toBeInTheDocument()
     })
+    expect(screen.getByTestId('saved-mapping-card')).toBeInTheDocument()
   })
 
   it('shows file type validation error for invalid file', async () => {

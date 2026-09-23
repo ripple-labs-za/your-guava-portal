@@ -1,4 +1,4 @@
-import type { DeleteUploadResponse, UploadOverlap, UploadOverlapStats } from '@/types/upload'
+import type { DeleteUploadResponse, SavedMappingStatus, UploadOverlap, UploadOverlapStats } from '@/types/upload'
 
 // Copy shown when a chosen file is refused before it is sent. Kept in one place
 // because the .xls message is load-bearing: production's backend cannot import
@@ -62,4 +62,18 @@ export const overlapSkipMessage = (overlap?: UploadOverlapStats): string | null 
   const count = overlap.rows.toLocaleString('en-ZA')
   return `${count} sale${overlap.rows === 1 ? ' was' : 's were'} already in Your Guava from ${from}, so ` +
     `${overlap.rows === 1 ? 'it was' : 'they were'} skipped rather than counted twice.`
+}
+
+/** Why the wizard is asking although the cafe has a saved mapping; null when there is nothing to explain. */
+export const savedMappingNotice = (saved?: SavedMappingStatus): string | null => {
+  if (!saved || saved.status !== 'did_not_fit') return null
+  const tail = 'Check each field before importing; the columns you confirm become the saved mapping.'
+  if (saved.reason === 'missing_columns' && saved.missingColumns.length > 0) {
+    const plural = saved.missingColumns.length === 1 ? 'column' : 'columns'
+    return `Your saved column mapping doesn't fit this file: it has no ${saved.missingColumns.join(', ')} ${plural}. ${tail}`
+  }
+  if (saved.reason === 'incomplete') {
+    return `Your saved column mapping does not say which columns hold every required field for this file. ${tail}`
+  }
+  return `This file's columns differ from the file your saved mapping came from. ${tail}`
 }

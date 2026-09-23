@@ -96,12 +96,30 @@ export type UploadListItem = Pick<
   | 'status' | 'stats' | 'dateRange' | 'errorMessage' | 'completedAt' | 'maintenance' | 'createdAt'
 >
 
+/** Why a cafe's saved column mapping did or did not import this file without asking (BE-03-T05). */
+export interface SavedMappingStatus {
+  status: 'applied' | 'did_not_fit' | 'none'
+  reason?: 'missing_columns' | 'headers_changed' | 'incomplete'
+  missingColumns: string[]
+}
+
+/** GET /cafe/me/column-mapping: the mapping non-Yoco files import with, and the file it was saved from. */
+export interface SavedColumnMapping {
+  mapping: ColumnMapping
+  itemsMode: ItemsMode
+  sourceHeaders: string[]
+  savedAt: string | null
+  sourceUploadId: string | null
+  sourceFileName: string | null
+}
+
 export interface StageUploadResponse {
   success: true;
   uploadId: string;
   posType: 'yoco' | 'wizard';
   columnMapping: ColumnMapping;
   itemsMode: ItemsMode;
+  savedMapping?: SavedMappingStatus;
   headers: string[];
   preview: Record<string, string>[];
   needsConfirmation: boolean;

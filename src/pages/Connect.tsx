@@ -3,6 +3,7 @@ import { Upload, CheckCircle, AlertCircle, Clock, TrendingUp, LoaderCircle, Arro
 import { Link } from 'react-router'
 import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { UploadHistoryCard, isDuplicateUploadMessage } from '@/components/upload/UploadHistoryCard'
+import { SavedMappingCard } from '@/components/upload/SavedMappingCard'
 import type {
   ColumnMapping,
   ItemsMode,
@@ -16,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import api, { isSessionRejection } from '@/lib/api'
-import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage } from '@/lib/uploadMessages'
+import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage, savedMappingNotice } from '@/lib/uploadMessages'
 import { confirmUpload as confirmUploadRequest, type ConfirmUploadResponse } from '@/lib/uploads'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -61,6 +62,13 @@ interface ImportResult {
   maintenanceStatus?: 'not_started' | 'queued' | 'running' | 'completed' | 'partial_failure'
   overlap?: ConfirmUploadResponse['overlap']
   replayed?: boolean
+}
+
+const wizardAiNotice = (staged: StageUploadResponse): string | null => {
+  if (!staged.mappingAssistedByAi) return null
+  return staged.mappingCreditsUsed
+    ? `AI suggested the preselected column matches and used ${staged.mappingCreditsUsed} Guava Credits. Review every match before importing.`
+    : 'AI suggested the preselected column matches without a new credit charge. Review every match before importing.'
 }
 
 interface DataStatus {
@@ -954,6 +962,7 @@ export default function Connect() {
         </Card>
 
         <UploadHistoryCard refreshKey={historyRefreshKey} canRemove={isOwner} />
+        <SavedMappingCard refreshKey={historyRefreshKey} canClear={isOwner} />
       </div>
 
       {stageResponse && (
@@ -968,11 +977,7 @@ export default function Connect() {
           initialItemsMode={stageResponse.itemsMode}
           errorMessage={stageErrorMsg}
           assistiveNotice={
-            stageResponse.mappingAssistedByAi
-              ? stageResponse.mappingCreditsUsed
-                ? `AI suggested the preselected column matches and used ${stageResponse.mappingCreditsUsed} Guava Credits. Review every match before importing.`
-                : 'AI suggested the preselected column matches without a new credit charge. Review every match before importing.'
-              : null
+            [savedMappingNotice(stageResponse.savedMapping), wizardAiNotice(stageResponse)].filter(Boolean).join(' ') || null
           }
           onCancel={() => {
             const proceed = window.confirm(

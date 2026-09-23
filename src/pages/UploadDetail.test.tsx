@@ -530,6 +530,23 @@ describe('UploadDetail', () => {
     expect(document.activeElement).toBe(trigger)
   })
 
+  it('says a wizard upload\'s re-map also becomes the saved mapping', async () => {
+    mockUploadDetail()
+    const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<{ data: { upload: Record<string, unknown> } }>
+    apiMock.get.mockImplementation(async (url: string, config?: unknown) => {
+      const response = await detailGet(url, config)
+      if (url.endsWith('/rows')) return response
+      return { data: { ...response.data, upload: { ...response.data.upload, posType: 'wizard' } } }
+    })
+    renderUploadDetail()
+
+    await screen.findByText('export.csv')
+    fireEvent.click(screen.getByRole('button', { name: /re-map columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /choose columns/i }))
+
+    expect(screen.getByText(/also become the saved mapping for your next uploads/i)).toBeInTheDocument()
+  })
+
   it('says which upload already held the rows this file skipped', async () => {
     mockUploadDetail()
     const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>

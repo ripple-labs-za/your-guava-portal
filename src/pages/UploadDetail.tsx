@@ -703,7 +703,7 @@ export default function UploadDetail() {
           initialMapping={upload.columnMapping ?? {}}
           initialItemsMode={upload.itemsMode}
           title="Change how this file's columns are read"
-          description={`Re-importing replaces the ${upload.stats.imported.toLocaleString('en-ZA')} transaction${upload.stats.imported === 1 ? '' : 's'} currently linked to this upload. Required fields are marked with *.`}
+          description={`Re-importing replaces the ${upload.stats.imported.toLocaleString('en-ZA')} transaction${upload.stats.imported === 1 ? '' : 's'} currently linked to this upload. Required fields are marked with *.${upload.posType === 'wizard' ? ' The columns you choose also become the saved mapping for your next uploads.' : ''}`}
           confirmLabel="Re-import with these columns"
           onCancel={() => {
             setRemapError(null)
