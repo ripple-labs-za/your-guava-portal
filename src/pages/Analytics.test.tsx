@@ -304,6 +304,20 @@ describe('Analytics', () => {
     expect(await screen.findByText(/12 sales in this window came from exports with dates but no times/i)).toBeInTheDocument()
   })
 
+  it('says "1 sale" when a single sale has no time', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/heatmap')) {
+        return Promise.resolve({ data: { success: true,
+          heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
+          meta: { timeOfDay: { transactionsWithTime: 30, transactionsWithoutTime: 1 } } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+    expect(await screen.findByText(/^1 sale in this window came from an export with dates but no times, so it is not/i)).toBeInTheDocument()
+  })
+
   it('shows tipping rate as percentage (no double-multiply)', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/customers')) {

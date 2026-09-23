@@ -784,8 +784,9 @@ function HeatmapTab({ period }: { period: PeriodId }) {
               </div>
               {withoutTime > 0 && (
                 <p className="mt-3 text-xs text-muted">
-                  {withoutTime.toLocaleString('en-ZA')} sales in this window came from exports with dates but no times, so
-                  they are not in this heatmap.
+                  {withoutTime === 1
+                    ? '1 sale in this window came from an export with dates but no times, so it is not in this heatmap.'
+                    : `${withoutTime.toLocaleString('en-ZA')} sales in this window came from exports with dates but no times, so they are not in this heatmap.`}
                 </p>
               )}
             </div>
