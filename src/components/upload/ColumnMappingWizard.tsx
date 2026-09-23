@@ -196,10 +196,22 @@ export function ColumnMappingWizard({
     }
   }
 
+  // The owner picks a column by name, and two columns can share one ("Total" gross and "Total (2)" net).
+  // Showing the first value the chosen column holds is what lets them see which money they are importing.
+  const firstValue = (column?: string): string | undefined => {
+    if (!column) return undefined
+    for (const row of preview) {
+      const value = row[column]
+      if (value != null && String(value).trim() !== '') return String(value)
+    }
+    return undefined
+  }
+
   const describedBy = (key: keyof ColumnMapping) => {
     const ids: string[] = []
     if (key === 'receiptId' && receiptRequirementMessage) ids.push('mapping-receipt-required')
     if (duplicateFields.has(key)) ids.push('mapping-duplicate-columns')
+    if (firstValue(effectiveMapping[key]) !== undefined) ids.push(`mapping-${key}-sample`)
     return ids.length > 0 ? ids.join(' ') : undefined
   }
 
@@ -239,20 +251,27 @@ export function ColumnMappingWizard({
                   <label htmlFor={`mapping-${key}`} className="text-sm text-text self-center">
                     {label}{fieldRequired && <span className="text-guava-red-text"> *</span>}
                   </label>
-                  <select
-                    id={`mapping-${key}`}
-                    className="bg-[#111111] border border-border rounded-lg px-2 py-1 text-sm"
-                    value={effectiveMapping[key] || ''}
-                    aria-required={fieldRequired || undefined}
-                    aria-invalid={invalid || undefined}
-                    aria-describedby={describedBy(key)}
-                    onChange={(e) => setField(key, e.target.value)}
-                  >
-                  <option value="">— none —</option>
-                    {headers.map((h, index) => (
-                      <option key={`${h}-${index}`} value={h}>{h}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <select
+                      id={`mapping-${key}`}
+                      className="bg-[#111111] border border-border rounded-lg px-2 py-1 text-sm"
+                      value={effectiveMapping[key] || ''}
+                      aria-required={fieldRequired || undefined}
+                      aria-invalid={invalid || undefined}
+                      aria-describedby={describedBy(key)}
+                      onChange={(e) => setField(key, e.target.value)}
+                    >
+                    <option value="">— none —</option>
+                      {headers.map((h, index) => (
+                        <option key={`${h}-${index}`} value={h}>{h}</option>
+                      ))}
+                    </select>
+                    {firstValue(effectiveMapping[key]) !== undefined && (
+                      <span id={`mapping-${key}-sample`} className="text-xs text-muted break-words">
+                        Reads {firstValue(effectiveMapping[key])}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )
             })}

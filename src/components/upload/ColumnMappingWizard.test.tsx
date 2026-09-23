@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { ColumnMappingWizard } from './ColumnMappingWizard'
@@ -279,5 +279,26 @@ describe('ColumnMappingWizard', () => {
     expect(screen.getByText(/replaces the 412 transactions/i)).toBeInTheDocument()
     expect(screen.queryByText(/couldn't auto-detect/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /re-import with these columns/i })).toBeInTheDocument()
+  })
+
+  it('shows the value each mapped column will import, telling two Total columns apart', async () => {
+    const user = userEvent.setup()
+    render(
+      <ColumnMappingWizard
+        open
+        headers={['Date', 'Items', 'Total', 'Total (2)']}
+        preview={[{ Date: '2026-09-14', Items: '1 x Latte', Total: '100.00', 'Total (2)': '86.96' }]}
+        initialMapping={{ date: 'Date', items: 'Items', total: 'Total (2)' }}
+        initialItemsMode="packed"
+        onConfirm={vi.fn()}
+        onCancel={() => {}}
+      />
+    )
+    const total = screen.getByLabelText(/total amount/i)
+    expect(within(total).getByRole('option', { name: 'Total (2)' })).toBeInTheDocument()
+    expect(total).toHaveAccessibleDescription(/reads 86\.96/i)
+
+    await user.selectOptions(total, 'Total')
+    expect(total).toHaveAccessibleDescription(/reads 100\.00/i)
   })
 })
