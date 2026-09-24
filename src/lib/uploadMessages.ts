@@ -64,6 +64,40 @@ export const overlapSkipMessage = (overlap?: UploadOverlapStats): string | null 
     `${overlap.rows === 1 ? 'it was' : 'they were'} skipped rather than counted twice.`
 }
 
+const rowCount = (n: number) => `${n.toLocaleString('en-ZA')} ${n === 1 ? 'row' : 'rows'}`
+const itWasOrTheyWere = (n: number) => (n === 1 ? 'it was' : 'they were')
+
+// One sentence per key of stats.skippedByReason (BE-03-T09): skipped is always their sum, so each is explained.
+const SKIP_REASON_COPY: Record<string, (n: number) => string> = {
+  duplicate: (n) => `${rowCount(n)} ${n === 1 ? 'was' : 'were'} already imported earlier, so ${itWasOrTheyWere(n)} not counted twice.`,
+  in_file_duplicate: (n) => `${rowCount(n)} repeated a sale that appears earlier in this file, so ${itWasOrTheyWere(n)} counted once.`,
+  status_not_approved: (n) => `${rowCount(n)} ${n === 1 ? 'was' : 'were'} skipped because the Status column did not read as a completed sale.`,
+  refund_netted: (n) => (n === 1
+    ? '1 refund row was netted into the sale it refunded, so that sale counts what the customer kept.'
+    : `${n.toLocaleString('en-ZA')} refund rows were netted into the sales they refunded, so those sales count what the customer kept.`),
+}
+const SKIP_REASON_ORDER = ['duplicate', 'in_file_duplicate', 'status_not_approved', 'refund_netted']
+
+/**
+ * Why each skipped row was skipped, one sentence per reason, including a reason this page has no copy for yet. The
+ * overlap sentence names the uploads that held the duplicates, so it stands in for the plain duplicate sentence;
+ * only duplicates it does not cover get that one, and no row is explained twice.
+ */
+export const skippedRowSentences = (
+  skippedByReason: Record<string, number> = {},
+  overlap?: UploadOverlapStats,
+): string[] => {
+  const overlapMessage = overlapSkipMessage(overlap)
+  const counts: Record<string, number> = { ...skippedByReason }
+  if (overlapMessage && overlap) counts.duplicate = Math.max((counts.duplicate ?? 0) - overlap.rows, 0)
+  const unknown = Object.keys(counts).filter((key) => !SKIP_REASON_ORDER.includes(key)).sort()
+  const sentences = [...SKIP_REASON_ORDER, ...unknown]
+    .filter((key) => typeof counts[key] === 'number' && counts[key] > 0)
+    .map((key) => SKIP_REASON_COPY[key]?.(counts[key])
+      ?? `${rowCount(counts[key])} ${counts[key] === 1 ? 'was' : 'were'} skipped (${key.replace(/_/g, ' ')}).`)
+  return overlapMessage ? [overlapMessage, ...sentences] : sentences
+}
+
 /** Why the wizard is asking although the cafe has a saved mapping; null when there is nothing to explain. */
 export const savedMappingNotice = (saved?: SavedMappingStatus): string | null => {
   if (!saved || saved.status !== 'did_not_fit') return null

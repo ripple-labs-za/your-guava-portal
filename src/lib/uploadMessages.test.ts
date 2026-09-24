@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest'
-import { savedMappingNotice } from './uploadMessages'
+import { savedMappingNotice, skippedRowSentences } from './uploadMessages'
+
+describe('skippedRowSentences', () => {
+  it('words a reason the page has no copy for, so a later reason is never silent', () => {
+    expect(skippedRowSentences({ receipt_conflict: 3 })).toEqual(['3 rows were skipped (receipt conflict).'])
+  })
+
+  it('explains duplicates the overlap sentence does not cover, and only those', () => {
+    const sentences = skippedRowSentences({ duplicate: 5 }, { rows: 3, uploads: [{ uploadId: 'a', fileName: 'a.csv', rows: 3 }] })
+    expect(sentences).toEqual([
+      '3 sales were already in Your Guava from a.csv, so they were skipped rather than counted twice.',
+      '2 rows were already imported earlier, so they were not counted twice.',
+    ])
+  })
+
+  it('says nothing when nothing was skipped', () => {
+    expect(skippedRowSentences({})).toEqual([])
+    expect(skippedRowSentences(undefined, { rows: 0, uploads: [] })).toEqual([])
+    expect(skippedRowSentences({ duplicate: 0, refund_netted: 0 })).toEqual([])
+  })
+})
 
 describe('savedMappingNotice', () => {
   it('names the columns the saved mapping expected and this file lacks', () => {

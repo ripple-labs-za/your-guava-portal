@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
-import { deleteUploadConsequence, overlapNotice, overlapSkipMessage, readmissionOutcome } from '@/lib/uploadMessages'
+import { deleteUploadConsequence, overlapNotice, readmissionOutcome, skippedRowSentences } from '@/lib/uploadMessages'
 import api from '@/lib/api'
 import { confirmUpload, confirmationKeyFor } from '@/lib/uploads'
 import type {
@@ -375,23 +375,9 @@ export default function UploadDetail() {
                 {upload.errorMessage}
               </p>
             )}
-            {upload.stats.skippedByReason?.status_not_approved ? (
-              <p className="mt-3 text-sm text-muted">
-                {upload.stats.skippedByReason.status_not_approved.toLocaleString('en-ZA')}{' '}
-                {upload.stats.skippedByReason.status_not_approved === 1 ? 'row was' : 'rows were'}{' '}
-                skipped because the Status column did not read as a completed sale.
-              </p>
-            ) : null}
-            {upload.stats.skippedByReason?.refund_netted ? (
-              <p className="mt-3 text-sm text-muted">
-                {upload.stats.skippedByReason.refund_netted === 1
-                  ? '1 refund row was netted into the sale it refunded, so that sale counts what the customer kept.'
-                  : `${upload.stats.skippedByReason.refund_netted.toLocaleString('en-ZA')} refund rows were netted into the sales they refunded, so those sales count what the customer kept.`}
-              </p>
-            ) : null}
-            {overlapSkipMessage(upload.overlap) && (
-              <p className="mt-3 text-sm text-muted">{overlapSkipMessage(upload.overlap)}</p>
-            )}
+            {skippedRowSentences(upload.stats.skippedByReason, upload.overlap).map((sentence) => (
+              <p key={sentence} className="mt-3 text-sm text-muted">{sentence}</p>
+            ))}
             {upload.dateRange?.firstDate && (
               <p className="text-sm text-muted mt-3">
                 Date range: {new Date(upload.dateRange.firstDate).toLocaleDateString('en-ZA')}

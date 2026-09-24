@@ -70,6 +70,48 @@ describe('UploadDetail', () => {
     authState.isOwner = true
   })
 
+  // An upload that skipped rows for three reasons; `extra` adds fields such as BE-03-T03's `overlap`.
+  const mockSkippedUpload = (extra: Record<string, unknown> = {}) => {
+    apiMock.get.mockImplementation((url: string) => {
+      if (url.endsWith('/rows')) {
+        return Promise.resolve({ data: { transactions: [], pagination: { total: 0, page: 1, limit: 50, pages: 1 } } })
+      }
+      return Promise.resolve({
+        data: {
+          upload: {
+            _id: 'u1', fileName: 'export.csv', status: 'completed', posType: 'yoco', itemsMode: 'packed',
+            stats: { imported: 4, skipped: 4, errors: 0, totalRows: 8,
+              skippedByReason: { duplicate: 2, in_file_duplicate: 1, status_not_approved: 1 } },
+            createdAt: new Date().toISOString(), uploadedBy: { name: 'Shaun', email: 's@x.za' },
+            dateRange: { firstDate: '2026-04-01', lastDate: '2026-04-02' }, headers: [], sampleRows: [],
+            columnMapping: { date: 'Date', items: 'Items', total: 'Total' },
+            ...extra,
+          },
+          downloadUrl: 'https://test.r2.local/foo',
+        },
+      })
+    })
+  }
+
+  it('explains every kind of skipped row', async () => {
+    mockSkippedUpload()
+    renderUploadDetail()
+
+    // No `overlap` on this upload, so the fallback sentence explains the duplicates.
+    expect(await screen.findByText(/2 rows were already imported earlier, so they were not counted twice/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 row repeated a sale that appears earlier in this file/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 row was skipped because the Status column/i)).toBeInTheDocument()
+  })
+
+  it('does not explain the same duplicates twice when the overlap sentence is shown', async () => {
+    mockSkippedUpload({ overlap: { rows: 2, uploads: [{ uploadId: 'a', fileName: 'a.csv', rows: 2 }] } })
+    renderUploadDetail()
+
+    expect(await screen.findByText(/2 sales were already in Your Guava from a\.csv/i)).toBeInTheDocument()
+    expect(screen.queryByText(/already imported earlier, so they were not counted twice/i)).toBeNull()
+    expect(screen.getByText(/1 row repeated a sale that appears earlier in this file/i)).toBeInTheDocument()
+  })
+
   it('renders upload metadata and a download link', async () => {
     mockUploadDetail()
     renderUploadDetail()
