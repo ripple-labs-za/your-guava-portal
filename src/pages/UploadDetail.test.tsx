@@ -547,6 +547,20 @@ describe('UploadDetail', () => {
     expect(screen.getByText(/also become the saved mapping for your next uploads/i)).toBeInTheDocument()
   })
 
+  it('explains refund rows netted into their sales', async () => {
+    mockUploadDetail()
+    const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<{ data: { upload: Record<string, unknown> & { stats: Record<string, unknown> } } }>
+    apiMock.get.mockImplementation(async (url: string, config?: unknown) => {
+      const response = await detailGet(url, config)
+      if (url.endsWith('/rows')) return response
+      const upload = response.data.upload
+      return { data: { ...response.data, upload: { ...upload,
+        stats: { ...upload.stats, skipped: 1, skippedByReason: { refund_netted: 1 } } } } }
+    })
+    renderUploadDetail()
+    expect(await screen.findByText(/1 refund row was netted into the sale it refunded/i)).toBeInTheDocument()
+  })
+
   it('says which upload already held the rows this file skipped', async () => {
     mockUploadDetail()
     const detailGet = apiMock.get.getMockImplementation() as (url: string, config?: unknown) => Promise<unknown>
