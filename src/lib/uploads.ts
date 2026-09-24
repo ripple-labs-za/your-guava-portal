@@ -54,10 +54,22 @@ const responseOf = (error: unknown) =>
     ? (error as {
         response?: {
           status?: number
-          data?: { details?: { errors?: number; totalRows?: number } }
+          data?: { code?: string; details?: { errors?: number; totalRows?: number } }
         }
       }).response
     : undefined
+
+/**
+ * The rejected-row counts of a severe partial import, or null for any other failure. Keyed on the server's code:
+ * a 422 alone also means PARSE_LIMIT_EXCEEDED (a file too slow to read), which asked the owner to "import only the
+ * valid rows" of a file nothing could be imported from (BE-03-T12). The one decision point for Data Health and the
+ * upload page.
+ */
+export const severePartialImportDetails = (error: unknown): { errors?: number; totalRows?: number } | null => {
+  const response = responseOf(error)
+  if (response?.status !== 422 || response.data?.code !== 'SEVERE_PARTIAL_IMPORT') return null
+  return response.data.details ?? {}
+}
 
 /**
  * A confirm that timed out may still have committed. Poll the upload's own
@@ -147,12 +159,9 @@ export async function confirmUpload(
     )
     return data
   } catch (error) {
-    const response = responseOf(error)
-    if (response?.status === 422 && !allowPartialImport && onPartialImport) {
-      const proceed = await onPartialImport(
-        response.data?.details?.errors,
-        response.data?.details?.totalRows
-      )
+    const severe = severePartialImportDetails(error)
+    if (severe && !allowPartialImport && onPartialImport) {
+      const proceed = await onPartialImport(severe.errors, severe.totalRows)
       if (proceed) {
         return confirmUpload(uploadId, columnMapping, itemsMode, {
           ...options,

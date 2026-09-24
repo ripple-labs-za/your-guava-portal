@@ -10,7 +10,7 @@ import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
 import { deleteUploadConsequence, overlapNotice, readmissionOutcome, skippedRowSentences } from '@/lib/uploadMessages'
 import api from '@/lib/api'
-import { confirmUpload, confirmationKeyFor } from '@/lib/uploads'
+import { confirmUpload, confirmationKeyFor, severePartialImportDetails } from '@/lib/uploads'
 import type {
   Upload, ColumnMapping, ItemsMode, UploadRowError, UploadOverlap, DeleteUploadResponse,
 } from '@/types/upload'
@@ -100,22 +100,6 @@ const extractApiError = (err: unknown, fallback: string) => {
   return fallback
 }
 
-const severePartialDetails = (err: unknown) => {
-  if (!err || typeof err !== 'object' || !('response' in err)) return null
-  const response = (err as {
-    response?: {
-      status?: number
-      data?: {
-        code?: string
-        details?: { errors?: number; totalRows?: number }
-      }
-    }
-  }).response
-
-  if (response?.status !== 422) return null
-  return response.data?.details || {}
-}
-
 const normalisePagination = (
   pagination: Partial<RowsPagination> | undefined,
   fallbackPage: number,
@@ -196,7 +180,7 @@ export default function UploadDetail() {
       })
       return response.data
     } catch (err: unknown) {
-      const details = severePartialDetails(err)
+      const details = severePartialImportDetails(err)
       if (details && !allowPartialImport) {
         const proceed = window.confirm(
           `${details.errors ?? 'Many'} of ${details.totalRows ?? 'the'} rows could not be imported. ` +

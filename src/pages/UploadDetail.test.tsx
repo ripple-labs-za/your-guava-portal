@@ -344,6 +344,7 @@ describe('UploadDetail', () => {
       response: {
         status: 422,
         data: {
+          code: 'SEVERE_PARTIAL_IMPORT',
           message: 'Fix the mapping or explicitly allow a partial import.',
           details: { errors: 7, totalRows: 10 },
         },
@@ -359,7 +360,23 @@ describe('UploadDetail', () => {
 
     expect(await screen.findByText(/fix the mapping or explicitly allow a partial import/i)).toBeInTheDocument()
     expect(apiMock.patch).toHaveBeenCalledTimes(1)
+    expect(confirmSpy).toHaveBeenCalled()
 
+    confirmSpy.mockRestore()
+  })
+
+  it('does not ask about a partial import for a 422 that is not a severe partial', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    apiMock.patch.mockRejectedValueOnce({ response: { status: 422, data: { code: 'PARSE_LIMIT_EXCEEDED', message: 'This file took too long to read.' } } })
+    mockUploadDetail()
+    renderUploadDetail()
+    await screen.findByText('export.csv')
+    fireEvent.click(screen.getByRole('button', { name: /re-map columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /choose columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /re-import with these columns/i }))
+    expect(await screen.findByText(/this file took too long to read/i)).toBeInTheDocument()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(apiMock.patch).toHaveBeenCalledTimes(1)
     confirmSpy.mockRestore()
   })
 
