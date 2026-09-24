@@ -385,9 +385,8 @@ export default function UploadDetail() {
             {upload.stats.skippedByReason?.refund_netted ? (
               <p className="mt-3 text-sm text-muted">
                 {upload.stats.skippedByReason.refund_netted === 1
-                  ? '1 refund row was netted into the sale it refunded'
-                  : `${upload.stats.skippedByReason.refund_netted.toLocaleString('en-ZA')} refund rows were netted into the sales they refunded`}
-                , so those sales count what the customer kept.
+                  ? '1 refund row was netted into the sale it refunded, so that sale counts what the customer kept.'
+                  : `${upload.stats.skippedByReason.refund_netted.toLocaleString('en-ZA')} refund rows were netted into the sales they refunded, so those sales count what the customer kept.`}
               </p>
             ) : null}
             {overlapSkipMessage(upload.overlap) && (

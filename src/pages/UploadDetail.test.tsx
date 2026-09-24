@@ -558,7 +558,7 @@ describe('UploadDetail', () => {
         stats: { ...upload.stats, skipped: 1, skippedByReason: { refund_netted: 1 } } } } }
     })
     renderUploadDetail()
-    expect(await screen.findByText(/1 refund row was netted into the sale it refunded/i)).toBeInTheDocument()
+    expect(await screen.findByText(/^1 refund row was netted into the sale it refunded, so that sale counts what the customer kept\.$/i)).toBeInTheDocument()
   })
 
   it('says which upload already held the rows this file skipped', async () => {
