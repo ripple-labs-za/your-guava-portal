@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@/test/test-utils'
+import { render, screen, waitFor, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import MenuItems from './MenuItems'
 import type { SalesItem } from '@/types'
@@ -75,36 +75,55 @@ const NEEDS_REVIEW = buildItem({
   candidates: [{ item: FLAT_WHITE, score: 0.7 }],
 } as Partial<SalesItem> & { _id: string; name: string })
 
-function mockItems(menu: SalesItem[], review: SalesItem[]) {
-  mockGet.mockImplementation((url: string) => {
+type Params = Record<string, string | number | undefined>
+const hasPrice = (item: SalesItem) => (item.priceMismatchCount ?? 0) > 0 || Boolean(item.lastPriceMismatchAt)
+const pageOf = <T,>(all: T[], params: Params, fallbackLimit = 50) => {
+  const page = Number(params.page ?? 1)
+  const limit = Number(params.limit ?? fallbackLimit)
+  return { rows: all.slice((page - 1) * limit, page * limit), page, limit, pages: Math.max(1, Math.ceil(all.length / limit)) }
+}
+
+// Behaves like the paged server (BE-03-T14): tests that pass small lists are unaffected, because page 1 holds everything.
+function serveItems(menuFor: (params?: Params) => SalesItem[], review: SalesItem[]) {
+  mockGet.mockImplementation((url: string, config?: { params?: Params }) => {
+    const params = config?.params ?? {}
     if (url.includes('/items/reconciliation')) {
-      return Promise.resolve({ data: { items: review } })
+      const { rows, page, limit, pages } = pageOf(review, params)
+      return Promise.resolve({ data: { items: rows, meta: {
+        needsReview: review.filter((item) => item.reviewStatus === 'needs_review').length,
+        priceMismatches: review.filter(hasPrice).length, total: review.length, returned: rows.length, page, limit, pages } } })
+    }
+    if (url.includes('/items') && params.ids) {
+      const ids = new Set(String(params.ids).split(','))
+      const rows = menuFor(params).filter((item) => ids.has(item._id))
+      return Promise.resolve({ data: { items: rows, meta: { total: rows.length, page: 1, limit: 200, pages: 1 } } })
     }
     if (url.includes('/items')) {
-      return Promise.resolve({ data: { items: menu } })
+      const q = String(params.q ?? '').toLowerCase()
+      const all = menuFor(params).filter((item) => (!params.reviewStatus || item.reviewStatus === params.reviewStatus)
+        && (!q || item.name.toLowerCase().includes(q)))
+      const { rows, page, limit, pages } = pageOf(all, params)
+      return Promise.resolve({ data: { items: rows, meta: { total: all.length, page, limit, pages, counts: {} } } })
     }
-    if (url.includes('/cafe/me')) {
-      return Promise.resolve({ data: { cafe: { name: 'Test' } } })
-    }
+    if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
     return Promise.resolve({ data: {} })
   })
 }
 
-// Serves a different menu list on every /items?active=true call so a refetch can
-// be made to disagree with what the user is currently editing.
+function mockItems(menu: SalesItem[], review: SalesItem[]) {
+  serveItems(() => menu, review)
+}
+
+// A different menu on each Menu Prices list call (not the link-target fetch), so a refetch can be made to disagree
+// with what the user is currently editing.
 function mockItemsSequence(menuByCall: SalesItem[][], review: SalesItem[]) {
   let call = 0
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/items/reconciliation')) {
-      return Promise.resolve({ data: { items: review } })
-    }
-    if (url.includes('/items')) {
-      const menu = menuByCall[Math.min(call, menuByCall.length - 1)]
-      call += 1
-      return Promise.resolve({ data: { items: menu } })
-    }
-    return Promise.resolve({ data: {} })
-  })
+  serveItems((params?: Params) => {
+    if (params?.reviewStatus) return menuByCall[Math.min(call, menuByCall.length - 1)]
+    const menu = menuByCall[Math.min(call, menuByCall.length - 1)]
+    call += 1
+    return menu
+  }, review)
 }
 
 async function openMenuPricesTab() {
@@ -457,5 +476,95 @@ describe('MenuItems at scale', () => {
     await userEvent.click(screen.getByRole('button', { name: /next menu page/i }))
     expect(await screen.findByText(/Showing 51-100 of 120 menu items/i)).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: /Menu price for Item 050/i })).toBeInTheDocument()
+    // The page comes from the server, not from slicing a whole menu the page received (BE-03-T14).
+    expect(mockGet).toHaveBeenCalledWith('/items', expect.objectContaining({ params: expect.objectContaining({ page: 2, limit: 50 }) }))
+  })
+})
+
+describe('MenuItems counts and paging', () => {
+  beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); mockPut.mockResolvedValue({ data: {} }) })
+  const unmatched = Array.from({ length: 300 }, (_, i) => buildItem({ _id: `u${i}`, name: `POS ${String(i).padStart(3, '0')}`, reviewStatus: 'needs_review' }))
+  const mismatched = Array.from({ length: 12 }, (_, i) => buildItem({ _id: `m${i}`, name: `Priced ${i}`, priceMismatchCount: 1 }))
+  const headerValue = (label: RegExp) => screen.getByText(label).parentElement!.querySelector('p:last-child')!.textContent
+
+  it('shows the full counts from meta, not the length of a page', async () => {
+    mockItems([...unmatched, ...mismatched], [...unmatched, ...mismatched])
+    render(<MenuItems />)
+    await waitFor(() => expect(headerValue(/^Need a match$/i)).toBe('300'))
+    // Case-sensitive: the card title "Menu Items" also matches /^Menu items$/i.
+    expect(headerValue(/^Menu items$/)).toBe('312')
+    expect(headerValue(/^Price differences$/i)).toBe('12')
+  })
+
+  it('loads the next page of items that need a match', async () => {
+    mockItems(unmatched, unmatched)
+    render(<MenuItems />)
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(50))
+    await userEvent.click(screen.getByRole('button', { name: /show 50 more/i }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100))
+    expect(mockGet).toHaveBeenCalledWith('/items/reconciliation', expect.objectContaining({ params: expect.objectContaining({ page: 2 }) }))
+    expect(screen.getByText(/showing 100 of 300 items that need attention/i)).toBeInTheDocument()
+  })
+
+  it('searches the menu on the server', async () => {
+    mockItems(unmatched, [])
+    render(<MenuItems />)
+    await openMenuPricesTab()
+    await userEvent.type(screen.getByRole('textbox', { name: /search menu items/i }), 'POS 29')
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/items', expect.objectContaining({
+      params: expect.objectContaining({ q: 'POS 29', page: 1 }) })))
+    // 'pos 290'...'pos 299' contain 'pos 29'; 'pos 029' does not.
+    expect(await screen.findByText(/Showing 1-10 of 10 menu items/i)).toBeInTheDocument()
+  })
+
+  it('offers every matched item as a link target, even past the first page', async () => {
+    const matched = Array.from({ length: 230 }, (_, i) => buildItem({ _id: `t${i}`, name: `Target ${String(i).padStart(3, '0')}` }))
+    mockItems(matched, [NEEDS_REVIEW])
+    render(<MenuItems />)
+    const select = await screen.findByRole('combobox', { name: /Link Cappucino Lrg to an existing menu item/i })
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(231)) // 230 targets + the placeholder
+  })
+
+  it('saves an edit made on another page', async () => {
+    const many = Array.from({ length: 120 }, (_, i) => buildItem({ _id: `bulk${i}`, name: `Item ${String(i).padStart(3, '0')}`, expectedPrice: 10 }))
+    mockItems(many, [])
+    render(<MenuItems />)
+    await openMenuPricesTab()
+    await userEvent.clear(priceFor('Item 000'))
+    await userEvent.type(priceFor('Item 000'), '12')
+    await userEvent.click(screen.getByRole('button', { name: /next menu page/i }))
+    await screen.findByText(/Showing 51-100 of 120 menu items/i)
+    await userEvent.click(screen.getByRole('button', { name: /save all changes/i }))
+    await waitFor(() => expect(mockPut).toHaveBeenCalledWith('/items/bulk0', expect.objectContaining({ expectedPrice: 12 })))
+  })
+
+  // Review of BE-03-T14: a save refreshed only page 1 of the queue, so "Show 50 more" progress was lost on every action.
+  it('keeps every loaded page of the queue after an action', async () => {
+    mockPost.mockResolvedValue({ data: {} })
+    mockItems([], unmatched)
+    render(<MenuItems />)
+    await userEvent.click(await screen.findByRole('button', { name: /show 50 more/i }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100))
+    await userEvent.click(screen.getByRole('button', { name: /^Keep POS 075 as a new menu item$/i }))
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/items/reconciliation', expect.objectContaining({ params: expect.objectContaining({ page: 2 }) })))
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100)
+  })
+
+  // Review of BE-03-T14: a refresh re-read only the visible page, so a stored value that moved under an edit made on
+  // another page was never flagged, and Save all overwrote it.
+  it('flags a stored value that moved under an edit made on another page', async () => {
+    let menu = Array.from({ length: 120 }, (_, i) => buildItem({ _id: `bulk${i}`, name: `Item ${String(i).padStart(3, '0')}`, expectedPrice: 10 }))
+    serveItems(() => menu, [])
+    render(<MenuItems />)
+    await openMenuPricesTab()
+    await userEvent.clear(priceFor('Item 000'))
+    await userEvent.type(priceFor('Item 000'), '12')
+    await userEvent.click(screen.getByRole('button', { name: /next menu page/i }))
+    await screen.findByText(/Showing 51-100 of 120 menu items/i)
+    menu = menu.map((item) => (item._id === 'bulk0' ? { ...item, expectedPrice: 15 } : item)) // someone else saved 15
+    await userEvent.click(screen.getByRole('button', { name: /^Save Item 050$/i }))
+    expect(await screen.findByText(/1 of them changed elsewhere since you started/i)).toBeInTheDocument()
   })
 })

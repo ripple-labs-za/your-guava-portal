@@ -454,8 +454,10 @@ export default function Connect() {
   const finishConfirmation = (confirmed: ConfirmUploadResponse) => {
     // Best-effort: a failure here must not spoil a successful import, so the
     // count simply stays at zero and the line is not shown.
-    api.get<{ meta?: { counts?: { needs_review?: number } } }>('/items')
-      .then(({ data }) => setItemsNeedingMatch(data.meta?.counts?.needs_review ?? 0))
+    // Only the count is read; the list is paged since BE-03-T14, so ask for the smallest page. needsReview counts
+    // active items, the same number Menu Items shows (counts.needs_review includes deactivated ones).
+    api.get<{ meta?: { needsReview?: number } }>('/items', { params: { limit: 1 } })
+      .then(({ data }) => setItemsNeedingMatch(data.meta?.needsReview ?? 0))
       .catch(() => setItemsNeedingMatch(0))
     setResult({
       imported: confirmed.stats.imported,

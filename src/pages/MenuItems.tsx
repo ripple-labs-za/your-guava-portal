@@ -1,43 +1,34 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Coffee, EyeOff, Link2, Plus, Save, Search, Sparkles, Tags } from 'lucide-react'
+import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Coffee, Plus, Save, Search, Tags } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits, type GuavaCreditSnapshot } from '@/lib/creditEvents'
 import { secureRandomId } from '@/lib/idempotency'
 import { cn } from '@/lib/utils'
 import type { SalesItem, SalesItemCategory } from '@/types'
+import { CATEGORIES, ConflictNotice, StatusPill, formatZar, type ItemDraft } from '@/components/menu-items/menuItemDisplay'
+import { ReviewItemCard, type ResolveAction } from '@/components/menu-items/ReviewItemCard'
+import { buildDraft, draftPayload, draftsEqual, mergeServerDrafts, type DraftMap } from '@/components/menu-items/menuItemDrafts'
+import {
+  MENU_PAGE_SIZE, REVIEW_PAGE_SIZE, fetchItemsByIds, fetchLinkTargets, fetchMenuPage, fetchReviewPage, fetchReviewPages,
+  type ItemsListMeta, type ItemsPage, type ReconciliationMeta,
+} from '@/components/menu-items/menuItemsApi'
 
 type Tab = 'review' | 'menu'
 type Notice = { type: 'success' | 'error'; message: string } | null
-type ItemDraft = { category: SalesItemCategory; expectedPrice: string; priceTolerancePct: string; aliases: string }
-type DraftMap = Record<string, ItemDraft>
 
-const MENU_PAGE_SIZE = 50
+const SEARCH_DEBOUNCE_MS = 300
+const menuKey = (page: number, q: string) => `${page}|${q}`
 
 // Statuses the server can only have produced before any metering ran, so the
 // "no credits were charged" promise is safe to keep for them. A timeout or a
 // dropped connection tells us nothing about whether the server finished.
 const PRE_CHARGE_REJECTION_STATUSES = [400, 402, 403, 422, 429]
-
-const CATEGORIES: { value: SalesItemCategory; label: string }[] = [
-  { value: 'coffee', label: 'Coffee' },
-  { value: 'cold_drink', label: 'Cold drink' },
-  { value: 'food', label: 'Food' },
-  { value: 'water', label: 'Water' },
-  { value: 'retail', label: 'Retail' },
-  { value: 'other', label: 'Other' },
-]
-
-function formatZar(value?: number) {
-  if (value == null || Number.isNaN(Number(value))) return '-'
-  return `R${Number(value).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
 
 function apiError(err: unknown, fallback: string) {
   if (err && typeof err === 'object' && 'response' in err) {
@@ -54,61 +45,6 @@ function responseStatus(err: unknown): number | undefined {
   return undefined
 }
 
-function buildDraft(item: SalesItem): ItemDraft {
-  return {
-    category: item.category,
-    expectedPrice: item.expectedPrice == null ? '' : String(item.expectedPrice),
-    priceTolerancePct: item.priceTolerancePct == null ? '10' : String(item.priceTolerancePct),
-    aliases: (item.aliases ?? []).join(', '),
-  }
-}
-
-function draftsEqual(a?: ItemDraft, b?: ItemDraft) {
-  if (!a || !b) return false
-  return (
-    a.category === b.category &&
-    a.expectedPrice === b.expectedPrice &&
-    a.priceTolerancePct === b.priceTolerancePct &&
-    a.aliases === b.aliases
-  )
-}
-
-function draftPayload(draft: ItemDraft) {
-  return {
-    category: draft.category,
-    expectedPrice: draft.expectedPrice === '' ? undefined : Number(draft.expectedPrice),
-    priceTolerancePct: draft.priceTolerancePct === '' ? undefined : Number(draft.priceTolerancePct),
-    aliases: draft.aliases.split(',').map((alias) => alias.trim()).filter(Boolean),
-  }
-}
-
-function StatusPill({ item }: { item: SalesItem }) {
-  const mismatch = (item.priceMismatchCount ?? 0) > 0 || Boolean(item.lastPriceMismatchAt)
-  if (mismatch) return <Badge className="border-amber-500/25 bg-amber-500/10 text-amber-300">Price differs</Badge>
-  if (item.reviewStatus === 'needs_review') return <Badge className="border-red-500/25 bg-red-500/10 text-red-300">Needs a match</Badge>
-  if (item.reviewStatus === 'ignored') return <Badge variant="secondary">Ignored</Badge>
-  return <Badge variant="success">Ready</Badge>
-}
-
-function hasPriceIssue(item: SalesItem) {
-  return (item.priceMismatchCount ?? 0) > 0 || Boolean(item.lastPriceMismatchAt)
-}
-
-function suggestedPrice(item: SalesItem) {
-  return item.lastObservedPrice ?? item.avgPrice ?? item.observedPriceMax ?? item.observedPriceMin
-}
-
-function suggestionLabel(item: SalesItem) {
-  const suggestion = item.aiSuggestion
-  if (!suggestion) return ''
-  if (suggestion.action === 'map_to') return `Link to ${suggestion.targetName || 'existing menu item'}`
-  if (suggestion.action === 'ignore') return 'Ignore POS item'
-  // "Use menu price X" collided with the "Menu price" field shown above it,
-  // which holds the CURRENT price. This value is the proposed replacement.
-  if (hasPriceIssue(item)) return `Change menu price to ${formatZar(suggestion.expectedPrice)}`
-  return 'Keep as new menu item'
-}
-
 export default function MenuItems() {
   const { user } = useAuth()
   const [tab, setTab] = useState<Tab>('review')
@@ -123,8 +59,20 @@ export default function MenuItems() {
   const aiReviewKeysRef = useRef(new Map<string, string>())
   const [notice, setNotice] = useState<Notice>(null)
   const [query, setQuery] = useState('')
+  const [searchTerm, setSearchTerm] = useState('') // the debounced `query` the server searches
   const [menuPage, setMenuPage] = useState(1)
+  const [menuMeta, setMenuMeta] = useState<ItemsListMeta | null>(null)
+  const [menuCount, setMenuCount] = useState<number | null>(null) // the whole menu, whatever is searched
+  const [reviewMeta, setReviewMeta] = useState<ReconciliationMeta | null>(null)
+  const [reviewPage, setReviewPage] = useState(1)
+  const [loadingMoreReview, setLoadingMoreReview] = useState(false)
+  const [linkTargets, setLinkTargets] = useState<SalesItem[]>([])
   const [mapTargets, setMapTargets] = useState<Record<string, string>>({})
+  // Every Menu Prices row seen on any page, so Save all reaches an edit made on another page.
+  const knownItemsRef = useRef(new Map<string, SalesItem>())
+  const menuRequestRef = useRef(0)
+  const refreshRef = useRef(0)
+  const lastMenuKeyRef = useRef<string | null>(null)
 
   // `drafts` is what the user sees and edits. `baseline` is the server value
   // each draft was derived from, and it is what makes a row's dirtiness
@@ -137,6 +85,7 @@ export default function MenuItems() {
   const [conflicts, setConflicts] = useState<DraftMap>({})
   const draftsRef = useRef<DraftMap>({})
   const baselineRef = useRef<DraftMap>({})
+  const conflictsRef = useRef<DraftMap>({})
 
   const [newItem, setNewItem] = useState({ name: '', category: 'coffee' as SalesItemCategory, expectedPrice: '', priceTolerancePct: '10' })
   const canSpendCredits = user?.role === 'owner' || Boolean(user?.permissions?.canSpendCredits)
@@ -154,8 +103,14 @@ export default function MenuItems() {
     baselineRef.current = next
     setBaseline(next)
   }
+  const applyConflicts = (next: DraftMap) => {
+    conflictsRef.current = next
+    setConflicts(next)
+  }
 
   const draftFor = (item: SalesItem): ItemDraft => drafts[item._id] ?? buildDraft(item)
+  const unsavedIds = () => Object.keys(draftsRef.current)
+    .filter((id) => baselineRef.current[id] && !draftsEqual(draftsRef.current[id], baselineRef.current[id]))
 
   const editDraft = (item: SalesItem, patch: Partial<ItemDraft>) => {
     const current = draftsRef.current[item._id] ?? buildDraft(item)
@@ -166,12 +121,27 @@ export default function MenuItems() {
   // free to take the server's value for it.
   const settleRow = (id: string, settled: ItemDraft) => {
     applyBaseline({ ...baselineRef.current, [id]: settled })
-    setConflicts((current) => {
-      if (!(id in current)) return current
-      const next = { ...current }
+    if (id in conflictsRef.current) {
+      const next = { ...conflictsRef.current }
       delete next[id]
-      return next
-    })
+      applyConflicts(next)
+    }
+  }
+
+  const mergeServerItems = (serverItems: SalesItem[]) => {
+    const next = mergeServerDrafts(
+      { drafts: draftsRef.current, baseline: baselineRef.current, conflicts: conflictsRef.current }, serverItems
+    )
+    applyDrafts(next.drafts)
+    applyBaseline(next.baseline)
+    applyConflicts(next.conflicts)
+  }
+
+  const showMenuPage = (data: ItemsPage, q: string) => {
+    data.items.forEach((item) => knownItemsRef.current.set(item._id, item))
+    setItems(data.items)
+    setMenuMeta(data.meta)
+    if (!q) setMenuCount(data.meta?.total ?? data.items.length)
   }
 
   const refresh = async ({ background = false }: { background?: boolean } = {}) => {
@@ -180,54 +150,34 @@ export default function MenuItems() {
     // rows had reverted.
     if (!background) setLoading(true)
     setLoadError(false)
+    // A newer refresh supersedes this one entirely; a newer page or search request supersedes only its menu rows.
+    const refreshId = ++refreshRef.current
+    const menuRequest = ++menuRequestRef.current
+    lastMenuKeyRef.current = menuKey(menuPage, searchTerm)
+    const reviewPages = Math.max(1, reviewPage)
     try {
-      const [menuRes, reviewRes] = await Promise.all([
-        api.get<{ items: SalesItem[] }>('/items?active=true'),
-        api.get<{ items: SalesItem[] }>('/items/reconciliation'),
+      const [menuRes, review, targets] = await Promise.all([
+        fetchMenuPage(menuPage, searchTerm),
+        fetchReviewPages(reviewPages),
+        fetchLinkTargets(),
       ])
-      setItems(menuRes.data.items)
-      setReviewItems(reviewRes.data.items)
-
+      if (refreshId !== refreshRef.current) return
+      const menuCurrent = menuRequest === menuRequestRef.current
+      if (menuCurrent) showMenuPage(menuRes.data, searchTerm)
+      setReviewItems(review.items)
+      setReviewMeta(review.meta)
+      setReviewPage(reviewPages)
+      setLinkTargets(targets)
       // Seed from both lists. Building only from the active-menu list dropped
       // every Fix-Imports draft, because a needs-review item is not in it.
-      const serverDrafts: DraftMap = {}
-      for (const item of [...reviewRes.data.items, ...menuRes.data.items]) {
-        serverDrafts[item._id] = buildDraft(item)
-      }
-
-      const previousDrafts = draftsRef.current
-      const previousBaseline = baselineRef.current
-      const mergedDrafts: DraftMap = { ...serverDrafts }
-      const nextBaseline: DraftMap = { ...previousBaseline }
-      const nextConflicts: DraftMap = {}
-
-      for (const [id, draft] of Object.entries(previousDrafts)) {
-        const rowBaseline = previousBaseline[id]
-        const serverDraft = serverDrafts[id]
-        const isDirty = Boolean(rowBaseline) && !draftsEqual(draft, rowBaseline)
-        if (!isDirty) continue
-
-        // Conflict policy: the user's typing always wins the render, because
-        // silently replacing what someone is mid-sentence on is the one
-        // outcome with no recovery. Where the stored value also moved we say
-        // so on the row and offer to take theirs, so the stale draft is never
-        // kept silently either.
-        mergedDrafts[id] = draft
-        if (serverDraft && !draftsEqual(serverDraft, rowBaseline)) nextConflicts[id] = serverDraft
-      }
-
-      for (const [id, serverDraft] of Object.entries(serverDrafts)) {
-        const draft = previousDrafts[id]
-        const rowBaseline = previousBaseline[id]
-        // The baseline stays pinned while a row is dirty, so the conflict on it
-        // stays visible across later refetches instead of quietly resolving.
-        const isDirty = Boolean(rowBaseline) && Boolean(draft) && !draftsEqual(draft, rowBaseline)
-        if (!isDirty) nextBaseline[id] = serverDraft
-      }
-
-      applyDrafts(mergedDrafts)
-      applyBaseline(nextBaseline)
-      setConflicts(nextConflicts)
+      const batch = [...review.items, ...(menuCurrent ? menuRes.data.items : [])]
+      // An edit made on a page the owner has since left is re-read too, so a stored value that moved under it is still
+      // flagged before Save all writes over it.
+      const inBatch = new Set(batch.map((item) => item._id))
+      const offscreen = await fetchItemsByIds(unsavedIds().filter((id) => !inBatch.has(id)))
+      if (refreshId !== refreshRef.current) return
+      offscreen.forEach((item) => { if (knownItemsRef.current.has(item._id)) knownItemsRef.current.set(item._id, item) })
+      mergeServerItems([...batch, ...offscreen])
     } catch (err) {
       setLoadError(true)
       showNotice('error', apiError(err, 'Could not load menu items.'))
@@ -240,9 +190,51 @@ export default function MenuItems() {
     refresh()
   }, [])
 
+  // The search box asks the server once the owner stops typing, from the first page.
+  useEffect(() => {
+    const next = query.trim()
+    if (next === searchTerm) return
+    const timer = setTimeout(() => { setSearchTerm(next); setMenuPage(1) }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [query, searchTerm])
+
+  // A page or search change loads just that page of the menu; a slower earlier answer never replaces a newer one. The
+  // page refresh() just fetched is not fetched again (on mount, and under StrictMode's second effect run).
+  useEffect(() => {
+    const key = menuKey(menuPage, searchTerm)
+    if (key === lastMenuKeyRef.current) return
+    lastMenuKeyRef.current = key
+    const request = ++menuRequestRef.current
+    fetchMenuPage(menuPage, searchTerm)
+      .then(({ data }) => {
+        if (request !== menuRequestRef.current) return
+        showMenuPage(data, searchTerm)
+        mergeServerItems(data.items)
+      })
+      .catch((err) => showNotice('error', apiError(err, 'Could not load this page of menu items.')))
+  }, [menuPage, searchTerm])
+
+  const loadMoreReview = async () => {
+    setLoadingMoreReview(true)
+    try {
+      const { data } = await fetchReviewPage(reviewPage + 1)
+      setReviewItems((current) => {
+        const seen = new Set(current.map((item) => item._id))
+        return [...current, ...data.items.filter((item) => !seen.has(item._id))]
+      })
+      mergeServerItems(data.items)
+      setReviewPage(reviewPage + 1)
+      setReviewMeta(data.meta)
+    } catch (err) {
+      showNotice('error', apiError(err, 'Could not load more items.'))
+    } finally {
+      setLoadingMoreReview(false)
+    }
+  }
+
   const matchedItems = useMemo(
-    () => items.filter((item) => item.reviewStatus === 'matched' && item.isActive !== false),
-    [items]
+    () => linkTargets.filter((item) => item.reviewStatus === 'matched' && item.isActive !== false),
+    [linkTargets]
   )
   // Rendered once and reused by every review card. Building the list inside the
   // card map produced (review items x menu items) option nodes, which is 30k
@@ -254,23 +246,13 @@ export default function MenuItems() {
     [matchedItems]
   )
 
-  const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((item) =>
-      item.name.toLowerCase().includes(q) ||
-      (item.aliases ?? []).some((alias) => alias.toLowerCase().includes(q))
-    )
-  }, [items, query])
-
-  const menuPages = Math.max(1, Math.ceil(filteredItems.length / MENU_PAGE_SIZE))
+  // `items` is already one page from the server; the numbers below describe where it sits.
+  const menuTotal = menuMeta?.total ?? items.length
+  const menuPages = menuMeta?.pages ?? 1
   const currentMenuPage = Math.min(menuPage, menuPages)
-  const pagedItems = useMemo(
-    () => filteredItems.slice((currentMenuPage - 1) * MENU_PAGE_SIZE, currentMenuPage * MENU_PAGE_SIZE),
-    [filteredItems, currentMenuPage]
-  )
-  const menuRowStart = filteredItems.length === 0 ? 0 : (currentMenuPage - 1) * MENU_PAGE_SIZE + 1
-  const menuRowEnd = Math.min(currentMenuPage * MENU_PAGE_SIZE, filteredItems.length)
+  const menuRowStart = menuTotal === 0 ? 0 : (currentMenuPage - 1) * MENU_PAGE_SIZE + 1
+  const menuRowEnd = Math.min(currentMenuPage * MENU_PAGE_SIZE, menuTotal)
+  const reviewTotal = reviewMeta?.total ?? reviewItems.length
 
   const dirtyIds = useMemo(
     () => Object.keys(drafts).filter((id) => baseline[id] && !draftsEqual(drafts[id], baseline[id])),
@@ -338,7 +320,7 @@ export default function MenuItems() {
 
   const saveAllDrafts = async () => {
     const pending = dirtyIds
-      .map((id) => ({ item: items.find((candidate) => candidate._id === id), draft: drafts[id] }))
+      .map((id) => ({ item: knownItemsRef.current.get(id), draft: drafts[id] }))
       .filter((entry): entry is { item: SalesItem; draft: ItemDraft } => Boolean(entry.item && entry.draft))
     if (pending.length === 0) return
 
@@ -386,7 +368,7 @@ export default function MenuItems() {
     settleRow(id, serverDraft)
   }
 
-  const resolveItem = async (item: SalesItem, action: 'confirm' | 'ignore' | 'map_to', priceOverride?: number) => {
+  const resolveItem = async (item: SalesItem, action: ResolveAction, priceOverride?: number) => {
     // An explicit blank choice means "none of these", so it must reach the
     // guard below. `||` folded it back into the AI's first candidate and linked
     // the POS item to the very suggestion the user had just rejected.
@@ -503,8 +485,7 @@ export default function MenuItems() {
     }
   }
 
-  const reviewCount = reviewItems.filter((item) => item.reviewStatus === 'needs_review').length
-  const priceCount = reviewItems.filter(hasPriceIssue).length
+  const headerValue = (value: number | null | undefined) => (loadError || value == null ? '—' : value.toLocaleString('en-ZA'))
 
   return (
     <AppLayout title="Menu Items">
@@ -555,7 +536,7 @@ export default function MenuItems() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted text-xs uppercase tracking-wide">Menu items</p>
-                  <p className="text-text text-2xl font-bold">{loadError ? '—' : items.length}</p>
+                  <p className="text-text text-2xl font-bold">{headerValue(menuCount)}</p>
                 </div>
                 <Tags className="w-5 h-5 text-guava-green" />
               </div>
@@ -566,7 +547,7 @@ export default function MenuItems() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted text-xs uppercase tracking-wide">Need a match</p>
-                  <p className="text-text text-2xl font-bold">{loadError ? '—' : reviewCount}</p>
+                  <p className="text-text text-2xl font-bold">{headerValue(reviewMeta?.needsReview)}</p>
                 </div>
                 <Coffee className="w-5 h-5 text-guava-red-text" />
               </div>
@@ -577,7 +558,7 @@ export default function MenuItems() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-muted text-xs uppercase tracking-wide">Price differences</p>
-                  <p className="text-text text-2xl font-bold">{loadError ? '—' : priceCount}</p>
+                  <p className="text-text text-2xl font-bold">{headerValue(reviewMeta?.priceMismatches)}</p>
                 </div>
                 <AlertCircle className="w-5 h-5 text-amber-300" />
               </div>
@@ -614,160 +595,35 @@ export default function MenuItems() {
                     No menu item issues to review.
                   </div>
                 ) : (
-                  reviewItems.map((item) => {
-                    const draft = draftFor(item)
-                    const priceIssue = hasPriceIssue(item)
-                    const posPrice = suggestedPrice(item)
-                    const suggestedMatch = item.reviewStatus === 'needs_review' ? item.candidates?.[0] : undefined
-                    const aiSuggestion = item.aiSuggestion
-                    const conflict = conflicts[item._id]
-                    return (
-                      <div key={item._id} className="rounded-lg border border-border bg-[#111111] p-4">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                          <div className="min-w-0 flex-1">
-                            <p className="mb-1 text-xs uppercase tracking-wide text-muted">POS item</p>
-                            <div className="flex items-center gap-2 mb-2">
-                              <p className="truncate text-sm font-semibold text-text">{item.name}</p>
-                              <StatusPill item={item} />
-                            </div>
-                            {suggestedMatch && (
-                              <p className="mb-2 text-xs text-muted">
-                                Suggested match <span className="text-text">{suggestedMatch.item.name}</span>
-                              </p>
-                            )}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted">
-                              <span>Sold {item.totalSold ?? 0}</span>
-                              <span>POS average {formatZar(item.avgPrice)}</span>
-                              <span>POS range {formatZar(item.observedPriceMin)} - {formatZar(item.observedPriceMax)}</span>
-                              <span>Menu price {formatZar(item.expectedPrice)}</span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:w-[640px] gap-2">
-                            <select
-                              aria-label={`Category for ${item.name}`}
-                              className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-text"
-                              value={draft.category}
-                              onChange={(event) => editDraft(item, { category: event.target.value as SalesItemCategory })}
-                            >
-                              {CATEGORIES.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
-                            </select>
-                            <Input
-                              aria-label={`Menu price for ${item.name}`}
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={draft.expectedPrice}
-                              onChange={(event) => editDraft(item, { expectedPrice: event.target.value })}
-                              placeholder="Menu price"
-                            />
-                            <Button
-                              aria-label={item.reviewStatus === 'needs_review'
-                                ? `Keep ${item.name} as a new menu item`
-                                : `Keep the menu price for ${item.name}`}
-                              onClick={() => resolveItem(item, 'confirm')}
-                              disabled={savingId === item._id}
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              {item.reviewStatus === 'needs_review' ? 'Keep as new item' : 'Keep menu price'}
-                            </Button>
-                            {priceIssue && posPrice != null && (
-                              <Button
-                                aria-label={`Use the POS price for ${item.name}`}
-                                variant="outline"
-                                onClick={() => resolveItem(item, 'confirm', posPrice)}
-                                disabled={savingId === item._id}
-                              >
-                                Use POS price
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-
-                        {conflict && (
-                          <ConflictNotice itemName={item.name} onTakeServer={() => takeServerValue(item._id)} />
-                        )}
-
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/50 px-3 py-2">
-                          <p className="text-xs text-muted">
-                            Smart checks are free. An AI review uses 1 Guava credit for this item.
-                          </p>
-                          <Button
-                            aria-label={`Run AI review for ${item.name} (1 credit)`}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => runAiReview(item)}
-                            disabled={!canSpendCredits || aiReviewId === item._id}
-                            title={!canSpendCredits ? 'Your role cannot spend Guava credits' : undefined}
-                          >
-                            <Sparkles className={cn('h-3.5 w-3.5', aiReviewId === item._id && 'animate-pulse')} />
-                            {aiReviewId === item._id ? 'Reviewing...' : 'Run AI review (1 credit)'}
-                          </Button>
-                        </div>
-
-                        {aiSuggestion && (
-                          <div className="mt-3 rounded-lg border border-guava-green/20 bg-guava-green/10 p-3">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Sparkles className="h-3.5 w-3.5 text-guava-green" />
-                                  <p className="text-sm font-semibold text-text">
-                                    {aiSuggestion.source === 'ai' ? 'AI recommendation' : 'Smart recommendation'}
-                                  </p>
-                                  <Badge variant="secondary">{Math.round((aiSuggestion.confidence || 0) * 100)}% confidence</Badge>
-                                  <Badge variant={aiSuggestion.source === 'ai' ? 'success' : 'secondary'}>
-                                    {aiSuggestion.source === 'ai' ? 'AI' : 'Smart check'}
-                                  </Badge>
-                                </div>
-                                <p className="mt-1 text-sm text-text">{suggestionLabel(item)}</p>
-                                <p className="mt-1 text-xs text-muted">{aiSuggestion.reason}</p>
-                              </div>
-                              <Button
-                                aria-label={`Approve the recommendation for ${item.name}`}
-                                onClick={() => approveSuggestion(item)}
-                                disabled={savingId === item._id}
-                              >
-                                <CheckCircle className="h-3.5 w-3.5" />
-                                Approve
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
-                        {item.reviewStatus === 'needs_review' && (
-                          <div className="mt-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-                            <select
-                              aria-label={`Link ${item.name} to an existing menu item`}
-                              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2 py-2 text-sm text-text"
-                              value={mapTargets[item._id] ?? item.candidates?.[0]?.item?._id ?? ''}
-                              onChange={(event) => setMapTargets((current) => ({ ...current, [item._id]: event.target.value }))}
-                            >
-                              <option value="">Link to existing menu item...</option>
-                              {targetOptions}
-                            </select>
-                            <Button
-                              aria-label={`Link ${item.name} to the selected menu item`}
-                              variant="outline"
-                              onClick={() => resolveItem(item, 'map_to')}
-                              disabled={savingId === item._id}
-                            >
-                              <Link2 className="w-3.5 h-3.5" />
-                              Link
-                            </Button>
-                            <Button
-                              aria-label={`Ignore the POS item ${item.name}`}
-                              variant="ghost"
-                              onClick={() => resolveItem(item, 'ignore')}
-                              disabled={savingId === item._id}
-                            >
-                              <EyeOff className="w-3.5 h-3.5" />
-                              Ignore POS item
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
+                  reviewItems.map((item) => (
+                    <ReviewItemCard
+                      key={item._id}
+                      item={item}
+                      draft={draftFor(item)}
+                      conflict={conflicts[item._id]}
+                      saving={savingId === item._id}
+                      aiReviewing={aiReviewId === item._id}
+                      canSpendCredits={canSpendCredits}
+                      mapTarget={mapTargets[item._id] ?? item.candidates?.[0]?.item?._id ?? ''}
+                      targetOptions={targetOptions}
+                      onEdit={(patch) => editDraft(item, patch)}
+                      onResolve={(action, priceOverride) => resolveItem(item, action, priceOverride)}
+                      onTakeServer={() => takeServerValue(item._id)}
+                      onAiReview={() => runAiReview(item)}
+                      onApprove={() => approveSuggestion(item)}
+                      onMapTarget={(id) => setMapTargets((current) => ({ ...current, [item._id]: id }))}
+                    />
+                  ))
+                )}
+                {reviewItems.length < reviewTotal && (
+                  <div className="flex flex-col items-center gap-2 pt-2 sm:flex-row sm:justify-between">
+                    <p className="text-xs text-muted">
+                      Showing {reviewItems.length.toLocaleString('en-ZA')} of {reviewTotal.toLocaleString('en-ZA')} items that need attention
+                    </p>
+                    <Button variant="outline" size="sm" onClick={loadMoreReview} disabled={loadingMoreReview}>
+                      {loadingMoreReview ? 'Loading…' : `Show ${Math.min(REVIEW_PAGE_SIZE, reviewTotal - reviewItems.length)} more`}
+                    </Button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -802,14 +658,14 @@ export default function MenuItems() {
                   <Input
                     aria-label="Search menu items"
                     value={query}
-                    onChange={(event) => { setQuery(event.target.value); setMenuPage(1) }}
+                    onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search menu items"
                   />
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted">
-                    Showing {menuRowStart.toLocaleString('en-ZA')}-{menuRowEnd.toLocaleString('en-ZA')} of {filteredItems.length.toLocaleString('en-ZA')} menu items
+                    Showing {menuRowStart.toLocaleString('en-ZA')}-{menuRowEnd.toLocaleString('en-ZA')} of {menuTotal.toLocaleString('en-ZA')} menu items
                   </p>
                   {menuPages > 1 && (
                     <div className="flex items-center gap-2">
@@ -852,7 +708,7 @@ export default function MenuItems() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pagedItems.map((item) => {
+                      {items.map((item) => {
                         const draft = draftFor(item)
                         const conflict = conflicts[item._id]
                         return (
@@ -897,24 +753,5 @@ export default function MenuItems() {
         </Card>
       </div>
     </AppLayout>
-  )
-}
-
-function ConflictNotice({ itemName, onTakeServer }: { itemName: string; onTakeServer: () => void }) {
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5">
-      <p className="text-xs text-amber-200">
-        Changed on the server since you started editing. Saving replaces the stored value with yours.
-      </p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={`Use the stored value for ${itemName} and discard this edit`}
-        onClick={onTakeServer}
-      >
-        Use theirs
-      </Button>
-    </div>
   )
 }
