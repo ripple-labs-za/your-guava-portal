@@ -1,3 +1,32 @@
+import type { StageUploadResponse } from '@/types/upload'
+
+type MappingNoticeInput = Pick<StageUploadResponse, 'mappingAssistedByAi' | 'mappingCreditsUsed' | 'mappingAiUnavailableReason'>
+
+/** Why the mapping wizard is or is not pre-filled by AI, in the owner's terms. */
+export const mappingAssistNotice = (stage: MappingNoticeInput): string | null => {
+  if (stage.mappingAssistedByAi) {
+    return stage.mappingCreditsUsed
+      ? `AI suggested the preselected column matches and used ${stage.mappingCreditsUsed} Guava Credits. Review every match before importing.`
+      : 'AI suggested the preselected column matches without a new credit charge. Review every match before importing.'
+  }
+  switch (stage.mappingAiUnavailableReason) {
+    case 'insufficient_credits':
+      return 'AI column matching needs 10 Guava Credits and your balance cannot cover it, so match the columns below yourself. Nothing was charged.'
+    case 'rate_limited':
+      return 'AI column matching is paused for a minute because this login has made a lot of AI requests. Match the columns below yourself, or cancel and upload again shortly. Nothing was charged.'
+    case 'usage_limit_reached':
+      return "AI column matching has reached today's AI safety limit for your account. Match the columns below yourself. Nothing was charged."
+    case 'permission_required':
+      return 'Your login cannot spend Guava Credits, so AI column matching was skipped. Match the columns below yourself, or ask the owner to allow credit spending.'
+    case 'provider_unavailable':
+      return 'The AI service could not suggest matches this time. Match the columns below yourself. Nothing was charged.'
+    case 'sensitive_headers':
+      return 'The first row looks like customer data rather than column names, so it was not sent to the AI service. Match the columns below yourself.'
+    default:
+      return null
+  }
+}
+
 import type { DeleteUploadResponse, SavedMappingStatus, UploadOverlap, UploadOverlapStats } from '@/types/upload'
 
 // Copy shown when a chosen file is refused before it is sent. Kept in one place

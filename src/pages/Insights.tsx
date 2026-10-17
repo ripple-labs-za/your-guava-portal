@@ -75,6 +75,8 @@ type ChatFailureKind =
   | 'offline'
   | 'transient'
   | 'interrupted'
+  | 'cafe-access'
+  | 'invalid-request'
 
 interface ChatFailure {
   kind: ChatFailureKind
@@ -135,7 +137,9 @@ class ChatRequestError extends Error {
   }
 }
 
-function failureKindForStatus(status: number): ChatFailureKind | null {
+function failureKindForStatus(status: number, code?: string): ChatFailureKind | null {
+  if (status === 403 && code === 'CAFE_ACCESS_REVOKED') return 'cafe-access'
+  if (status === 400 && code === 'AI_CHAT_INVALID_INPUT') return 'invalid-request'
   if (status === 402) return 'out-of-credits'
   if (status === 403) return 'not-permitted'
   if (status === 429) return 'rate-limited'
@@ -154,7 +158,7 @@ async function chatRequestErrorFrom(response: Response) {
   let body: {
     code?: string
     message?: string
-    details?: { available?: number; required?: number }
+    details?: { code?: string; available?: number; required?: number }
   } | null = null
   if (typeof response.json === 'function') {
     body = await response.json().catch(() => null)
@@ -162,7 +166,7 @@ async function chatRequestErrorFrom(response: Response) {
 
   return new ChatRequestError(
     {
-      kind: failureKindForStatus(status) ?? 'transient',
+      kind: failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
       available: body?.details?.available,
       required: body?.details?.required,
       retryAfterSeconds: retryAfterSecondsFrom(response),
@@ -181,9 +185,14 @@ function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = f
   if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered }
 
   const response = (error as {
-    response?: { status?: number; data?: { details?: { available?: number; required?: number } } }
+    response?: { status?: number; data?: { code?: string; details?: { code?: string; available?: number; required?: number } } }
   })?.response
   const status = response?.status
+  const code = response?.data?.code ?? response?.data?.details?.code
+  if (typeof status === 'number') {
+    const kind = failureKindForStatus(status, code)
+    if (kind === 'cafe-access' || kind === 'invalid-request') return { kind }
+  }
 
   // api.ts now ends the session only for a refused credential, so 403 here is
   // the credit-spend permission rather than a dead login, and a request with no
@@ -203,6 +212,18 @@ function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = f
 
 function chatFailureCopy(failure: ChatFailure) {
   switch (failure.kind) {
+    case 'cafe-access':
+      return {
+        title: 'You no longer have access to this location',
+        detail: 'Switch to a location you manage, or ask the account owner to restore your access. Nothing was charged.',
+        action: null,
+      }
+    case 'invalid-request':
+      return {
+        title: 'This question could not be sent',
+        detail: 'Start a new chat and ask it again. Nothing was charged.',
+        action: null,
+      }
     case 'out-of-credits': {
       const balance =
         typeof failure.available === 'number'

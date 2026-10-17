@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { savedMappingNotice, skippedRowSentences } from './uploadMessages'
+import { mappingAssistNotice, savedMappingNotice, skippedRowSentences } from './uploadMessages'
 
 describe('skippedRowSentences', () => {
   it('words a reason the page has no copy for, so a later reason is never silent', () => {
@@ -45,5 +45,25 @@ describe('savedMappingNotice', () => {
     expect(savedMappingNotice({ status: 'applied', missingColumns: [] })).toBeNull()
     expect(savedMappingNotice({ status: 'none', missingColumns: [] })).toBeNull()
     expect(savedMappingNotice(undefined)).toBeNull()
+  })
+})
+
+describe('mappingAssistNotice', () => {
+  it('reports the credits an AI mapping used', () => {
+    expect(mappingAssistNotice({ mappingAssistedByAi: true, mappingCreditsUsed: 10 }))
+      .toMatch(/used 10 Guava Credits/)
+  })
+
+  it('tells the owner why AI did not map the file and that nothing was charged', () => {
+    expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'insufficient_credits' }))
+      .toMatch(/needs 10 Guava Credits.*Nothing was charged/)
+    expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'rate_limited' }))
+      .toMatch(/paused for a minute.*Nothing was charged/)
+    expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'sensitive_headers' }))
+      .toMatch(/customer data/)
+  })
+
+  it('says nothing when there is nothing to say', () => {
+    expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: null })).toBeNull()
   })
 })

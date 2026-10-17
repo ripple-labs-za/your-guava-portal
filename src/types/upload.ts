@@ -1,3 +1,5 @@
+export type MappingAiUnavailableReason = 'insufficient_credits' | 'permission_required' | 'provider_unavailable' | 'rate_limited' | 'usage_limit_reached' | 'sensitive_headers' | 'not_configured'
+
 export type UploadStatus =
   | 'pending_mapping'
   | 'parsing'
@@ -125,6 +127,7 @@ export interface StageUploadResponse {
   needsConfirmation: boolean;
   mappingAssistedByAi?: boolean;
   mappingCreditsUsed?: number;
+  mappingAiUnavailableReason?: MappingAiUnavailableReason | null;
 }
 
 /** Another completed upload whose days meet this one's (GET /uploads/:id/overlaps, BE-03-T02). */

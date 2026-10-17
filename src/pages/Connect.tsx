@@ -1,3 +1,4 @@
+import { mappingAssistNotice } from '@/lib/uploadMessages'
 import { useState, useRef, useEffect, type DragEvent, type ChangeEvent } from 'react'
 import { Upload, CheckCircle, AlertCircle, Clock, TrendingUp, LoaderCircle, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router'
@@ -64,12 +65,6 @@ interface ImportResult {
   replayed?: boolean
 }
 
-const wizardAiNotice = (staged: StageUploadResponse): string | null => {
-  if (!staged.mappingAssistedByAi) return null
-  return staged.mappingCreditsUsed
-    ? `AI suggested the preselected column matches and used ${staged.mappingCreditsUsed} Guava Credits. Review every match before importing.`
-    : 'AI suggested the preselected column matches without a new credit charge. Review every match before importing.'
-}
 
 interface DataStatus {
   latestDataDate: string | null
@@ -979,7 +974,7 @@ export default function Connect() {
           initialItemsMode={stageResponse.itemsMode}
           errorMessage={stageErrorMsg}
           assistiveNotice={
-            [savedMappingNotice(stageResponse.savedMapping), wizardAiNotice(stageResponse)].filter(Boolean).join(' ') || null
+            [savedMappingNotice(stageResponse.savedMapping), mappingAssistNotice(stageResponse)].filter(Boolean).join(' ') || null
           }
           onCancel={() => {
             const proceed = window.confirm(

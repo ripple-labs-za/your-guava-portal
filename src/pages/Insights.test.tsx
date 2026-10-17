@@ -231,6 +231,48 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('names a lost location instead of blaming credit permission', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(403, {
+      success: false,
+      message: 'Cafe access is no longer available',
+      details: { code: 'CAFE_ACCESS_REVOKED' },
+    }))
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: 'chat-cafe-403', messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+
+    render(<Insights />)
+    await askQuestion('How is this location doing?')
+
+    await screen.findAllByText(/no longer have access to this location/i)
+    expect(screen.queryByText(/cannot spend guava credits/i)).not.toBeInTheDocument()
+    expect(chatFallbackCalls()).toHaveLength(0)
+  })
+
+  it('says a malformed question was refused before anything was charged', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(400, {
+      success: false,
+      message: 'A chat request needs at least one question, and must end on it',
+      details: { code: 'AI_CHAT_INVALID_INPUT' },
+    }))
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: 'chat-400', messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+
+    render(<Insights />)
+    await askQuestion('Anything')
+
+    await screen.findAllByText(/this question could not be sent/i)
+    expect(within(answerBubble()).getByText(/nothing was charged/i)).toBeInTheDocument()
+    expect(chatFallbackCalls()).toHaveLength(0)
+  })
+
   it('says a stopped answer that had started was charged and can be seen again for free', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockImplementation(openStreamResponse(deltaEvent('Half of an answer')) as typeof fetch)
