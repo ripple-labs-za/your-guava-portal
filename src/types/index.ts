@@ -493,7 +493,7 @@ export interface RevenueAnalytics {
   avgDailyRevenue: number
   bestDay: { date: string; revenue: number }
   worstDay: { date: string; revenue: number }
-  trend: number
+  trend: number | null
 }
 
 export interface ItemPerformance {

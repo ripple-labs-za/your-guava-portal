@@ -705,4 +705,102 @@ describe('Analytics', () => {
     expect(sizeWarnings).toEqual([])
     warn.mockRestore()
   })
+it('shows the trend against the windows the server compared, not the client clock', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/analytics/revenue')) {
+      return Promise.resolve({
+        data: {
+          data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
+          summary: {
+            totalRevenue: 145000,
+            avgDailyRevenue: 5000,
+            bestDay: { date: '2026-08-03', revenue: 5000 },
+            worstDay: { date: '2026-08-03', revenue: 5000 },
+            trend: 0,
+          },
+          meta: {
+            effectiveStartDay: '2026-07-06',
+            effectiveEndDay: '2026-08-04',
+            effectiveDays: 30,
+            defaultedStartDate: false,
+            effectiveWindow: { startDate: '2026-07-06', endDate: '2026-08-03', days: 29, endReason: 'today_incomplete' },
+            comparisonWindow: { startDate: '2026-06-07', endDate: '2026-07-05', days: 29 },
+            trendReason: null,
+          },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  })
+
+  render(<Analytics />)
+
+  expect(await screen.findByText('+0.0%')).toBeInTheDocument()
+  expect(screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul')).toBeInTheDocument()
+})
+
+it('shows no trend, and says why, when the server cannot compare honestly', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/analytics/revenue')) {
+      return Promise.resolve({
+        data: {
+          data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
+          summary: { totalRevenue: 50000, avgDailyRevenue: 5000, bestDay: null, worstDay: null, trend: null },
+          meta: { trendReason: 'insufficient_history', effectiveWindow: null, comparisonWindow: null },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  })
+
+  render(<Analytics />)
+
+  expect(await screen.findByText(/not enough history before this range/i)).toBeInTheDocument()
+  expect(screen.getByText('—')).toBeInTheDocument()
+  expect(screen.queryByText('+0.0%')).not.toBeInTheDocument()
+})
+
+it('states the window the server queried, in cafe-local days, on whichever tab is open', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/analytics/revenue')) {
+      return Promise.resolve({
+        data: {
+          data: [],
+          summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
+          meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30, trendReason: 'no_data_in_window' },
+        },
+      })
+    }
+    if (url.includes('/analytics/items')) {
+      return Promise.resolve({
+        data: {
+          items: [],
+          meta: { effectiveStartDay: '2026-07-29', effectiveEndDay: '2026-08-04', effectiveDays: 7, risingItems: [], decliningItems: [] },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  })
+
+  render(<Analytics />)
+  expect(await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Revenue' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Last 30 days' }))
+  expect(screen.getByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+  expect(await screen.findByText('Showing 29 Jul – 4 Aug · 7 days')).toBeInTheDocument()
+})
+
+it('keeps a legacy server trend when window metadata is absent', async () => {
+  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/revenue') ? {
+    data: [],
+    summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: 5.2 },
+  } : {} }))
+  render(<Analytics />)
+  expect(await screen.findByText('+5.2%')).toBeInTheDocument()
+  expect(screen.queryByText(/^Showing /)).not.toBeInTheDocument()
+  expect(screen.queryByText(/ vs /)).not.toBeInTheDocument()
+})
+
 })

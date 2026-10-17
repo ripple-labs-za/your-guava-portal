@@ -111,6 +111,70 @@ const DONUT_SIZE = 200
 
 type PeriodId = '7d' | '30d' | '90d'
 
+type TrendReason = 'no_data_in_window' | 'window_not_complete' | 'insufficient_history' | 'no_previous_revenue'
+
+interface DayWindow {
+  startDate: string
+  endDate: string
+  days: number
+  endReason?: 'requested' | 'today_incomplete' | 'data_ends'
+  revenue?: number | null
+}
+
+interface RangeMeta {
+  effectiveStartDay?: string
+  effectiveEndDay?: string
+  effectiveDays?: number
+  defaultedStartDate?: boolean
+  timezone?: string
+}
+
+interface QueriedWindow {
+  startDay: string
+  endDay: string
+  days: number
+  defaulted: boolean
+}
+
+const TREND_REASON_COPY: Record<TrendReason, string> = {
+  no_data_in_window: 'No completed days with sales in this range',
+  window_not_complete: 'Today is still in progress, so nothing is complete to compare yet',
+  insufficient_history: 'Not enough history before this range to compare',
+  no_previous_revenue: 'No sales in the period before this range',
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Built from the key, not toLocaleDateString('en-ZA'): ICU 78 prints "06 Sept", older ICU "6 Sep".
+function formatDayKey(dayKey: string) {
+  const [, month, day] = dayKey.split('-').map(Number)
+  return `${day} ${MONTH_ABBR[month - 1]}`
+}
+
+function formatDayRange(window: { startDate: string; endDate: string }) {
+  return `${formatDayKey(window.startDate)} – ${formatDayKey(window.endDate)}`
+}
+
+function trendCaptionFrom(meta?: RevenueResponse['meta']): string {
+  if (!meta) return ''
+  if (meta.trendReason) return TREND_REASON_COPY[meta.trendReason] ?? ''
+  if (!meta.effectiveWindow || !meta.comparisonWindow) return ''
+  const compared = `${formatDayRange(meta.effectiveWindow)} vs ${formatDayRange(meta.comparisonWindow)}`
+  return meta.effectiveWindow.endReason === 'data_ends'
+    ? `${compared} · your data ends ${formatDayKey(meta.effectiveWindow.endDate)}`
+    : compared
+}
+
+function queriedWindowFrom(meta?: RangeMeta): QueriedWindow | null {
+  if (!meta?.effectiveStartDay || !meta.effectiveEndDay || !meta.effectiveDays) return null
+  return {
+    startDay: meta.effectiveStartDay,
+    endDay: meta.effectiveEndDay,
+    days: meta.effectiveDays,
+    defaulted: Boolean(meta.defaultedStartDate),
+  }
+}
+
 interface RevenueResponse {
   data: RevenueData[]
   summary: {
@@ -118,16 +182,13 @@ interface RevenueResponse {
     avgDailyRevenue: number
     bestDay: RevenueAnalytics['bestDay'] | null
     worstDay: RevenueAnalytics['worstDay'] | null
-    trend: number
+    trend: number | null
   }
-  meta?: {
-    summary?: {
-      totalRevenue: number
-      avgDailyRevenue: number
-      bestDay: RevenueAnalytics['bestDay'] | null
-      worstDay: RevenueAnalytics['worstDay'] | null
-      trend: number
-    }
+  meta?: RangeMeta & {
+    summary?: RevenueResponse['summary']
+    effectiveWindow?: DayWindow | null
+    comparisonWindow?: DayWindow | null
+    trendReason?: TrendReason | null
   }
 }
 
@@ -218,7 +279,8 @@ function TabError({ message, onRetry }: { message: string; onRetry: () => void }
 
 // ── Revenue Tab ──────────────────────────────────────────────────────────────
 
-function RevenueTab({ period }: { period: PeriodId }) {
+function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
+  const [trendCaption, setTrendCaption] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<RevenueAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -232,20 +294,23 @@ function RevenueTab({ period }: { period: PeriodId }) {
     api
       .get<RevenueResponse>(`/analytics/revenue?period=daily&startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
       .then(({ data: res }) => {
+        if (controller.signal.aborted) return
+        onWindow(queriedWindowFrom(res.meta))
+        setTrendCaption(trendCaptionFrom(res.meta))
         const summary = res.summary ?? res.meta?.summary
         setData({
           totalRevenue: summary?.totalRevenue ?? 0,
           avgDailyRevenue: summary?.avgDailyRevenue ?? 0,
           bestDay: summary?.bestDay ?? { date: '', revenue: 0 },
           worstDay: summary?.worstDay ?? { date: '', revenue: 0 },
-          trend: summary?.trend ?? 0,
+          trend: summary?.trend ?? null,
           data: res.data || [],
         })
       })
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load revenue data') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [period, reloadKey])
+  }, [period, reloadKey, onWindow])
 
   if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
@@ -275,9 +340,10 @@ function RevenueTab({ period }: { period: PeriodId }) {
             />
             <KpiCard
               label="Trend"
-              value={`${data.trend >= 0 ? '+' : ''}${data.trend.toFixed(1)}%`}
-              icon={data.trend >= 0 ? TrendingUp : TrendingDown}
-              accent={data.trend >= 0 ? '#4DA63B' : '#D43D3D'}
+              value={data.trend === null ? '—' : formatTrend(data.trend)}
+              sub={trendCaption || undefined}
+              icon={data.trend !== null && data.trend < 0 ? TrendingDown : TrendingUp}
+              accent={data.trend === null ? '#888888' : data.trend >= 0 ? '#4DA63B' : '#D43D3D'}
             />
           </>
         ) : null}
@@ -400,7 +466,7 @@ function ChartDataTable({
 
 // ── Items Tab ────────────────────────────────────────────────────────────────
 
-function ItemsTab({ period }: { period: PeriodId }) {
+function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [items, setItems] = useState<ItemPerformance[]>([])
   const [risingItems, setRisingItems] = useState<MoverItem[]>([])
@@ -414,11 +480,13 @@ function ItemsTab({ period }: { period: PeriodId }) {
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ items: ItemPerformance[]; meta?: { risingItems?: MoverItem[]; decliningItems?: MoverItem[] } }>(
+      .get<{ items: ItemPerformance[]; meta?: RangeMeta & { risingItems?: MoverItem[]; decliningItems?: MoverItem[] } }>(
         `/analytics/items?startDate=${startDate}&endDate=${endDate}`,
         { signal: controller.signal }
       )
       .then(({ data }) => {
+        if (controller.signal.aborted) return
+        onWindow(queriedWindowFrom(data.meta))
         setItems(data.items || [])
         setRisingItems(data.meta?.risingItems || [])
         setDecliningItems(data.meta?.decliningItems || [])
@@ -426,7 +494,7 @@ function ItemsTab({ period }: { period: PeriodId }) {
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load item data') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [period, reloadKey])
+  }, [period, reloadKey, onWindow])
 
   const sorted = useMemo(() => [...items].sort((a, b) => b.totalQty - a.totalQty), [items])
   const top10 = sorted.slice(0, 10)
@@ -638,7 +706,7 @@ function ItemsTab({ period }: { period: PeriodId }) {
 
 // ── Heatmap Tab ──────────────────────────────────────────────────────────────
 
-function HeatmapTab({ period }: { period: PeriodId }) {
+function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [cells, setCells] = useState<HeatmapCell[]>([])
   const [loading, setLoading] = useState(true)
@@ -653,15 +721,17 @@ function HeatmapTab({ period }: { period: PeriodId }) {
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: HeatmapMeta }>(`/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: RangeMeta & HeatmapMeta }>(`/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
       .then(({ data }) => {
+        if (controller.signal.aborted) return
+        onWindow(queriedWindowFrom(data.meta))
         setCells(data.heatmap || data.data || [])
         setWithoutTime(data.meta?.timeOfDay?.transactionsWithoutTime ?? 0)
       })
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load heatmap data') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [period, reloadKey])
+  }, [period, reloadKey, onWindow])
 
   const HOURS = useMemo(() => tradingHoursFrom(cells), [cells])
   // The backend always emits a complete 7x17 grid with an explicit zero for
@@ -823,7 +893,7 @@ function HeatmapTab({ period }: { period: PeriodId }) {
 
 const DONUT_COLORS = ['#4DA63B', '#D43D3D']
 
-function CustomersTab({ period }: { period: PeriodId }) {
+function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<CustomerInsights | null>(null)
   const [loading, setLoading] = useState(true)
@@ -835,12 +905,16 @@ function CustomersTab({ period }: { period: PeriodId }) {
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ insights: CustomerInsights; data?: CustomerInsights }>(`/analytics/customers?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
-      .then(({ data: res }) => setData(res.insights ?? res.data ?? null))
+      .get<{ insights: CustomerInsights; data?: CustomerInsights; meta?: RangeMeta }>(`/analytics/customers?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .then(({ data: res }) => {
+        if (controller.signal.aborted) return
+        onWindow(queriedWindowFrom(res.meta))
+        setData(res.insights ?? res.data ?? null)
+      })
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load customer insights') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [period, reloadKey])
+  }, [period, reloadKey, onWindow])
 
   if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
@@ -989,7 +1063,7 @@ function CustomersTab({ period }: { period: PeriodId }) {
 
 // ── Combos Tab ───────────────────────────────────────────────────────────────
 
-function CombosTab({ period }: { period: PeriodId }) {
+function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [combos, setCombos] = useState<ComboItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -1001,12 +1075,16 @@ function CombosTab({ period }: { period: PeriodId }) {
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ data: ComboItem[] }>(`/analytics/combos?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
-      .then(({ data: res }) => setCombos(res.data || []))
+      .get<{ data: ComboItem[]; meta?: RangeMeta }>(`/analytics/combos?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .then(({ data: res }) => {
+        if (controller.signal.aborted) return
+        onWindow(queriedWindowFrom(res.meta))
+        setCombos(res.data || [])
+      })
       .catch(() => { if (!controller.signal.aborted) setError('Failed to load combo data') })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [period, reloadKey])
+  }, [period, reloadKey, onWindow])
 
   if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
@@ -1100,6 +1178,17 @@ function KpiCard({
 
 export default function Analytics() {
   const [activeTab, setActiveTab] = useState<TabId>('revenue')
+  const [queried, setQueried] = useState<QueriedWindow | null>(null)
+  const selectTab = (id: TabId) => {
+    if (id === activeTab) return
+    setQueried(null)
+    setActiveTab(id)
+  }
+  const changePeriod = (value: PeriodId) => {
+    if (value === period) return
+    setQueried(null)
+    setPeriod(value)
+  }
   // One range for the page. Per-tab state reset the selector on every switch,
   // so a user comparing one window across tabs ended up reading 7-day revenue
   // against 90-day items without being told the window had changed.
@@ -1107,7 +1196,7 @@ export default function Analytics() {
   const tabRefs = useRef(new Map<TabId, HTMLButtonElement>())
 
   const focusTab = (id: TabId) => {
-    setActiveTab(id)
+    selectTab(id)
     tabRefs.current.get(id)?.focus()
   }
 
@@ -1142,7 +1231,7 @@ export default function Analytics() {
             aria-selected={activeTab === tab.id}
             aria-controls={`analytics-panel-${tab.id}`}
             tabIndex={activeTab === tab.id ? 0 : -1}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id)}
             onKeyDown={handleTabKeyDown}
             className={cn(
               'px-4 py-2.5 text-sm font-medium transition-colors relative',
@@ -1159,8 +1248,15 @@ export default function Analytics() {
         ))}
       </div>
 
-      <div className="mb-6">
-        <PeriodSelector period={period} onChange={setPeriod} />
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <PeriodSelector period={period} onChange={changePeriod} />
+        {queried && (
+          <p className="text-muted text-xs" aria-live="polite">
+            Showing {formatDayKey(queried.startDay)} – {formatDayKey(queried.endDay)} · {queried.days}{' '}
+            {queried.days === 1 ? 'day' : 'days'}
+            {queried.defaulted ? ' (defaulted)' : ''}
+          </p>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -1170,11 +1266,11 @@ export default function Analytics() {
         aria-labelledby={`analytics-tab-${activeTab}`}
         tabIndex={0}
       >
-        {activeTab === 'revenue' && <RevenueTab period={period} />}
-        {activeTab === 'items' && <ItemsTab period={period} />}
-        {activeTab === 'heatmap' && <HeatmapTab period={period} />}
-        {activeTab === 'customers' && <CustomersTab period={period} />}
-        {activeTab === 'combos' && <CombosTab period={period} />}
+        {activeTab === 'revenue' && <RevenueTab period={period} onWindow={setQueried} />}
+        {activeTab === 'items' && <ItemsTab period={period} onWindow={setQueried} />}
+        {activeTab === 'heatmap' && <HeatmapTab period={period} onWindow={setQueried} />}
+        {activeTab === 'customers' && <CustomersTab period={period} onWindow={setQueried} />}
+        {activeTab === 'combos' && <CombosTab period={period} onWindow={setQueried} />}
       </div>
     </AppLayout>
   )
