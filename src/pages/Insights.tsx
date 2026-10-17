@@ -1,3 +1,4 @@
+import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureCopy, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
 import {
   useState,
   useEffect,
@@ -31,7 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import api, { authenticatedFetch, isSessionRejection } from '@/lib/api'
+import api, { authenticatedFetch } from '@/lib/api'
 import { publishGuavaCredits, type GuavaCreditSnapshot } from '@/lib/creditEvents'
 import { secureRandomId } from '@/lib/idempotency'
 import { cn } from '@/lib/utils'
@@ -66,26 +67,6 @@ interface InsightRefreshResponse extends Omit<InsightReadResponse, 'cacheStatus'
 // credits, 403 CREDIT_SPEND_FORBIDDEN, 429 AI_RATE_LIMITED. Collapsing them
 // into one "try again" told an owner with no credits to do the one thing that
 // cannot work.
-type ChatFailureKind =
-  | 'out-of-credits'
-  | 'not-permitted'
-  | 'rate-limited'
-  | 'session-ended'
-  | 'cancelled'
-  | 'offline'
-  | 'transient'
-  | 'interrupted'
-  | 'cafe-access'
-  | 'invalid-request'
-
-interface ChatFailure {
-  kind: ChatFailureKind
-  available?: number
-  required?: number
-  retryAfterSeconds?: number
-  charged?: boolean
-}
-
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -120,173 +101,10 @@ interface AssistantTypingState {
   lastFrameAt: number | null
 }
 
-const CHAT_CREDIT_COST = 3
 const EMPTY_ANSWER = 'I could not generate an answer.'
-const DEFAULT_RATE_LIMIT_SECONDS = 60
 // Only a failure that could plausibly succeed on a second attempt earns the
 // non-streaming fallback, because that fallback is a second billable request.
 const RECOVERABLE_FAILURES = new Set<ChatFailureKind>(['offline', 'transient'])
-
-class ChatRequestError extends Error {
-  readonly failure: ChatFailure
-
-  constructor(failure: ChatFailure, message: string) {
-    super(message)
-    this.name = 'ChatRequestError'
-    this.failure = failure
-  }
-}
-
-function failureKindForStatus(status: number, code?: string): ChatFailureKind | null {
-  if (status === 403 && code === 'CAFE_ACCESS_REVOKED') return 'cafe-access'
-  if (status === 400 && code === 'AI_CHAT_INVALID_INPUT') return 'invalid-request'
-  if (status === 402) return 'out-of-credits'
-  if (status === 403) return 'not-permitted'
-  if (status === 429) return 'rate-limited'
-  if (status === 401) return 'session-ended'
-  return null
-}
-
-function retryAfterSecondsFrom(response: Response) {
-  const raw = typeof response.headers?.get === 'function' ? response.headers.get('retry-after') : null
-  const seconds = Number(raw)
-  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined
-}
-
-async function chatRequestErrorFrom(response: Response) {
-  const status = typeof response.status === 'number' ? response.status : 0
-  let body: {
-    code?: string
-    message?: string
-    details?: { code?: string; available?: number; required?: number }
-  } | null = null
-  if (typeof response.json === 'function') {
-    body = await response.json().catch(() => null)
-  }
-
-  return new ChatRequestError(
-    {
-      kind: failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
-      available: body?.details?.available,
-      required: body?.details?.required,
-      retryAfterSeconds: retryAfterSecondsFrom(response),
-    },
-    body?.message || `Streaming chat request failed (${status || 'no status'})`
-  )
-}
-
-function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = false): ChatFailure {
-  if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
-  if (error instanceof ChatRequestError) return error.failure
-
-  const name = (error as Error | undefined)?.name
-  // A torn-down or timed-out stream is recoverable in principle, but it is
-  // never worth a second reservation the user did not ask for.
-  if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered }
-
-  const response = (error as {
-    response?: { status?: number; data?: { code?: string; details?: { code?: string; available?: number; required?: number } } }
-  })?.response
-  const status = response?.status
-  const code = response?.data?.code ?? response?.data?.details?.code
-  if (typeof status === 'number') {
-    const kind = failureKindForStatus(status, code)
-    if (kind === 'cafe-access' || kind === 'invalid-request') return { kind }
-  }
-
-  // api.ts now ends the session only for a refused credential, so 403 here is
-  // the credit-spend permission rather than a dead login, and a request with no
-  // response at all is a genuine transport failure instead of a logout.
-  if (isSessionRejection(error)) {
-    return status === 403 ? { kind: 'not-permitted' } : { kind: 'session-ended' }
-  }
-  if (typeof status === 'number') {
-    return {
-      kind: failureKindForStatus(status) ?? 'transient',
-      available: response?.data?.details?.available,
-      required: response?.data?.details?.required,
-    }
-  }
-  return { kind: 'offline', charged: delivered }
-}
-
-function chatFailureCopy(failure: ChatFailure) {
-  switch (failure.kind) {
-    case 'cafe-access':
-      return {
-        title: 'You no longer have access to this location',
-        detail: 'Switch to a location you manage, or ask the account owner to restore your access. Nothing was charged.',
-        action: null,
-      }
-    case 'invalid-request':
-      return {
-        title: 'This question could not be sent',
-        detail: 'Start a new chat and ask it again. Nothing was charged.',
-        action: null,
-      }
-    case 'out-of-credits': {
-      const balance =
-        typeof failure.available === 'number'
-          ? `${failure.available} ${failure.available === 1 ? 'is' : 'are'} left`
-          : 'your balance could not cover it'
-      return {
-        title: 'You are out of Guava Credits',
-        detail: `This answer needs ${failure.required ?? CHAT_CREDIT_COST} credits and ${balance}. Nothing was charged for this question.`,
-        action: { kind: 'link' as const, label: 'Buy Guava Credits', to: '/settings?section=billing' },
-      }
-    }
-    case 'not-permitted':
-      return {
-        title: 'This login cannot spend Guava Credits',
-        detail: `Ask Guava costs ${CHAT_CREDIT_COST} credits per answer and the account owner has not enabled credit spending for your login. Ask them to turn it on under Team. Nothing was charged.`,
-        action: null,
-      }
-    case 'rate-limited': {
-      const seconds = failure.retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS
-      return {
-        title: 'Too many AI requests',
-        detail: `Ask Guava limits how fast questions can be asked. Wait ${seconds} seconds, then send this question again. Nothing was charged.`,
-        action: null,
-      }
-    }
-    case 'session-ended':
-      return {
-        title: 'Your session ended before the answer arrived',
-        detail: 'Sign in again and ask the question once more. Nothing was charged.',
-        action: null,
-      }
-    case 'cancelled':
-      return failure.charged
-        ? {
-            title: 'Stopped',
-            detail: `Stopped. The answer had already started, so it was charged (${CHAT_CREDIT_COST} credits). The rest is kept for you at no extra charge.`,
-            action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
-          }
-        : { title: 'Stopped', detail: 'Stopped before the answer started. Nothing was charged.', action: null }
-    case 'interrupted':
-      return {
-        title: 'The AI service stopped this answer part-way',
-        detail: `Because it had started, it was charged (${CHAT_CREDIT_COST} credits). What arrived is above.`,
-        action: { kind: 'retry' as const, label: `Ask again (${CHAT_CREDIT_COST} credits)` },
-      }
-    case 'offline':
-      return {
-        title: 'I could not reach the AI analyst',
-        detail: failure.charged
-          ? `The answer had started, so it was charged (${CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
-          : 'Nothing came back from the server. Check your connection, then ask again.',
-        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
-      }
-    default:
-      return {
-        title: 'The AI analyst could not finish this answer',
-        detail: failure.charged
-          ? `The answer had started, so it was charged (${CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
-          : 'Anything above this line is what arrived before the answer stopped.',
-        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
-      }
-  }
-}
 
 const QUICK_PROMPTS = [
   'What should I prepare more of tomorrow?',
@@ -586,7 +404,7 @@ function ChatFailureNotice({ failure, onRetry }: { failure: ChatFailure; onRetry
 
   // A stopped answer is a choice the user made, not an error to alarm them with.
   if (failure.kind === 'cancelled') {
-    return <div className="mt-3 space-y-2 text-xs text-muted">
+    return <div role="status" className="mt-3 space-y-2 text-xs text-text">
       <p>{copy.detail}</p>
       {copy.action?.kind === 'retry' && (
         <Button type="button" variant="secondary" size="sm" onClick={onRetry}>{copy.action.label}</Button>
@@ -600,7 +418,7 @@ function ChatFailureNotice({ failure, onRetry }: { failure: ChatFailure; onRetry
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="min-w-0 space-y-1">
           <p className="font-semibold">{copy.title}</p>
-          <p className="leading-relaxed">{copy.detail}</p>
+          <p className={cn("leading-relaxed", failure.charged && "text-text")}>{copy.detail}</p>
           {copy.action?.kind === 'link' && (
             <div className="pt-2">
               <Button asChild variant="secondary" size="sm">
@@ -1461,7 +1279,8 @@ export default function Insights() {
       text?: string
       message?: string
       code?: string
-      charged?: boolean
+      charged?: boolean | null
+      credits?: number
       contextStats?: ChatContextStats | null
       guavaCredits?: GuavaCreditSnapshot
       aiCredits?: GuavaCreditSnapshot
@@ -1487,7 +1306,7 @@ export default function Insights() {
     }
     if (eventName === 'error') {
       throw new ChatRequestError(
-        { kind: data.charged === true ? 'interrupted' : 'transient', charged: data.charged === true },
+        { kind: data.charged === true ? 'interrupted' : 'transient', charged: typeof data.charged === 'boolean' ? data.charged : null, credits: data.credits },
         data.message || 'The AI stream stopped unexpectedly.'
       )
     }
@@ -1532,7 +1351,7 @@ export default function Insights() {
       const processEvent = (event: string) => {
         const parsed = handleStreamEvent(event, assistantId)
         if (parsed.type === 'delta') {
-          if (parsed.text) streamDeliveredRef.current = true
+          if (parsed.text.trim()) streamDeliveredRef.current = true
           answer += parsed.text
         } else if (parsed.type === 'done') {
           sawDone = true
@@ -1572,7 +1391,7 @@ export default function Insights() {
     chatMessages: ChatMessage[],
     stats: ChatContextStats | null = contextStats
   ) => {
-    if (!chatId) return
+    if (!chatId || chatMessages.some((message) => message.failure)) return
 
     if (isLocalChat(chatId)) {
       setChats((current) =>
@@ -1757,7 +1576,7 @@ export default function Insights() {
     if (failure.kind === 'rate-limited') {
       setCooldownUntil(Date.now() + (failure.retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS) * 1000)
     }
-    setChatStatus(chatFailureCopy(failure).title)
+    setChatStatus(`${chatFailureCopy(failure).title}. ${chatFailureCopy(failure).detail}`)
   }
 
   const stopAnswer = useCallback(() => {
@@ -1809,7 +1628,12 @@ export default function Insights() {
     try {
       const chatId = await ensureActiveChat(nextMessages)
       const payloadMessages = messagesForApi(nextMessages)
-      const signature = `${chatId}::${trimmed}`
+      const conversationText = JSON.stringify(payloadMessages)
+      const fingerprint = globalThis.crypto?.subtle
+        ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(conversationText))))
+          .map((byte) => byte.toString(16).padStart(2, '0')).join('')
+        : conversationText
+      const signature = `${chatId}::${fingerprint}`
       if (chatRequestKeyRef.current?.signature !== signature) {
         chatRequestKeyRef.current = { signature, key: createChatRequestKey() }
       }

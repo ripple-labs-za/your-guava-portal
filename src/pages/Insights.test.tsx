@@ -231,6 +231,20 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('announces the server charge amount with the interrupted answer', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Partial') + 'event: error\ndata: ' + JSON.stringify({
+      charged: true, credits: 7, message: 'Provider stopped',
+    }) + '\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'amount-chat', messages: [] }) } })
+      : Promise.resolve({ data: {} }))
+    render(<Insights />)
+    await askQuestion('Amount check')
+    await screen.findAllByText(/charged \(7 credits\)/i)
+    expect(screen.getByRole('status').textContent).toMatch(/charged \(7 credits\)/i)
+  })
+
   it('names a lost location instead of blaming credit permission', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(refusedResponse(403, {
@@ -316,7 +330,7 @@ describe('Insights', () => {
     await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
 
     await waitFor(() =>
-      expect(within(answerBubble()).getByText(/stopped before the answer started\. nothing was charged/i)).toBeInTheDocument()
+      expect(within(answerBubble()).getByText(/no answer text had arrived/i)).toBeInTheDocument()
     )
   })
 
@@ -844,7 +858,7 @@ describe('Insights', () => {
     render(<Insights />)
     await askQuestion('When am I busiest?')
 
-    await screen.findAllByText(/could not reach the ai analyst/i)
+    await screen.findAllByText(/answer interrupted/i)
     // The paid partial must survive the failure notice, not be replaced by it.
     await waitFor(() =>
       expect(within(answerBubble()).getByText(/your friday mornings are the busiest window/i)).toBeInTheDocument()
