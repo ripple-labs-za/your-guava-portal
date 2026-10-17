@@ -9,6 +9,7 @@ import {
   CreditCard,
   Banknote,
   Percent,
+  Wallet,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -178,6 +179,7 @@ function queriedWindowFrom(meta?: RangeMeta): QueriedWindow | null {
 interface RevenueResponse {
   data: RevenueData[]
   summary: {
+    openDays?: number
     totalRevenue: number
     avgDailyRevenue: number
     bestDay: RevenueAnalytics['bestDay'] | null
@@ -301,6 +303,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
         setData({
           totalRevenue: summary?.totalRevenue ?? 0,
           avgDailyRevenue: summary?.avgDailyRevenue ?? 0,
+          openDays: summary?.openDays,
           bestDay: summary?.bestDay ?? { date: '', revenue: 0 },
           worstDay: summary?.worstDay ?? { date: '', revenue: 0 },
           trend: summary?.trend ?? null,
@@ -330,7 +333,8 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
         ) : data ? (
           <>
             <KpiCard label="Total Revenue" value={formatZAR(data.totalRevenue)} icon={DollarSign} accent="#4DA63B" />
-            <KpiCard label="Avg Daily" value={formatZAR(data.avgDailyRevenue)} icon={CalendarDays} accent="#4A9ECC" />
+            <KpiCard label="Avg Daily" value={formatZAR(data.avgDailyRevenue)} icon={CalendarDays} accent="#4A9ECC"
+              sub={data.openDays ? `across ${data.openDays} open ${data.openDays === 1 ? 'day' : 'days'}` : undefined} />
             <KpiCard
               label="Best Day"
               value={formatZAR(data.bestDay.revenue)}
@@ -891,7 +895,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
 
 // ── Customers Tab ────────────────────────────────────────────────────────────
 
-const DONUT_COLORS = ['#4DA63B', '#D43D3D']
+const DONUT_COLORS = ['#4DA63B', '#D43D3D', '#4A9ECC']
 
 function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
@@ -927,13 +931,17 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
         data.avgItemsPerTransaction > 0 ||
         data.tippingRate > 0 ||
         data.avgTip > 0 ||
-        data.cashVsCardRatio)
+        data.cashVsCardRatio ||
+        (data.refunds?.count ?? 0) > 0)
   )
   const paymentSplit = data?.cashVsCardRatio ?? null
+  const refunds = data?.refunds
+  const coverage = data?.paymentMethodCoverage
   const donutData = paymentSplit
     ? [
         { name: 'Card', value: paymentSplit.card },
         { name: 'Cash', value: paymentSplit.cash },
+        ...((paymentSplit.other ?? 0) > 0 ? [{ name: 'Other', value: paymentSplit.other }] : []),
       ]
     : []
 
@@ -968,6 +976,9 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
             <KpiCard
               label="Avg Transaction"
               value={formatZAR(data.avgTransactionValue, 2)}
+              sub={refunds && refunds.count > 0
+                ? `${refunds.count} ${refunds.count === 1 ? 'refund' : 'refunds'} (${formatZAR(refunds.value, 2)}) not counted as ${refunds.count === 1 ? 'a sale' : 'sales'}`
+                : undefined}
               icon={DollarSign}
               accent="#4DA63B"
             />
@@ -1013,7 +1024,7 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
                 <div
                   style={{ height: DONUT_SIZE, width: DONUT_SIZE }}
                   role="img"
-                  aria-label={`Payment method split: card ${paymentSplit.card.toFixed(1)} percent, cash ${paymentSplit.cash.toFixed(1)} percent`}
+                  aria-label={`Payment method split: card ${paymentSplit.card.toFixed(1)} percent, cash ${paymentSplit.cash.toFixed(1)} percent, other ${(paymentSplit.other ?? 0).toFixed(1)} percent`}
                 >
                   <ResponsiveContainer
                     width="100%"
@@ -1051,8 +1062,20 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
                     <Banknote className="w-4 h-4 text-guava-red-text" />
                     <span className="text-text text-sm">Cash: {paymentSplit.cash.toFixed(1)}%</span>
                   </div>
+                  {(paymentSplit.other ?? 0) > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Wallet className="w-4 h-4 text-[#4A9ECC]" />
+                      <span className="text-text text-sm">Other: {(paymentSplit.other ?? 0).toFixed(1)}%</span>
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
+            {coverage && coverage.unknown > 0 && (
+              <p className="text-muted text-xs mt-3">
+                {coverage.unknown} {coverage.unknown === 1 ? 'sale has' : 'sales have'} no payment method and{' '}
+                {coverage.unknown === 1 ? 'is' : 'are'} left out of this split.
+              </p>
             )}
           </CardContent>
         </Card>

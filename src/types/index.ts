@@ -488,6 +488,7 @@ export interface RevenueData {
 }
 
 export interface RevenueAnalytics {
+  openDays?: number
   data: RevenueData[]
   totalRevenue: number
   avgDailyRevenue: number
@@ -522,7 +523,10 @@ export interface HeatmapCell {
 export interface CustomerInsights {
   avgTransactionValue: number
   avgItemsPerTransaction: number
-  cashVsCardRatio: { cash: number; card: number } | null
+  cashVsCardRatio: { cash: number; card: number; other?: number } | null
+  transactions?: number
+  refunds?: { count: number; value: number }
+  paymentMethodCoverage?: { known: number; unknown: number }
   tippingRate: number
   avgTip: number
 }

@@ -803,4 +803,73 @@ it('keeps a legacy server trend when window metadata is absent', async () => {
   expect(screen.queryByText(/ vs /)).not.toBeInTheDocument()
 })
 
+it('keeps the refund explanation visible when a range has refunds and no sales', async () => {
+  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/customers') ? {
+    insights: {
+      transactions: 0, avgTransactionValue: 0, avgItemsPerTransaction: 0, cashVsCardRatio: null,
+      tippingRate: 0, avgTip: 0, refunds: { count: 1, value: 50 },
+    },
+  } : {} }))
+  render(<Analytics />)
+  await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
+  expect(await screen.findByText(/1 refund .*not counted as a sale/)).toBeInTheDocument()
+  expect(screen.queryByText('No customer data for this period')).not.toBeInTheDocument()
+})
+
+it('splits payments into card, cash and other, and says what was left out', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/analytics/customers')) {
+      return Promise.resolve({
+        data: {
+          insights: {
+            transactions: 8,
+            avgTransactionValue: 62.5,
+            avgItemsPerTransaction: 1.4,
+            cashVsCardRatio: { cash: 28.6, card: 42.9, other: 28.6 },
+            paymentMethodCoverage: { known: 7, unknown: 1 },
+            refunds: { count: 1, value: 50 },
+            tippingRate: 25,
+            avgTip: 15,
+          },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  })
+
+  render(<Analytics />)
+  await userEvent.click(screen.getByRole('tab', { name: /customers/i }))
+
+  expect(await screen.findByText('Other: 28.6%')).toBeInTheDocument()
+  expect(screen.getByText('Card: 42.9%')).toBeInTheDocument()
+  expect(screen.getByText('Cash: 28.6%')).toBeInTheDocument()
+  expect(screen.getByText(/1 sale has no payment method/i)).toBeInTheDocument()
+  expect(screen.getByText(/1 refund \(R50,00\) not counted as a sale/i)).toBeInTheDocument()
+})
+
+it('says the daily average is per open day', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/analytics/revenue')) {
+      return Promise.resolve({
+        data: {
+          data: [{ date: '2026-03-02', revenue: 160, transactions: 2 }],
+          summary: {
+            totalRevenue: 450,
+            avgDailyRevenue: 64.29,
+            openDays: 7,
+            bestDay: { date: '2026-03-02', revenue: 160 },
+            worstDay: { date: '2026-03-04', revenue: 0 },
+            trend: null,
+          },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  })
+
+  render(<Analytics />)
+
+  expect(await screen.findByText('across 7 open days')).toBeInTheDocument()
+})
+
 })
