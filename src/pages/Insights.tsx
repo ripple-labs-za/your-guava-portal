@@ -74,12 +74,14 @@ type ChatFailureKind =
   | 'cancelled'
   | 'offline'
   | 'transient'
+  | 'interrupted'
 
 interface ChatFailure {
   kind: ChatFailureKind
   available?: number
   required?: number
   retryAfterSeconds?: number
+  charged?: boolean
 }
 
 interface ChatMessage {
@@ -169,14 +171,14 @@ async function chatRequestErrorFrom(response: Response) {
   )
 }
 
-function chatFailureFrom(error: unknown, cancelledByUser: boolean): ChatFailure {
-  if (cancelledByUser) return { kind: 'cancelled' }
+function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = false): ChatFailure {
+  if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
   if (error instanceof ChatRequestError) return error.failure
 
   const name = (error as Error | undefined)?.name
   // A torn-down or timed-out stream is recoverable in principle, but it is
   // never worth a second reservation the user did not ask for.
-  if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient' }
+  if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered }
 
   const response = (error as {
     response?: { status?: number; data?: { details?: { available?: number; required?: number } } }
@@ -196,7 +198,7 @@ function chatFailureFrom(error: unknown, cancelledByUser: boolean): ChatFailure 
       required: response?.data?.details?.required,
     }
   }
-  return { kind: 'offline' }
+  return { kind: 'offline', charged: delivered }
 }
 
 function chatFailureCopy(failure: ChatFailure) {
@@ -233,22 +235,34 @@ function chatFailureCopy(failure: ChatFailure) {
         action: null,
       }
     case 'cancelled':
+      return failure.charged
+        ? {
+            title: 'Stopped',
+            detail: `Stopped. The answer had already started, so it was charged (${CHAT_CREDIT_COST} credits). The rest is kept for you at no extra charge.`,
+            action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
+          }
+        : { title: 'Stopped', detail: 'Stopped before the answer started. Nothing was charged.', action: null }
+    case 'interrupted':
       return {
-        title: 'Stopped',
-        detail: 'Stopped. Anything above this line is the part of the answer that had already arrived.',
-        action: null,
+        title: 'The AI service stopped this answer part-way',
+        detail: `Because it had started, it was charged (${CHAT_CREDIT_COST} credits). What arrived is above.`,
+        action: { kind: 'retry' as const, label: `Ask again (${CHAT_CREDIT_COST} credits)` },
       }
     case 'offline':
       return {
         title: 'I could not reach the AI analyst',
-        detail: 'Nothing came back from the server. Check your connection, then ask again.',
-        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
+        detail: failure.charged
+          ? `The answer had started, so it was charged (${CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
+          : 'Nothing came back from the server. Check your connection, then ask again.',
+        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
       }
     default:
       return {
         title: 'The AI analyst could not finish this answer',
-        detail: 'Anything above this line is what arrived before the answer stopped.',
-        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
+        detail: failure.charged
+          ? `The answer had started, so it was charged (${CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
+          : 'Anything above this line is what arrived before the answer stopped.',
+        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
       }
   }
 }
@@ -551,7 +565,12 @@ function ChatFailureNotice({ failure, onRetry }: { failure: ChatFailure; onRetry
 
   // A stopped answer is a choice the user made, not an error to alarm them with.
   if (failure.kind === 'cancelled') {
-    return <p className="mt-3 text-xs text-muted">{copy.detail}</p>
+    return <div className="mt-3 space-y-2 text-xs text-muted">
+      <p>{copy.detail}</p>
+      {copy.action?.kind === 'retry' && (
+        <Button type="button" variant="secondary" size="sm" onClick={onRetry}>{copy.action.label}</Button>
+      )}
+    </div>
   }
 
   return (
@@ -941,6 +960,7 @@ export default function Insights() {
   const [cooldownSeconds, setCooldownSeconds] = useState(0)
   const isMountedRef = useRef(true)
   const userCancelledRef = useRef(false)
+  const streamDeliveredRef = useRef(false)
   const cooldownUntilRef = useRef<number | null>(null)
   // One question keeps one idempotency key across every attempt, including a
   // user-initiated retry. Minting a fresh key on retry made the second attempt
@@ -1275,14 +1295,17 @@ export default function Insights() {
     return () => window.clearInterval(timer)
   }, [cooldownUntil])
 
-  useEffect(() => () => {
-    isMountedRef.current = false
-    activeStreamAbortRef.current?.abort()
-    activeStreamAbortRef.current = null
-    cancelAssistantTyping()
-    if (scrollFrameRef.current != null) {
-      window.cancelAnimationFrame(scrollFrameRef.current)
-      scrollFrameRef.current = null
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      activeStreamAbortRef.current?.abort()
+      activeStreamAbortRef.current = null
+      cancelAssistantTyping()
+      if (scrollFrameRef.current != null) {
+        window.cancelAnimationFrame(scrollFrameRef.current)
+        scrollFrameRef.current = null
+      }
     }
   }, [cancelAssistantTyping])
 
@@ -1416,6 +1439,8 @@ export default function Insights() {
     let data: {
       text?: string
       message?: string
+      code?: string
+      charged?: boolean
       contextStats?: ChatContextStats | null
       guavaCredits?: GuavaCreditSnapshot
       aiCredits?: GuavaCreditSnapshot
@@ -1440,7 +1465,10 @@ export default function Insights() {
       return { type: 'done' as const, contextStats: data.contextStats || null }
     }
     if (eventName === 'error') {
-      throw new Error(data.message || 'The AI stream stopped unexpectedly.')
+      throw new ChatRequestError(
+        { kind: data.charged === true ? 'interrupted' : 'transient', charged: data.charged === true },
+        data.message || 'The AI stream stopped unexpectedly.'
+      )
     }
     return { type: 'ignored' as const }
   }
@@ -1483,6 +1511,7 @@ export default function Insights() {
       const processEvent = (event: string) => {
         const parsed = handleStreamEvent(event, assistantId)
         if (parsed.type === 'delta') {
+          if (parsed.text) streamDeliveredRef.current = true
           answer += parsed.text
         } else if (parsed.type === 'done') {
           sawDone = true
@@ -1752,6 +1781,7 @@ export default function Insights() {
     setInput('')
     isChatLoadingRef.current = true
     userCancelledRef.current = false
+    streamDeliveredRef.current = false
     setIsChatLoading(true)
     setChatStatus('Guava is working on your answer.')
 
@@ -1785,7 +1815,7 @@ export default function Insights() {
           stats
         )
       } catch (streamError) {
-        const failure = chatFailureFrom(streamError, userCancelledRef.current)
+        const failure = chatFailureFrom(streamError, userCancelledRef.current, streamDeliveredRef.current)
         // The fallback is a second billable request. It is only worth issuing
         // when the failure could plausibly resolve: a 402, 403 or 429 cannot,
         // a stopped answer was not wanted, and an unmounted page has nowhere to
@@ -1822,10 +1852,10 @@ export default function Insights() {
       }
     } catch (error) {
       if (!isMountedRef.current) return
-      const failure = chatFailureFrom(error, userCancelledRef.current)
+      const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current)
       // A refusal is settled: the same question later is a new request, so it
       // must not reuse a key the server would replay.
-      if (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended') {
+      if (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || failure.kind === 'interrupted') {
         chatRequestKeyRef.current = null
       }
       applyChatFailure(assistantId, failure)

@@ -50,7 +50,7 @@ const testUser = {
   activeCafeId: 'c1',
 }
 
-function render(ui: React.ReactElement) {
+function render(ui: React.ReactElement, strict = false) {
   return rtlRender(
     <BrowserRouter>
       <AuthContext.Provider value={{
@@ -64,7 +64,8 @@ function render(ui: React.ReactElement) {
       }}>
         {ui}
       </AuthContext.Provider>
-    </BrowserRouter>
+    </BrowserRouter>,
+    { reactStrictMode: strict }
   )
 }
 
@@ -230,6 +231,80 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('says a stopped answer that had started was charged and can be seen again for free', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockImplementation(openStreamResponse(deltaEvent('Half of an answer')) as typeof fetch)
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: 'chat-charged-stop', messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+
+    render(<Insights />, true)
+    await askQuestion('Give me a long answer')
+    await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
+
+    await waitFor(() =>
+      expect(within(answerBubble()).getByText(/it was charged \(3 credits\)/i)).toBeInTheDocument()
+    )
+    expect(chatFallbackCalls()).toHaveLength(0)
+    // Typing the question again would send a different conversation (it now contains the stopped turn), so the
+    // server's request fingerprint would not match the key. The button resends the identical turn with the same key.
+    const firstKey = ((vi.mocked(fetch).mock.calls[0][1] as RequestInit).headers as Record<string, string>)['Idempotency-Key']
+    await userEvent.click(within(answerBubble()).getByRole('button', { name: /load the full answer \(no extra charge\)/i }))
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(1))
+    const secondKey = ((vi.mocked(fetch).mock.calls[1][1] as RequestInit).headers as Record<string, string>)['Idempotency-Key']
+    expect(secondKey).toBe(firstKey)
+    expect(JSON.parse(String((vi.mocked(fetch).mock.calls[1][1] as RequestInit).body)).messages).toEqual([
+      { role: 'user', content: 'Give me a long answer' },
+    ])
+  })
+
+  it('says nothing was charged when an answer is stopped before it starts', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockImplementation(openStreamResponse(': keep-alive\n\n') as typeof fetch)
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: 'chat-free-stop', messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+
+    render(<Insights />)
+    await askQuestion('Stop me early')
+    await userEvent.click(await screen.findByRole('button', { name: /stop/i }))
+
+    await waitFor(() =>
+      expect(within(answerBubble()).getByText(/stopped before the answer started\. nothing was charged/i)).toBeInTheDocument()
+    )
+  })
+
+  it('reports a charged provider interruption without a paid fallback and asks with a new key next time', async () => {
+    mockBaseRequests()
+    const body = deltaEvent('Partial answer') + 'event: error\ndata: ' + JSON.stringify({
+      code: 'AI_STREAM_INTERRUPTED',
+      charged: true,
+      credits: 3,
+      message: 'The AI service stopped this answer part-way. It had started, so it was charged.',
+    }) + '\n\n'
+    vi.mocked(fetch).mockResolvedValue(streamResponse(body))
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: 'chat-interrupted', messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+
+    render(<Insights />)
+    await askQuestion('Interrupt me')
+
+    await screen.findAllByText(/stopped this answer part-way/i)
+    expect(chatFallbackCalls()).toHaveLength(0)
+    const firstKey = ((vi.mocked(fetch).mock.calls[0][1] as RequestInit).headers as Record<string, string>)['Idempotency-Key']
+    await userEvent.click(await screen.findByRole('button', { name: /ask again \(3 credits\)/i }))
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(1))
+    const secondKey = ((vi.mocked(fetch).mock.calls[1][1] as RequestInit).headers as Record<string, string>)['Idempotency-Key']
+    expect(secondKey).not.toBe(firstKey)
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -814,7 +889,7 @@ describe('Insights', () => {
     render(<Insights />)
     await askQuestion('Repeatable question')
 
-    const retry = await screen.findByRole('button', { name: /try again \(3 credits\)/i })
+    const retry = await screen.findByRole('button', { name: /load the full answer \(no extra charge\)/i })
     const firstKey = (vi.mocked(fetch).mock.calls[0][1] as RequestInit)
       .headers as Record<string, string>
     await userEvent.click(retry)
