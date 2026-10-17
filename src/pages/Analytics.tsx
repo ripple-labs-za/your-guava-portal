@@ -1,9 +1,11 @@
+import { formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import {
   BarChart3,
   TrendingUp,
   TrendingDown,
+  Minus,
   DollarSign,
   CalendarDays,
   CreditCard,
@@ -112,70 +114,6 @@ const DONUT_SIZE = 200
 
 type PeriodId = '7d' | '30d' | '90d'
 
-type TrendReason = 'no_data_in_window' | 'window_not_complete' | 'insufficient_history' | 'no_previous_revenue'
-
-interface DayWindow {
-  startDate: string
-  endDate: string
-  days: number
-  endReason?: 'requested' | 'today_incomplete' | 'data_ends'
-  revenue?: number | null
-}
-
-interface RangeMeta {
-  effectiveStartDay?: string
-  effectiveEndDay?: string
-  effectiveDays?: number
-  defaultedStartDate?: boolean
-  timezone?: string
-}
-
-interface QueriedWindow {
-  startDay: string
-  endDay: string
-  days: number
-  defaulted: boolean
-}
-
-const TREND_REASON_COPY: Record<TrendReason, string> = {
-  no_data_in_window: 'No completed days with sales in this range',
-  window_not_complete: 'Today is still in progress, so nothing is complete to compare yet',
-  insufficient_history: 'Not enough history before this range to compare',
-  no_previous_revenue: 'No sales in the period before this range',
-}
-
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-// Built from the key, not toLocaleDateString('en-ZA'): ICU 78 prints "06 Sept", older ICU "6 Sep".
-function formatDayKey(dayKey: string) {
-  const [, month, day] = dayKey.split('-').map(Number)
-  return `${day} ${MONTH_ABBR[month - 1]}`
-}
-
-function formatDayRange(window: { startDate: string; endDate: string }) {
-  return `${formatDayKey(window.startDate)} – ${formatDayKey(window.endDate)}`
-}
-
-function trendCaptionFrom(meta?: RevenueResponse['meta']): string {
-  if (!meta) return ''
-  if (meta.trendReason) return TREND_REASON_COPY[meta.trendReason] ?? ''
-  if (!meta.effectiveWindow || !meta.comparisonWindow) return ''
-  const compared = `${formatDayRange(meta.effectiveWindow)} vs ${formatDayRange(meta.comparisonWindow)}`
-  return meta.effectiveWindow.endReason === 'data_ends'
-    ? `${compared} · your data ends ${formatDayKey(meta.effectiveWindow.endDate)}`
-    : compared
-}
-
-function queriedWindowFrom(meta?: RangeMeta): QueriedWindow | null {
-  if (!meta?.effectiveStartDay || !meta.effectiveEndDay || !meta.effectiveDays) return null
-  return {
-    startDay: meta.effectiveStartDay,
-    endDay: meta.effectiveEndDay,
-    days: meta.effectiveDays,
-    defaulted: Boolean(meta.defaultedStartDate),
-  }
-}
-
 interface RevenueResponse {
   data: RevenueData[]
   summary: {
@@ -186,12 +124,7 @@ interface RevenueResponse {
     worstDay: RevenueAnalytics['worstDay'] | null
     trend: number | null
   }
-  meta?: RangeMeta & {
-    summary?: RevenueResponse['summary']
-    effectiveWindow?: DayWindow | null
-    comparisonWindow?: DayWindow | null
-    trendReason?: TrendReason | null
-  }
+  meta?: TrendMeta & { summary?: RevenueResponse['summary'] }
 }
 
 interface MoverItem {
@@ -344,9 +277,9 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
             />
             <KpiCard
               label="Trend"
-              value={data.trend === null ? '—' : formatTrend(data.trend)}
+              value={data.trend === null ? <span aria-label="Trend unavailable">—</span> : formatTrend(data.trend)}
               sub={trendCaption || undefined}
-              icon={data.trend !== null && data.trend < 0 ? TrendingDown : TrendingUp}
+              icon={data.trend === null ? Minus : data.trend < 0 ? TrendingDown : TrendingUp}
               accent={data.trend === null ? '#888888' : data.trend >= 0 ? '#4DA63B' : '#D43D3D'}
             />
           </>
@@ -1171,7 +1104,7 @@ function KpiCard({
   accent,
 }: {
   label: string
-  value: string
+  value: React.ReactNode
   sub?: string
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
   accent: string
@@ -1273,13 +1206,13 @@ export default function Analytics() {
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <PeriodSelector period={period} onChange={changePeriod} />
-        {queried && (
-          <p className="text-muted text-xs" aria-live="polite">
+        <p role="status" className="text-muted text-xs">
+          {queried && (<>
             Showing {formatDayKey(queried.startDay)} – {formatDayKey(queried.endDay)} · {queried.days}{' '}
             {queried.days === 1 ? 'day' : 'days'}
             {queried.defaulted ? ' (defaulted)' : ''}
-          </p>
-        )}
+          </>)}
+        </p>
       </div>
 
       {/* Tab Content */}

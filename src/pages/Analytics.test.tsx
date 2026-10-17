@@ -736,7 +736,7 @@ it('shows the trend against the windows the server compared, not the client cloc
   render(<Analytics />)
 
   expect(await screen.findByText('+0.0%')).toBeInTheDocument()
-  expect(screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul')).toBeInTheDocument()
+  expect(screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul · today left out')).toBeInTheDocument()
 })
 
 it('shows no trend, and says why, when the server cannot compare honestly', async () => {
@@ -814,6 +814,39 @@ it('keeps the refund explanation visible when a range has refunds and no sales',
   await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
   expect(await screen.findByText(/1 refund .*not counted as a sale/)).toBeInTheDocument()
   expect(screen.queryByText('No customer data for this period')).not.toBeInTheDocument()
+})
+
+it('keeps a persistent status container and clears a stale window when the next tab has no metadata', async () => {
+  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/revenue') ? {
+    data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
+    meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30 },
+  } : { items: [] } }))
+  render(<Analytics />)
+  const status = screen.getByRole('status')
+  expect(await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
+  expect(screen.getByLabelText('Trend unavailable')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+  await screen.findAllByText('No item data available')
+  expect(screen.getByRole('status')).toBe(status)
+  expect(status).toBeEmptyDOMElement()
+})
+
+it('clears the previous window when a new range fetch fails', async () => {
+  let calls = 0
+  mockGet.mockImplementation((url: string) => {
+    if (!url.includes('/analytics/revenue')) return Promise.resolve({ data: {} })
+    calls += 1
+    if (calls > 1) return Promise.reject(new Error('offline'))
+    return Promise.resolve({ data: {
+      data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
+      meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30 },
+    } })
+  })
+  render(<Analytics />)
+  await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
+  await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
+  await screen.findByText('Failed to load revenue data')
+  expect(screen.getByRole('status')).toBeEmptyDOMElement()
 })
 
 it('splits payments into card, cash and other, and says what was left out', async () => {
