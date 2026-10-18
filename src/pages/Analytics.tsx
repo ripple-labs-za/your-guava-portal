@@ -452,7 +452,6 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
       `would be noise. Your busiest line sold ${moverFloor.busiestQty.toLocaleString('en-ZA')} in a week.`
     : ''
 
-
   const risingNames = new Set(rising.map((i) => i.name))
   const decliningNames = new Set(declining.map((i) => i.name))
 
@@ -529,7 +528,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                 </ul>
               </div>
             )}
-          
+
           </CardContent>
         </Card>
       )}
@@ -631,7 +630,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                             </Badge>
                           )}
                         </td>
-                      
+
                       </tr>
                     )
                   })}
