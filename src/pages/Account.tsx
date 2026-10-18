@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
 import { publishBillingAccess } from '@/lib/billingEvents'
+import { formatPlanChangeDate as formatDate, planChangeSentence } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
 import type { Account, BillingPlan, BillingCycle, PlanChangePreview } from '@/types'
 
@@ -144,32 +145,8 @@ const isStillInitializing = (httpStatus: number | undefined, intent: PaymentInte
   intent.initializationStatus === 'initializing'
 
 const formatRand = (value: number) => `R${value.toLocaleString('en-ZA')}`
-const formatDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
 
 const CYCLE_UNIT: Record<BillingCycle, string> = { monthly: 'month', annual: 'year' }
-
-/** D-019, in the words the owner reads before paying. The server decided; this only phrases it. */
-function planChangeSentence(
-  preview: PlanChangePreview | undefined,
-  planName: string,
-  current: { name: string; cycle: BillingCycle }
-): string {
-  if (!preview) return 'What this does to your current period is confirmed at checkout.'
-  switch (preview.type) {
-    case 'upgrade':
-      return `Starts today. The unused part of your current plan is credited as ${preview.creditDays} extra ${
-        preview.creditDays === 1 ? 'day' : 'days'
-      }, so ${planName} runs until ${formatDate(preview.periodEnd)}.`
-    case 'downgrade':
-    case 'cycle_switch':
-      return `Takes effect on ${formatDate(preview.effectiveAt)}, when your current ${current.name} (${current.cycle}) period ends. You keep ${current.name} until then; ${planName} then runs until ${formatDate(preview.periodEnd)}.`
-    case 'renewal':
-      return `Extends your current plan: paid until ${formatDate(preview.periodEnd)}.`
-    default:
-      return `Starts today and runs until ${formatDate(preview.periodEnd)}.`
-  }
-}
 
 const newPaymentIdempotencyKey = (kind: 'plan' | 'credits') => {
   const entropy = secureRandomId()
