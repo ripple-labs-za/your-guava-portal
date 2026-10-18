@@ -231,6 +231,50 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('renders the interruption marker stored with a saved partial answer', async () => {
+    const saved = chat({ messages: [
+      { id: 'question', role: 'user', content: 'What should I stock?' },
+      { id: 'partial', role: 'assistant', content: 'Stock more milk.\n\nThe AI service stopped this answer part-way.' },
+    ] })
+    storeActiveChat(saved)
+    mockBaseRequests([saved])
+    render(<Insights />)
+    expect(await screen.findByText('The AI service stopped this answer part-way.')).toBeVisible()
+    expect(within(answerBubble()).getByText('Stock more milk.')).toBeVisible()
+  })
+
+  it('does not PATCH a stopped partial over the complete answer stored by the server', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockImplementationOnce(openStreamResponse(deltaEvent('Partial answer')) as typeof fetch)
+    mockPost.mockResolvedValue({ data: { chat: chat({ _id: 'preserved-chat', messages: [] }) } })
+    render(<Insights />)
+    await askQuestion('First question')
+    await userEvent.click(await screen.findByRole('button', { name: /stop generating/i }))
+    await within(answerBubble()).findByText(/it was charged/i)
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Follow-up answer') + 'event: done\ndata: {}\n\n'))
+    const followUp = await screen.findByPlaceholderText(/write a message/i)
+    await userEvent.type(followUp, 'First question')
+    fireEvent.submit(followUp.closest('form')!)
+    await screen.findByText('Follow-up answer')
+    await screen.findByText('Guava has finished this answer.')
+    const keys = vi.mocked(fetch).mock.calls.map(([, init]) => (init?.headers as Record<string, string>)['Idempotency-Key'])
+    expect(keys[1]).not.toBe(keys[0])
+    expect(mockPatch.mock.calls.filter(([url, body]) => url === '/insight-chats/preserved-chat' && body.messages)).toHaveLength(0)
+  })
+
+  it.each([false, undefined, null])('handles the server charge field %s without inventing a charge', async (charged) => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({ charged }) + '\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'charge-field-chat', messages: [] }) } })
+      : Promise.reject(new Error('connection failed')))
+    render(<Insights />)
+    await askQuestion('Check charge status')
+    await within(answerBubble()).findByText(/nothing came back from the server/i)
+    expect(within(answerBubble()).queryByText(/it was charged/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).not.toHaveTextContent(/nothing was charged/i)
+  })
+
   it('announces the server charge amount with the interrupted answer', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Partial') + 'event: error\ndata: ' + JSON.stringify({

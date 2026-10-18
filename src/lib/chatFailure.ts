@@ -1,4 +1,5 @@
 import { isSessionRejection } from './api'
+
 export const CHAT_CREDIT_COST = 3
 export const DEFAULT_RATE_LIMIT_SECONDS = 60
 export type ChatFailureKind =
@@ -72,7 +73,17 @@ export async function chatRequestErrorFrom(response: Response) {
 
 export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = false): ChatFailure {
   if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
-  if (error instanceof ChatRequestError) return { ...error.failure, charged: error.failure.charged === undefined ? (delivered ? true : (['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request'].includes(error.failure.kind) ? false : null)) : error.failure.charged }
+  if (error instanceof ChatRequestError) {
+    const { failure } = error
+    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request']
+      .includes(failure.kind)
+    return {
+      ...failure,
+      charged: failure.charged === undefined
+        ? (delivered ? true : (refusedBeforeDelivery ? false : null))
+        : failure.charged,
+    }
+  }
 
   const name = (error as Error | undefined)?.name
   // A torn-down or timed-out stream is recoverable in principle, but it is
@@ -108,13 +119,18 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
 
 export function chatFailureCopy(failure: ChatFailure) {
   if (failure.charged === true && !['cancelled', 'interrupted'].includes(failure.kind)) {
-    return { title: 'Answer interrupted',
+    return {
+      title: 'Answer interrupted',
       detail: `The answer had started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). Loading it again costs nothing.`,
-      action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' } }
+      action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
+    }
   }
   if (failure.charged === null) {
-    return { title: 'Charge not confirmed', detail: 'The charge could not be confirmed. Loading this request again will not create a second charge.',
-      action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' } }
+    return {
+      title: 'Charge not confirmed',
+      detail: 'The charge could not be confirmed. Loading this request again will not create a second charge.',
+      action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
+    }
   }
   switch (failure.kind) {
     case 'cafe-access':
@@ -177,18 +193,14 @@ export function chatFailureCopy(failure: ChatFailure) {
     case 'offline':
       return {
         title: 'I could not reach the AI analyst',
-        detail: failure.charged
-          ? `The answer had started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
-          : 'Nothing came back from the server. Check your connection, then ask again.',
-        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
+        detail: 'Nothing came back from the server. Check your connection, then ask again.',
+        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
       }
     default:
       return {
         title: 'The AI analyst could not finish this answer',
-        detail: failure.charged
-          ? `The answer had started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). Loading it again costs nothing.`
-          : 'Anything above this line is what arrived before the answer stopped.',
-        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
+        detail: 'Anything above this line is what arrived before the answer stopped.',
+        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
       }
   }
 }
