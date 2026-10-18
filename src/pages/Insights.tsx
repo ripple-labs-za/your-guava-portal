@@ -35,6 +35,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import api, { authenticatedFetch } from '@/lib/api'
 import { publishGuavaCredits, type GuavaCreditSnapshot } from '@/lib/creditEvents'
 import { secureRandomId } from '@/lib/idempotency'
+import { resolveRefreshOutcome, insightRefreshErrorNotice, INSIGHT_WINDOW_COPY, type InsightCacheStatus } from '@/lib/insightRefresh'
 import { cn } from '@/lib/utils'
 import { getInsightChatStorageKeys, readScopedStorage, writeScopedStorage } from '@/lib/chatStorage'
 import { useAuth } from '@/hooks/useAuth'
@@ -45,8 +46,6 @@ interface Insight {
   text: string
   generatedAt: string | null
 }
-
-type InsightCacheStatus = 'fresh' | 'stale' | 'empty' | 'unconfigured' | 'insufficient_data'
 
 interface InsightReadResponse {
   success: boolean
@@ -751,7 +750,8 @@ export default function Insights() {
   const [insightsRetryKind, setInsightsRetryKind] = useState<'load' | 'refresh'>('load')
   const [cacheStatus, setCacheStatus] = useState<InsightCacheStatus>('empty')
   const [insufficientNotice, setInsufficientNotice] = useState<string | null>(null)
-  const [requiresRefresh, setRequiresRefresh] = useState(false)
+  const [insightNotice, setInsightNotice] = useState('')
+  const refreshInFlightRef = useRef(false)
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null)
   const [hasData, setHasData] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
@@ -927,19 +927,11 @@ export default function Insights() {
     data: { insights?: unknown; generatedAt?: unknown },
     nextCacheStatus: InsightCacheStatus
   ) => {
-    const texts = Array.isArray(data.insights)
-      ? data.insights.filter((text): text is string => typeof text === 'string' && text.trim().length > 0)
-      : []
-    const generatedAt = typeof data.generatedAt === 'string' ? data.generatedAt : null
-    const mapped: Insight[] = texts.map((text, index) => ({
-      id: String(index + 1),
-      text,
-      generatedAt,
-    }))
-    setInsights(mapped)
-    setHasData(mapped.length > 0)
+    const outcome = resolveRefreshOutcome({ ...data, cacheStatus: nextCacheStatus })
+    setInsights(outcome.insights)
+    setHasData(outcome.insights.length > 0)
     setCacheStatus(nextCacheStatus)
-    setLastUpdated(generatedAt)
+    setLastUpdated(outcome.generatedAt)
   }, [])
 
   const loadInsights = useCallback(async () => {
@@ -952,11 +944,12 @@ export default function Insights() {
           ? 'fresh'
           : 'empty'
       applyInsightPayload(data, nextStatus)
-      setRequiresRefresh(Boolean(data?.requiresRefresh))
+      setInsightNotice(nextStatus === 'stale' || data.requiresRefresh ? resolveRefreshOutcome({ ...data, cacheStatus: 'stale' }).notice : '')
       setInsightsError(false)
     } catch {
       // Keep any previously loaded insights visible, but surface the failure honestly.
       setInsightsRetryKind('load')
+      setInsightNotice('Insights are unavailable right now. Please try again.')
       setInsightsError(true)
     } finally {
       setIsLoading(false)
@@ -964,6 +957,8 @@ export default function Insights() {
   }, [applyInsightPayload])
 
   const refreshInsights = useCallback(async () => {
+    if (refreshInFlightRef.current) return
+    refreshInFlightRef.current = true
     setIsRefreshing(true)
     setInsightsError(false)
     const idempotencyKey = insightRefreshKeyRef.current ?? createInsightRefreshKey()
@@ -975,26 +970,22 @@ export default function Insights() {
         {},
         { headers: { 'Idempotency-Key': idempotencyKey }, timeout: 90_000 }
       )
-      const status: InsightCacheStatus = ['fresh', 'stale', 'insufficient_data', 'unconfigured'].includes(data.cacheStatus as string)
-        ? (data.cacheStatus as InsightCacheStatus)
-        : 'fresh'
-      if (status === 'insufficient_data') {
-        setInsufficientNotice(Array.isArray(data.insights) && typeof data.insights[0] === 'string' ? data.insights[0] : null)
-        applyInsightPayload({ insights: [], generatedAt: null }, status)
-      } else {
-        setInsufficientNotice(null)
-        applyInsightPayload(data, status)
-      }
-      setRequiresRefresh(Boolean(data.requiresRefresh))
+      const outcome = resolveRefreshOutcome(data)
+      setInsufficientNotice(outcome.status === 'insufficient_data' ? outcome.body : null)
+      setInsightNotice(outcome.notice)
+      if (outcome.status === 'insufficient_data') setCacheStatus(outcome.status)
+      else applyInsightPayload(data, outcome.status)
       const creditSnapshot = data.guavaCredits ?? data.aiCredits
       setCreditsRemaining(creditSnapshot?.available ?? null)
       publishGuavaCredits(creditSnapshot)
       insightRefreshKeyRef.current = null
       setInsightsError(false)
-    } catch {
+    } catch (error) {
       setInsightsRetryKind('refresh')
+      setInsightNotice(insightRefreshErrorNotice(error))
       setInsightsError(true)
     } finally {
+      refreshInFlightRef.current = false
       setIsRefreshing(false)
     }
   }, [applyInsightPayload])
@@ -1789,7 +1780,7 @@ export default function Insights() {
               {/* Lifecycle only. Announcing every typewriter frame would flood
                   the buffer; announcing nothing left a blind user unable to
                   tell whether their three credits had produced anything. */}
-              <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              <p role="status" aria-label="Chat status" aria-live="polite" aria-atomic="true" className="sr-only">
                 {chatStatus}
               </p>
               {!hasConversation ? (
@@ -1909,7 +1900,7 @@ export default function Insights() {
                       Auto Analysis
                     </CardTitle>
                     <CardDescription>
-                      Generated from recent sales and upcoming signals. Each manual refresh uses 10 Guava credits.
+                      <span className="block">{INSIGHT_WINDOW_COPY}</span>Each manual refresh uses 10 Guava credits.
                       {creditsRemaining != null ? ` ${creditsRemaining} credits remaining.` : ''}
                     </CardDescription>
                   </div>
@@ -1924,7 +1915,7 @@ export default function Insights() {
                       variant="secondary"
                       size="sm"
                       onClick={refreshInsights}
-                      disabled={isRefreshing || cacheStatus === 'unconfigured'}
+                      disabled={isLoading || isRefreshing || cacheStatus === 'unconfigured'}
                     >
                       <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
                       {isRefreshing ? 'Refreshing...' : 'Refresh (10 credits)'}
@@ -1933,18 +1924,10 @@ export default function Insights() {
                 </div>
               </CardHeader>
               <CardContent className="min-h-0 flex-1 overflow-y-auto">
+                <div role="status" aria-label="Analysis status" aria-live="polite" className={insightNotice ? 'mb-4 rounded-lg border border-border px-3.5 py-2.5 text-sm' : 'sr-only'}>
+                  {cacheStatus === 'insufficient_data' && hasData ? `${insufficientNotice || resolveRefreshOutcome({ cacheStatus }).body} ` : ''}{insightNotice}
+                </div>
                 {!isLoading && insightsError && (
-                  <div
-                    role="alert"
-                    className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-900/30 bg-red-900/10 px-3.5 py-2.5 text-sm text-red-400"
-                  >
-                    <span>
-                      {insightsRetryKind === 'refresh'
-                        ? insights.length > 0
-                          ? 'Could not refresh insights — showing the last loaded analysis.'
-                          : 'Could not generate insights. No credits will be charged for a failed request.'
-                        : 'Insights are unavailable right now. Please try again.'}
-                    </span>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1953,13 +1936,6 @@ export default function Insights() {
                     >
                       Retry
                     </Button>
-                  </div>
-                )}
-
-                {!isLoading && !insightsError && hasData && (requiresRefresh || cacheStatus === 'stale') && (
-                  <div className="mb-4 rounded-lg border border-amber-700/30 bg-amber-900/10 px-3.5 py-2.5 text-sm text-amber-200" role="status">
-                    This saved analysis may be out of date. Refreshing is an explicit 10-credit action.
-                  </div>
                 )}
 
                 {!isLoading && !hasData && !insightsError && (
@@ -1968,13 +1944,10 @@ export default function Insights() {
                       <Sparkles className="w-6 h-6 text-muted" />
                     </div>
                     <h2 className="text-text text-base font-semibold mb-2">
-                      {cacheStatus === 'insufficient_data' ? 'Nothing to analyse yet'
-                        : cacheStatus === 'unconfigured' ? 'AI insights are not configured' : 'No generated insights yet'}
+                      {resolveRefreshOutcome({ cacheStatus }).heading}
                     </h2>
                     <p className="text-muted text-sm mb-5 max-w-xs">
-                      {cacheStatus === 'insufficient_data' ? insufficientNotice : cacheStatus === 'unconfigured'
-                        ? 'Insight generation is unavailable in this environment. Contact support for configuration help.'
-                        : 'Generate an analysis from your imported sales data, or upload transactions if this cafe has none yet.'}
+                      {insufficientNotice || resolveRefreshOutcome({ cacheStatus }).body}
                     </p>
                     {cacheStatus !== 'unconfigured' && (
                       <div className="flex flex-wrap justify-center gap-2">

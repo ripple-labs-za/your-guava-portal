@@ -231,6 +231,22 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('keeps loaded analysis when a no-data refresh returns and announces the outcome once', async () => {
+    mockBaseRequests()
+    mockGet.mockImplementation((url: string) => url.includes('/forecasts/insights')
+      ? Promise.resolve({ data: { insights: ['Keep this analysis'], generatedAt: new Date().toISOString(), cacheStatus: 'fresh' } })
+      : Promise.resolve({ data: { chats: [] } }))
+    mockPost.mockResolvedValue({ data: { cacheStatus: 'insufficient_data', insufficientData: true, insights: ['No completed sales.'] } })
+    render(<Insights />)
+    await screen.findByText('Keep this analysis')
+    const region = screen.getByRole('status', { name: 'Analysis status' })
+    await userEvent.click(screen.getByRole('button', { name: /refresh \(10 credits\)/i }))
+    await within(region).findByText(/no credits were used/i)
+    expect(screen.getByText('Keep this analysis')).toBeVisible()
+    expect(screen.queryByRole('heading', { name: /nothing to analyse/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Analysis status' })).toBe(region)
+    expect(screen.getByText('Covers the 14 completed days before today')).toBeVisible()
+  })
   it.each([false, true])('keeps an explicit unknown charge after fallback failure with delivered=%s', async (delivered) => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse((delivered ? deltaEvent('Some answer') : '')
@@ -241,7 +257,7 @@ describe('Insights', () => {
     render(<Insights />)
     await askQuestion('Keep the charge unknown')
     await within(answerBubble()).findByText('Charge not confirmed')
-    expect(screen.getByRole('status')).not.toHaveTextContent(/it was charged|nothing was charged/i)
+    expect(screen.getByRole('status', { name: 'Chat status' })).not.toHaveTextContent(/it was charged|nothing was charged/i)
   })
   it('announces a refunded timeout using the server message when recovery fails', async () => {
     mockBaseRequests()
@@ -255,7 +271,7 @@ describe('Insights', () => {
     render(<Insights />)
     await askQuestion('Timeout question')
     await within(answerBubble()).findByText(/nothing was charged/i)
-    expect(screen.getByRole('status')).toHaveTextContent(/nothing was charged/i)
+    expect(screen.getByRole('status', { name: 'Chat status' })).toHaveTextContent(/nothing was charged/i)
   })
   it('does not use a paid fallback when an unfixable stream failure has an unknown charge', async () => {
     mockBaseRequests()
@@ -353,7 +369,7 @@ describe('Insights', () => {
     await askQuestion('Check charge status')
     await within(answerBubble()).findByText(charged === false ? /nothing came back from the server/i : /charge not confirmed/i)
     expect(within(answerBubble()).queryByText(/it was charged/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).not.toHaveTextContent(/nothing was charged/i)
+    expect(screen.getByRole('status', { name: 'Chat status' })).not.toHaveTextContent(/nothing was charged/i)
   })
 
   it('announces the server charge amount with the interrupted answer', async () => {
@@ -367,7 +383,7 @@ describe('Insights', () => {
     render(<Insights />)
     await askQuestion('Amount check')
     await screen.findAllByText(/charged \(7 credits\)/i)
-    expect(screen.getByRole('status').textContent).toMatch(/charged \(7 credits\)/i)
+    expect(screen.getByRole('status', { name: 'Chat status' }).textContent).toMatch(/charged \(7 credits\)/i)
   })
 
   it('names a lost location instead of blaming credit permission', async () => {
@@ -1190,7 +1206,7 @@ describe('Insights', () => {
 
     const log = await screen.findByRole('log', { name: /conversation/i })
     expect(log).toHaveAttribute('tabindex', '0')
-    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Chat status' })).toBeInTheDocument()
   })
 
   it('names the chat in every row action so destructive buttons are distinguishable', async () => {
@@ -1280,7 +1296,7 @@ describe('Insights', () => {
     const sentence = 'There are no approved sales in the 14 completed days before today, so there is nothing to analyse yet. Upload or sync your sales and refresh again — no Guava Credits were used.'
     mockPost.mockResolvedValue({
       data: {
-        success: true, insights: [sentence], generatedAt: '2026-09-28T08:00:00.000Z',
+        success: true, insights: [sentence], generatedAt: new Date().toISOString(),
         requiresRefresh: true, cacheStatus: 'insufficient_data', insufficientData: true,
       },
     })
@@ -1290,7 +1306,7 @@ describe('Insights', () => {
 
     expect(await screen.findByRole('heading', { name: /nothing to analyse yet/i })).toBeInTheDocument()
     expect(screen.getByText(sentence)).toBeInTheDocument()
-    expect(screen.queryByText(/updated just now/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Updated\b/)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /upload sales data/i })).toBeInTheDocument()
   })
 
@@ -1315,6 +1331,6 @@ describe('Insights', () => {
     await userEvent.click(await screen.findByRole('button', { name: /refresh \(10 credits\)/i }))
 
     expect(await screen.findByText('Before the import.')).toBeInTheDocument()
-    expect(screen.getByText(/may be out of date/i)).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Analysis status' })).toHaveTextContent(/predates your last import/i)
   })
 })
