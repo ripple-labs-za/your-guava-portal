@@ -24,7 +24,7 @@ import { publishBillingAccess } from '@/lib/billingEvents'
 import { AccountNotice } from '@/components/account/AccountNotice'
 import { paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeState, type NoticeTone, type PaymentIntent } from '@/lib/paymentOutcome'
 import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
-import { formatPlanChangeDate as formatDate, planChangeSentence } from '@/lib/planChange'
+import { formatPlanChangeDate as formatDate, planChangeSentence, planChangeNotice, pendingChangeSentence, planNameFor, previewFor } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
 import type { Account, BillingPlan, BillingCycle } from '@/types'
 
@@ -406,13 +406,11 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       }
 
       for (let attempt = 0; attempt < PAYMENT_POLL_ATTEMPTS; attempt += 1) {
-        let status: PaymentIntent['status']
-        let kind: PaymentIntent['kind']
+        let payment: PaymentIntent | undefined
         try {
           const { data } = await api.get<PaymentStatusResponse>(`/account/payments/${encodeURIComponent(reference)}`)
           if (cancelled) return
-          status = data.payment.status
-          kind = data.payment.kind
+          payment = data.payment
         } catch {
           if (cancelled) return
           showNotice(
@@ -423,7 +421,8 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
           return
         }
 
-        const outcome = paymentOutcome(status, kind)
+        const status = payment?.status
+        const outcome = paymentOutcome(status, payment?.kind, payment?.planChangeConflict)
 
         if (outcome.terminal) {
           if (status === 'paid') {
@@ -581,14 +580,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         setAccount(data.account)
         publishBillingAccess(data.account.organization.billingAccess)
         planCheckoutRef.current = null
-        const change = data.checkout.planChange
-        if (change && (change.type === 'downgrade' || change.type === 'cycle_switch')) {
-          showNotice('success', `${plan.name} (${change.billingCycle}) is paid for and takes effect on ${formatDate(change.effectiveAt)}.`)
-        } else if (change?.type === 'upgrade' && change.creditDays > 0) {
-          showNotice('success', `${plan.name} plan activated, with ${change.creditDays} extra days credited from your previous plan.`)
-        } else {
-          showNotice('success', `${plan.name} plan activated.`)
-        }
+        showNotice('success', planChangeNotice(data.checkout.planChange, plan.name))
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }
@@ -597,6 +589,13 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         planCheckoutRef.current = null
       }
       // checkout answers 409 { code: 'PLAN_LIMIT_EXCEEDED', message, capacity } at the top level of the body; the fix lives on Team.
+      if (err?.response?.data?.code === 'PLAN_CHANGE_ALREADY_SCHEDULED') {
+        const pending = err.response.data.pendingPlanChange
+        if (pending) setAccount((current) => current ? { ...current, organization: { ...current.organization, pendingPlanChange: pending } } : current)
+        else await hydrateAccount().catch(() => undefined)
+        showNotice('info', 'A paid plan change is already scheduled. Its details are shown below.', { persist: true })
+        return
+      }
       if (err?.response?.data?.code === 'PLAN_LIMIT_EXCEEDED') {
         showNotice('error', err.response.data.message, { persist: true, action: { label: 'Open Team', to: '/team' } })
         return
@@ -658,10 +657,10 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
   const currentCycle: BillingCycle = account?.organization.billingCycle || 'monthly'
   const planChanges = account?.planChanges ?? []
   const pendingPlanChange = account?.organization.pendingPlanChange ?? null
-  const currentPlanName = (account?.plans || []).find((plan) => plan.id === selectedPlan)?.name ?? selectedPlan
-  const previewFor = (planId: string, cycle: BillingCycle) =>
-    planChanges.find((change) => change.plan === planId && change.billingCycle === cycle)
-  const planNameFor = (planId: string) => (account?.plans || []).find((plan) => plan.id === planId)?.name ?? planId
+  const currentPlanName = planNameFor(account?.plans, selectedPlan)
+  const pendingNotice = pendingPlanChange
+    ? pendingChangeSentence(pendingPlanChange, currentPlanName, planNameFor(account?.plans, pendingPlanChange.plan), isOwner)
+    : null
   const { access, renewable, trialing, periodSummary, graceHeading, graceDetail, statusLabel } = billingPageState(account?.organization, isOwner)
 
   // Read through the router hook so it reacts when the flag is cleared after a
@@ -1036,13 +1035,13 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               </div>
             </div>
 
-            {pendingPlanChange && (
+            {pendingNotice && (
               <div role="status" className="rounded-lg border border-border bg-[#111111] px-4 py-3 text-sm">
                 <p className="font-medium text-text">
-                  {planNameFor(pendingPlanChange.plan)} ({pendingPlanChange.billingCycle}) takes effect on {formatDate(pendingPlanChange.effectiveAt)}
+                  {pendingNotice.title}
                 </p>
                 <p className="mt-1 text-muted">
-                  It is paid for and starts when your current period ends. Plans can change again after that.
+                  {pendingNotice.body}
                 </p>
               </div>
             )}
@@ -1096,7 +1095,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                 now for one {CYCLE_UNIT[pendingPurchase.cycle]}. Nothing renews automatically; renew here before the period ends.
               </p>
               <p>
-                {planChangeSentence(previewFor(pendingPurchase.plan.id, pendingPurchase.cycle), pendingPurchase.plan.name, {
+                {planChangeSentence(previewFor(planChanges, pendingPurchase.plan.id, pendingPurchase.cycle), pendingPurchase.plan.name, {
                   name: currentPlanName,
                   cycle: currentCycle,
                 })}

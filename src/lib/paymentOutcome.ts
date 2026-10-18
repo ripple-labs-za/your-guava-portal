@@ -9,6 +9,7 @@ export type PaymentIntent = {
   planChange?: Omit<PlanChangePreview, 'blocked'> | null
   provider: 'mock' | 'onegate' | 'paystack'
   kind?: 'plan' | 'credits'
+  planChangeConflict?: boolean
   reference?: string
   redirectUrl?: string
   amount?: number
@@ -45,7 +46,11 @@ const OUTCOMES: Record<PaymentSessionStatus, PaymentOutcome> = {
 }
 
 /** Unknown provider states cannot establish failure or justify a second charge. */
-export function paymentOutcome(status: PaymentIntent['status'], kind?: PaymentIntent['kind']): PaymentOutcome {
+export function paymentOutcome(status: PaymentIntent['status'], kind?: PaymentIntent['kind'], planChangeConflict = false): PaymentOutcome {
+  if (status === 'needs_attention' && kind === 'plan' && planChangeConflict) return {
+    tone: 'info', terminal: true,
+    message: 'A plan change was already scheduled. Your payment is held for a manual decision; it has not been lost. Email support@yourguava.co.za with this reference so support can decide what happens next. Do not pay again.',
+  }
   if (!status || !(status in OUTCOMES)) return {
     tone: 'info', terminal: false,
     message: "We're still confirming this payment with the gateway. Nothing else is needed from you — please check billing again shortly rather than paying a second time.",

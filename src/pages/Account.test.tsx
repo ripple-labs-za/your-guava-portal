@@ -167,8 +167,8 @@ describe('Account', () => {
     })
     renderWithAuth(<Account />)
 
-    const banner = await screen.findByText(/your plan ended on 0?1 Oct 2026/i)
-    expect(banner).toHaveTextContent(/read-only until 0?4 Oct 2026/i)
+    const banner = await screen.findByText(/your plan ended on 0?1 October 2026/i)
+    expect(banner).toHaveTextContent(/read-only until 0?4 October 2026/i)
     expect(screen.getByRole('button', { name: /renew growth/i })).toBeEnabled()
   })
 
@@ -177,7 +177,7 @@ describe('Account', () => {
     renderWithAuth(<Account />)
 
     expect(await screen.findByRole('button', { name: /choose starter/i })).toBeEnabled()
-    expect(screen.getByText(/trial ends 0?5 Oct 2026/i)).toBeInTheDocument()
+    expect(screen.getByText(/trial ends 0?5 October 2026/i)).toBeInTheDocument()
   })
 
   it('says until when the plan is paid', async () => {
@@ -185,7 +185,7 @@ describe('Account', () => {
     serveOrganization({ billingStatus: 'active', currentPeriodEnd: '2030-11-01T12:00:00.000Z' })
     renderWithAuth(<Account />)
 
-    expect(await screen.findByText(/paid until 0?1 Nov 2030/i)).toBeInTheDocument()
+    expect(await screen.findByText(/paid until 0?1 November 2030/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /active plan/i })).toBeDisabled()
   })
 
@@ -771,7 +771,7 @@ describe('Account', () => {
     await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/takes effect on 0?1 November 2026/i)).toBeInTheDocument()
     expect(within(dialog).queryByText(/not refunded or credited|already paid for is lost/i)).not.toBeInTheDocument()
   })
 
@@ -781,7 +781,7 @@ describe('Account', () => {
     await userEvent.click(await screen.findByRole('button', { name: /move to pro/i }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/starts today.*9 extra days.*21 Nov 2026/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/starts today.*9 extra days.*21 November 2026/i)).toBeInTheDocument()
   })
 
   it('shows a scheduled plan change and holds the plan cards until it starts', async () => {
@@ -796,7 +796,7 @@ describe('Account', () => {
     })
     renderWithAuth(<Account />)
 
-    expect(await screen.findByText(/starter \(monthly\) takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(await screen.findByText(/starter \(monthly\) takes effect on 0?1 November 2026/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /move to starter/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /move to pro/i })).toBeDisabled()
   })
@@ -819,7 +819,7 @@ describe('Account', () => {
     await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
     await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
 
-    expect(await screen.findByText(/starter \(monthly\) is paid for and takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(await screen.findByText(/starter \(monthly\) is paid for and takes effect on 0?1 November 2026/i)).toBeInTheDocument()
     expect(screen.queryByText(/starter plan activated/i)).not.toBeInTheDocument()
   })
 
@@ -853,8 +853,94 @@ describe('Account', () => {
     await userEvent.click(await screen.findByRole('button', { name: /500 credits/i }))
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: /confirm and pay/i }))
-    expect(await screen.findByText('Read-only until 05 Oct 2026. Renew in Billing.')).toBeInTheDocument()
+    expect(await screen.findByText('Read-only until 5 October 2026. Renew in Billing.')).toBeInTheDocument()
     expect(screen.queryByText(/could not start card checkout/i)).not.toBeInTheDocument()
+  })
+
+  const MIDNIGHT_BILLING_END = '2026-10-31T23:30:00Z'
+  const MIDNIGHT_NEXT_END = '2026-12-01T23:30:00Z'
+  const midnightPayload = () => {
+    const payload = planChangesPayload()
+    return {
+      ...payload,
+      organization: { ...payload.organization, currentPeriodEnd: MIDNIGHT_BILLING_END },
+      planChanges: payload.planChanges.map((change) => ({
+        ...change, effectiveAt: MIDNIGHT_BILLING_END, periodEnd: MIDNIGHT_NEXT_END,
+      })),
+    }
+  }
+
+  it('shows the server calendar date in the plan dialog near UTC midnight', async () => {
+    serveAccount(midnightPayload())
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent(/takes effect on 1 November 2026/i)
+  })
+
+  it.each(['active', 'trialing'] as const)('shows the server date in the %s period summary', async (billingStatus) => {
+    const payload = midnightPayload()
+    serveAccount({ ...payload, organization: {
+      ...payload.organization, billingStatus, trialEndsAt: MIDNIGHT_BILLING_END,
+    } })
+    renderWithAuth(<Account />)
+    expect(await screen.findByText(billingStatus === 'active' ? /paid until 1 November 2026/i : /trial ends 1 November 2026/i)).toBeInTheDocument()
+  })
+
+  it('adopts the pending term after a scheduled-change conflict and disables further checkout', async () => {
+    const payload = midnightPayload()
+    serveAccount(payload)
+    mockPost.mockRejectedValueOnce({ response: { status: 409, data: {
+      code: 'PLAN_CHANGE_ALREADY_SCHEDULED', message: 'A paid plan change is already scheduled.',
+      pendingPlanChange: { plan: 'starter', billingCycle: 'monthly',
+        effectiveAt: MIDNIGHT_BILLING_END, periodEnd: MIDNIGHT_NEXT_END },
+    } } })
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+    expect(await screen.findByText(/starter \(monthly\) takes effect on 1 November 2026/i)).toBeInTheDocument()
+    expect(screen.getByText(/your current Growth plan stays active until then/i)).toHaveTextContent(/runs until 2 December 2026/i)
+    expect(screen.getByRole('button', { name: /move to starter/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /move to pro/i })).toBeDisabled()
+  })
+
+  it.each([0, 1])('announces an upgrade with %s credited days without zero or plural errors', async (creditDays) => {
+    const payload = midnightPayload()
+    serveAccount(payload)
+    mockPost.mockResolvedValueOnce({ status: 200, data: {
+      success: true, account: payload, checkout: { provider: 'mock', status: 'paid',
+        planChange: { plan: 'pro', billingCycle: 'monthly', type: 'upgrade',
+          effectiveAt: MIDNIGHT_BILLING_END, periodEnd: MIDNIGHT_NEXT_END, creditDays } },
+    } })
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to pro/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+    const notice = await screen.findByText(/Pro plan activated/)
+    if (creditDays === 1) expect(notice).toHaveTextContent(/with 1 extra day credited/)
+    expect(notice).not.toHaveTextContent(/0 extra days|1 extra days/)
+  })
+
+  it('tells managers the retained plan and next term without owner-only next actions', async () => {
+    const payload = midnightPayload()
+    serveAccount({ ...payload, plans: [], planChanges: [], organization: {
+      ...payload.organization, pendingPlanChange: { plan: 'starter', billingCycle: 'monthly',
+        effectiveAt: MIDNIGHT_BILLING_END, periodEnd: MIDNIGHT_NEXT_END },
+    } })
+    renderWithAuth(<Account />, { role: 'manager' })
+    const pending = await screen.findByText(/takes effect on 1 November 2026/i)
+    expect(pending.closest('[role="status"]')).toHaveTextContent(/current Growth plan stays active.*runs until 2 December 2026/i)
+    expect(screen.queryByText(/plans can change again/i)).not.toBeInTheDocument()
+  })
+
+  it('explains a captured plan change conflict as held money awaiting support', async () => {
+    window.history.pushState({}, '', '/account?payment=pending&reference=held-plan')
+    mockGet.mockImplementation((url: string) => url.includes('/account/payments/')
+      ? Promise.resolve({ data: { success: true, payment: {
+        reference: 'held-plan', status: 'needs_attention', kind: 'plan', planChangeConflict: true,
+      } } })
+      : Promise.resolve({ data: { success: true, account: accountPayload() } }))
+    renderWithAuth(<Account />)
+    const notice = await screen.findByText(/a plan change was already scheduled/i)
+    expect(notice).toHaveTextContent(/payment is held.*not been lost.*support/i)
   })
 
 })

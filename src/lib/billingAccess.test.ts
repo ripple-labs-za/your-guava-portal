@@ -8,7 +8,7 @@ const grace = { allowed: false, status: 'grace', readOnly: true, reason: 'trial_
 describe('billing access wording and renewal window', () => {
   it('gives managers a next step that the account owner can perform', () => {
     const state = billingPageState(org({ billingStatus: 'past_due', billingAccess: grace }), false)
-    expect(state.graceHeading).toContain('Your free trial ended on 02 Oct 2026')
+    expect(state.graceHeading).toContain('Your free trial ended on 2 October 2026')
     expect(state.graceDetail).toContain('Ask the account owner to renew')
     expect(state.graceDetail).not.toContain('Choose a plan')
     expect(state.statusLabel).toBe('Read-only')
@@ -28,7 +28,7 @@ describe('billing access wording and renewal window', () => {
     { response: { data: { details: { billingStatus: 'grace', graceEndsAt: grace.graceEndsAt } } } },
     { details: { readOnly: true, graceEndsAt: grace.graceEndsAt } },
   ])('explains grace from middleware and usage error envelopes', (error) => {
-    expect(billingReadOnlyMessage(error)).toBe('Read-only until 05 Oct 2026. Renew in Billing.')
+    expect(billingReadOnlyMessage(error)).toBe('Read-only until 5 October 2026. Renew in Billing.')
   })
   it.each([null, {}, { response: { status: 402, data: { details: { code: 'INSUFFICIENT_CREDITS' } } } }])('does not call other refusals grace', (error) => {
     expect(billingReadOnlyMessage(error)).toBeNull()

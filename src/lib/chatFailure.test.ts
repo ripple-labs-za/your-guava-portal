@@ -107,7 +107,7 @@ describe('read-only billing refusals', () => {
     const failure = chatFailureFrom(error, false)
     expect(failure).toMatchObject({ kind: 'billing-read-only', charged: false })
     expect(chatFailureCopy(failure)).toMatchObject({
-      detail: 'Read-only until 05 Oct 2026. Renew in Billing.',
+      detail: 'Read-only until 5 October 2026. Renew in Billing.',
       action: { kind: 'link', to: '/settings?section=billing' },
     })
   })

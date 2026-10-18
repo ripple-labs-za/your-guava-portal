@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { addLocalDays, formatBillingDate, getLocalMonthBounds, parseDateOnly, toLocalDateOnly } from './date'
 
 describe('date-only helpers', () => {
+  it('matches the server long billing label after SAST midnight', () => {
+    expect(formatBillingDate('2026-10-31T23:30:00Z')).toBe('1 November 2026')
+  })
   it('uses the server billing calendar even when the browser is west of SAST', () => {
     vi.stubEnv('TZ', 'America/New_York')
     try {
-      expect(formatBillingDate('2026-10-04T22:30:00Z')).toBe('05 Oct 2026')
+      expect(formatBillingDate('2026-10-04T22:30:00Z')).toBe('5 October 2026')
       expect(formatBillingDate('2026-10-04T22:30:00Z', true)).toBe('05 Oct')
       expect(formatBillingDate(null)).toBe('-')
       expect(formatBillingDate('invalid')).toBe('-')

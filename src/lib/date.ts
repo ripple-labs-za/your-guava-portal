@@ -5,7 +5,7 @@ export function formatBillingDate(value?: string | null, short = false): string 
   if (!value) return '-'
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return '-'
-  return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: short ? undefined : 'numeric', timeZone: 'Africa/Johannesburg' })
+  return date.toLocaleDateString('en-ZA', { day: 'numeric', month: short ? 'short' : 'long', year: short ? undefined : 'numeric', timeZone: 'Africa/Johannesburg' })
 }
 
 /**
