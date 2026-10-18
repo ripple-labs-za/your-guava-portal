@@ -1,3 +1,17 @@
+export type BillingCycle = 'monthly' | 'annual'
+export type PlanChangeType = 'new' | 'renewal' | 'upgrade' | 'downgrade' | 'cycle_switch'
+export interface PendingPlanChange {
+  plan: BillingPlan['id']
+  billingCycle: BillingCycle
+  effectiveAt: string
+  periodEnd: string
+}
+export interface PlanChangePreview extends PendingPlanChange {
+  type: PlanChangeType
+  creditDays: number
+  blocked: 'PLAN_CHANGE_ALREADY_SCHEDULED' | null
+}
+
 export interface User {
   id: string
   email: string
@@ -19,6 +33,8 @@ export interface Organization {
   plan: 'starter' | 'growth' | 'pro'
   billingStatus?: 'trialing' | 'active' | 'past_due' | 'canceled'
   billingCycle?: 'monthly' | 'annual'
+  currentPeriodEnd?: string | null
+  pendingPlanChange?: PendingPlanChange | null
   billingEmail?: string
   paymentMethod?: { brand: string; last4: string; expiresAt: string; provider?: 'mock' | 'onegate' | string }
 }
@@ -76,6 +92,7 @@ export interface Account {
   user: User
   organization: Organization
   usage: AccountUsage
+  planChanges?: PlanChangePreview[]
   plans: BillingPlan[]
 }
 

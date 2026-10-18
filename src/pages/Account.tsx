@@ -22,13 +22,12 @@ import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
 import { secureRandomId } from '@/lib/idempotency'
-import type { Account, BillingPlan } from '@/types'
+import type { Account, BillingPlan, BillingCycle, PlanChangePreview } from '@/types'
 
 type SaveState = 'idle' | 'saving' | 'success' | 'error'
 type NoticeTone = 'success' | 'error' | 'info'
 type NoticeAction = { label: string; to: string }
 type NoticeState = { type: NoticeTone; message: string; action?: NoticeAction } | null
-type BillingCycle = 'monthly' | 'annual'
 
 /**
  * Every value PaymentSession.status can hold
@@ -48,6 +47,7 @@ type PaymentSessionStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'canc
  */
 type PaymentInitializationStatus = 'initializing' | 'ready' | 'failed'
 type PaymentIntent = {
+  planChange?: Omit<PlanChangePreview, 'blocked'> | null
   provider: 'mock' | 'onegate' | 'paystack'
   reference?: string
   redirectUrl?: string
@@ -134,6 +134,30 @@ const isStillInitializing = (httpStatus: number | undefined, intent: PaymentInte
 const formatRand = (value: number) => `R${value.toLocaleString('en-ZA')}`
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
+
+const CYCLE_UNIT: Record<BillingCycle, string> = { monthly: 'month', annual: 'year' }
+
+/** D-019, in the words the owner reads before paying. The server decided; this only phrases it. */
+function planChangeSentence(
+  preview: PlanChangePreview | undefined,
+  planName: string,
+  current: { name: string; cycle: BillingCycle }
+): string {
+  if (!preview) return 'What this does to your current period is confirmed at checkout.'
+  switch (preview.type) {
+    case 'upgrade':
+      return `Starts today. The unused part of your current plan is credited as ${preview.creditDays} extra ${
+        preview.creditDays === 1 ? 'day' : 'days'
+      }, so ${planName} runs until ${formatDate(preview.periodEnd)}.`
+    case 'downgrade':
+    case 'cycle_switch':
+      return `Takes effect on ${formatDate(preview.effectiveAt)}, when your current ${current.name} (${current.cycle}) period ends. You keep ${current.name} until then; ${planName} then runs until ${formatDate(preview.periodEnd)}.`
+    case 'renewal':
+      return `Extends your current plan: paid until ${formatDate(preview.periodEnd)}.`
+    default:
+      return `Starts today and runs until ${formatDate(preview.periodEnd)}.`
+  }
+}
 
 const newPaymentIdempotencyKey = (kind: 'plan' | 'credits') => {
   const entropy = secureRandomId()
@@ -304,11 +328,8 @@ function PlanCard({
 }
 
 /**
- * Confirmation for the two irreversible money actions on this page. Both used
- * to fire a real charge on a single click, with no statement of the amount and
- * no mention that the period already paid for is neither refunded nor credited
- * (the backend has no proration: account.controller charges the full plan price
- * whatever point of the cycle you are at).
+ * Confirmation for the two money actions on this page. The dialog states the
+ * amount and, for a plan, what D-019 does with the current period.
  *
  * The shared Dialog in Team.tsx implements none of the modal behaviour it
  * claims, so this one carries its own: Escape closes it, focus moves in on open
@@ -693,7 +714,14 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       if (data.account) {
         setAccount(data.account)
         planCheckoutRef.current = null
-        showNotice('success', `${plan.name} plan activated.`)
+        const change = data.checkout.planChange
+        if (change && (change.type === 'downgrade' || change.type === 'cycle_switch')) {
+          showNotice('success', `${plan.name} (${change.billingCycle}) is paid for and takes effect on ${formatDate(change.effectiveAt)}.`)
+        } else if (change?.type === 'upgrade' && change.creditDays > 0) {
+          showNotice('success', `${plan.name} plan activated, with ${change.creditDays} extra days credited from your previous plan.`)
+        } else {
+          showNotice('success', `${plan.name} plan activated.`)
+        }
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }
@@ -761,6 +789,13 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
   const selectedPlan = account?.organization.plan || 'starter'
   const currentCycle: BillingCycle = account?.organization.billingCycle || 'monthly'
+  const planChanges = account?.planChanges ?? []
+  const pendingPlanChange = account?.organization.pendingPlanChange ?? null
+  const currentPlanName = (account?.plans || []).find((plan) => plan.id === selectedPlan)?.name ?? selectedPlan
+  const previewFor = (planId: string, cycle: BillingCycle) =>
+    planChanges.find((change) => change.plan === planId && change.billingCycle === cycle)
+  const planNameFor = (planId: string) => (account?.plans || []).find((plan) => plan.id === planId)?.name ?? planId
+
   // Read through the router hook so it reacts when the flag is cleared after a
   // successful payment; the raw window.location read never did.
   const billingRequired = searchParams.get('billing') === 'required'
@@ -1123,6 +1158,16 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               </div>
             </div>
 
+            {pendingPlanChange && (
+              <div role="status" className="rounded-lg border border-border bg-[#111111] px-4 py-3 text-sm">
+                <p className="font-medium text-text">
+                  {planNameFor(pendingPlanChange.plan)} ({pendingPlanChange.billingCycle}) takes effect on {formatDate(pendingPlanChange.effectiveAt)}
+                </p>
+                <p className="mt-1 text-muted">
+                  It is paid for and starts when your current period ends. Plans can change again after that.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               {(isOwner ? account?.plans || [] : []).map((plan) => (
                 <PlanCard
@@ -1135,7 +1180,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                   // Every card, not just the one in flight. Disabling only the
                   // clicked card let a second click on a different plan mint a
                   // fresh idempotency key and open a second live PaymentSession.
-                  disabled={!isOwner || checkoutPlan !== null}
+                  disabled={!isOwner || checkoutPlan !== null || pendingPlanChange !== null}
                 />
               ))}
             </div>
@@ -1166,21 +1211,15 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               <p>
                 You will be charged{' '}
                 <span className="font-medium text-text">
-                  {formatRand(
-                    pendingPurchase.cycle === 'annual'
-                      ? pendingPurchase.plan.priceAnnual
-                      : pendingPurchase.plan.priceMonthly
-                  )}
+                  {formatRand(pendingPurchase.cycle === 'annual' ? pendingPurchase.plan.priceAnnual : pendingPurchase.plan.priceMonthly)}
                 </span>{' '}
-                now, then every {pendingPurchase.cycle === 'annual' ? 'year' : 'month'} until you change plan.
+                now for one {CYCLE_UNIT[pendingPurchase.cycle]}. Nothing renews automatically; renew here before the period ends.
               </p>
-              {/* There is no proration anywhere in the backend: checkout charges
-                  the full plan price whatever point of the cycle you are at.
-                  Saying so is the difference between a considered downgrade and
-                  an owner discovering it after the money has gone. */}
               <p>
-                Your current period is not refunded or credited — the change takes effect immediately and the
-                remainder of what you have already paid for is lost.
+                {planChangeSentence(previewFor(pendingPurchase.plan.id, pendingPurchase.cycle), pendingPurchase.plan.name, {
+                  name: currentPlanName,
+                  cycle: currentCycle,
+                })}
               </p>
               <p>
                 {pendingPurchase.plan.name} includes {pendingPurchase.plan.includedSeats} seats,{' '}

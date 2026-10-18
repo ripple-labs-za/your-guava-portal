@@ -437,17 +437,14 @@ describe('Account', () => {
 
   // ── Confirmation before money moves ─────────────────────────────────────────
 
-  it('states the charge and the loss of the current period before a plan change', async () => {
+  it('states the charge before a plan change', async () => {
     renderWithAuth(<Account />)
     await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
 
-    // Nothing posted on the first click.
     expect(mockPost).not.toHaveBeenCalledWith('/account/checkout', expect.anything(), expect.anything())
-
     const dialog = await screen.findByRole('dialog')
-    // The amount appears in the body and again on the confirm button.
     expect(within(dialog).getAllByText(/R399/).length).toBeGreaterThan(0)
-    expect(within(dialog).getByText(/not refunded or credited/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/nothing renews automatically/i)).toBeInTheDocument()
   })
 
   it('posts the plan checkout only after explicit confirmation', async () => {
@@ -649,4 +646,90 @@ describe('Account', () => {
     expect(alert).toBeDefined()
     expect(within(alert as HTMLElement).getByRole('link', { name: /open team/i })).toHaveAttribute('href', '/team')
   })
+  // ── D-019 plan changes ───────────────────────────────────────────────────────
+  const PERIOD_END = '2026-11-01T12:00:00.000Z'
+  function planChangesPayload() {
+    const payload = accountPayload()
+    return {
+      ...payload,
+      organization: { ...payload.organization, currentPeriodEnd: PERIOD_END, pendingPlanChange: null },
+      plans: [
+        ...payload.plans,
+        {
+          id: 'pro', name: 'Pro', priceMonthly: 1799, priceAnnual: 17990, includedSeats: 15, includedAiCredits: 2000,
+          includedGuavaCredits: 6000, includedLocations: 10, overagePerSeat: 80, aiCreditPackPrice: 69, features: ['Priority support'],
+        },
+      ],
+      planChanges: [
+        { plan: 'starter', billingCycle: 'monthly', type: 'downgrade', effectiveAt: PERIOD_END, periodEnd: '2026-12-01T12:00:00.000Z', creditDays: 0, blocked: null },
+        { plan: 'pro', billingCycle: 'monthly', type: 'upgrade', effectiveAt: '2026-10-12T12:00:00.000Z', periodEnd: '2026-11-21T12:00:00.000Z', creditDays: 9, blocked: null },
+        { plan: 'growth', billingCycle: 'annual', type: 'cycle_switch', effectiveAt: PERIOD_END, periodEnd: '2027-11-01T12:00:00.000Z', creditDays: 0, blocked: null },
+      ],
+    }
+  }
+  function serveAccount(account: unknown) {
+    mockGet.mockImplementation((url: string) =>
+      url.includes('/account')
+        ? Promise.resolve({ data: { success: true, account } })
+        : Promise.resolve({ data: {} }))
+  }
+
+  it('says when a downgrade takes effect instead of claiming the current period is lost', async () => {
+    serveAccount(planChangesPayload())
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/not refunded or credited|already paid for is lost/i)).not.toBeInTheDocument()
+  })
+
+  it('states the days credited when upgrading', async () => {
+    serveAccount(planChangesPayload())
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to pro/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/starts today.*9 extra days.*21 Nov 2026/i)).toBeInTheDocument()
+  })
+
+  it('shows a scheduled plan change and holds the plan cards until it starts', async () => {
+    const payload = planChangesPayload()
+    serveAccount({
+      ...payload,
+      organization: {
+        ...payload.organization,
+        pendingPlanChange: { plan: 'starter', billingCycle: 'monthly', effectiveAt: PERIOD_END, periodEnd: '2026-12-01T12:00:00.000Z' },
+      },
+      planChanges: payload.planChanges.map((change) => ({ ...change, blocked: 'PLAN_CHANGE_ALREADY_SCHEDULED' })),
+    })
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/starter \(monthly\) takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /move to starter/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /move to pro/i })).toBeDisabled()
+  })
+
+  it('announces a scheduled change, not an activation, after a mock downgrade', async () => {
+    serveAccount(planChangesPayload())
+    mockPost.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        account: planChangesPayload(),
+        checkout: {
+          provider: 'mock',
+          status: 'paid',
+          planChange: { plan: 'starter', billingCycle: 'monthly', type: 'downgrade', effectiveAt: PERIOD_END, periodEnd: '2026-12-01T12:00:00.000Z', creditDays: 0 },
+        },
+      },
+    })
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+
+    expect(await screen.findByText(/starter \(monthly\) is paid for and takes effect on 0?1 Nov 2026/i)).toBeInTheDocument()
+    expect(screen.queryByText(/starter plan activated/i)).not.toBeInTheDocument()
+  })
+
 })
