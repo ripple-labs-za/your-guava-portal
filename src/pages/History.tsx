@@ -1,5 +1,5 @@
 import { weatherTempLabel } from '@/lib/forecastSignals'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import {
   AlertCircle,
@@ -17,7 +17,9 @@ import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
 import { HistoryStatPanel as StatPanel } from '@/components/forecasts/HistoryStatPanel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import api, { isSessionRejection } from '@/lib/api'
+import api from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
+import { historyBackfillBatch, historyBackfillFailure, historyBackfillNote, HISTORY_SPEND_PERMISSION, type HistoryBackfillFailure } from '@/lib/historyBackfill'
 import { cn } from '@/lib/utils'
 import type { ForecastHistoryResponse, ForecastHistoryRow } from '@/types'
 import { formatAccuracyPercent as formatPercent, historyAccuracyDetail, NOT_COUNTED_REASON } from '@/lib/historyAccuracy'
@@ -106,6 +108,10 @@ function LoadingState() {
 }
 
 export default function History() {
+  const { user } = useAuth()
+  const isOwner = user?.role === 'owner'
+  const canSpendCredits = isOwner || Boolean(user?.permissions?.canSpendCredits)
+  const buildingRef = useRef(false)
   const [days, setDays] = useState(90)
   const [page, setPage] = useState(1)
   const [history, setHistory] = useState<ForecastHistoryRow[]>([])
@@ -118,7 +124,7 @@ export default function History() {
   // Kept apart from `error`, which belongs to the page load. Putting a backfill
   // failure there unmounted the table, the accuracy panels and the learning
   // panel, so a failed extra batch read as if the history had been lost.
-  const [backfillError, setBackfillError] = useState<string | null>(null)
+  const [backfillError, setBackfillError] = useState<HistoryBackfillFailure | null>(null)
   const [backfillNote, setBackfillNote] = useState<string | null>(null)
 
   useEffect(() => {
@@ -153,7 +159,8 @@ export default function History() {
   }, [days, page, refreshNonce])
 
   const buildNextHistoryBatch = async () => {
-    if (buildingHistory) return
+    if (buildingRef.current || !canSpendCredits) return
+    buildingRef.current = true
     setBuildingHistory(true)
     setBackfillError(null)
     setBackfillNote(null)
@@ -164,47 +171,25 @@ export default function History() {
           page,
           limit: HISTORY_PAGE_SIZE,
           backfill: 'sync',
-          backfillLimit: meta?.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE,
+          backfillLimit: batch.days || HISTORY_BACKFILL_BATCH_SIZE,
         },
         timeout: HISTORY_BACKFILL_TIMEOUT_MS,
       })
       setHistory(data.history || data.rows || [])
       setMeta(data.meta)
       setPagination(data.pagination || null)
-      const generated = data.meta?.generated ?? 0
-      setBackfillNote(
-        generated > 0
-          ? `Built ${generated} retrospective day${generated === 1 ? '' : 's'}.`
-          : 'No further days could be built from the sales data available.'
-      )
+      setBackfillNote(historyBackfillNote(data.meta?.generated ?? 0, data.meta?.pendingDays ?? 0))
     } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 402) {
-        setBackfillError('Not enough Guava Credits to build this batch. Top up in Settings › Account, then carry on.')
-        // Credits can run out after earlier days have already been saved.
-        setRefreshNonce((value) => value + 1)
-        return
-      }
-      if (status === 429) {
-        setBackfillError('History is being built too quickly. Wait a few minutes, then carry on.')
-        return
-      }
-      // The server writes each day as it goes, with no transaction and no
-      // rollback, so "existing history is unchanged" was a claim the client
-      // could not make and was most likely false.
-      setBackfillError(
-        isSessionRejection(err)
-          ? 'Your sign-in has expired. Sign in again to carry on building history.'
-          : 'We lost contact before this batch finished. Days built before that point were kept — this page has been reloaded to show exactly what landed.'
-      )
-      setRefreshNonce((value) => value + 1)
+      const failure = historyBackfillFailure(err, isOwner)
+      setBackfillError(failure)
+      if (failure.reload) setRefreshNonce((value) => value + 1)
     } finally {
+      buildingRef.current = false
       setBuildingHistory(false)
     }
   }
 
-  const creditsPerDay = meta?.backfill?.creditsPerDay ?? 0
-  const batchSize = meta?.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE
+  const batch = historyBackfillBatch(meta)
 
   const varianceTone = useMemo(() => {
     if (!meta || meta.variance === 0) return 'neutral'
@@ -437,7 +422,7 @@ export default function History() {
           <div className="rounded-lg border border-guava-red/30 bg-guava-red/10 p-4 text-sm text-guava-red-text" role="alert">
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>{backfillError}</p>
+              <p>{backfillError.message} {backfillError.billingLink && <Link className="underline" to="/settings?section=billing">Settings &gt; Billing &amp; usage</Link>}</p>
             </div>
           </div>
         )}
@@ -462,18 +447,17 @@ export default function History() {
                   {' '}{meta.totalTradingDays === 1 ? 'day' : 'days'}.
                   Building a batch creates retrospective estimates marked as backtests; they are not original live predictions.
                 </p>
-                <p className="mt-1 text-sm text-muted">
-                  {creditsPerDay > 0
-                    ? `Uses up to ${batchSize * creditsPerDay} Guava Credits (${creditsPerDay} per day built).`
-                    : 'Free — building history uses no Guava Credits.'} A batch of{' '}
-                  {meta.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE} days can take up to a minute.
+                <p id="history-backfill-cost" className="mt-1 text-sm text-muted">
+                  {batch.costDescription} A batch of {batch.days} days can take up to a minute.
                 </p>
+                {!canSpendCredits && <p id="history-backfill-permission" className="mt-1 text-sm text-muted">{HISTORY_SPEND_PERMISSION}</p>}
               </div>
-              <Button variant="outline" size="sm" disabled={buildingHistory} onClick={buildNextHistoryBatch}>
+              <Button variant="outline" size="sm" disabled={buildingHistory || !canSpendCredits} onClick={buildNextHistoryBatch}
+                aria-describedby={`history-backfill-cost${canSpendCredits ? '' : ' history-backfill-permission'}`}>
                 <RefreshCw className="h-4 w-4" />
                 {buildingHistory
                   ? 'Building…'
-                  : `Build next ${meta.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE}`}
+                  : `Build next ${batch.days}`}
               </Button>
             </div>
           </div>

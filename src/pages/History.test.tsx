@@ -6,6 +6,9 @@ import type { ReactNode } from 'react'
 import History from './History'
 
 const mockGet = vi.fn()
+let mockHistoryUser: { role: 'owner' | 'manager'; permissions?: { canSpendCredits: boolean } } = { role: 'owner' }
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mockHistoryUser }) }))
 
 // Partial: History reads the named `isSessionRejection` export when a backfill
 // fails, and a factory that omits it makes vitest throw at that moment.
@@ -199,6 +202,7 @@ describe('History page', () => {
   })
 
   beforeEach(() => {
+    mockHistoryUser = { role: 'owner' }
     mockGet.mockReset()
     mockGet.mockResolvedValue({ data: historyPayload })
   })
@@ -340,7 +344,7 @@ describe('History page', () => {
     expect(screen.getByText(/Free — building history uses no Guava Credits/i)).toBeInTheDocument()
     expect(screen.getByText(/up to a minute/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /build next 14/i }))
+    await user.click(screen.getByRole('button', { name: /build next 12/i }))
     await waitFor(() =>
       expect(mockGet).toHaveBeenLastCalledWith('/forecasts/history', {
         params: {
@@ -348,7 +352,7 @@ describe('History page', () => {
           page: 1,
           limit: 30,
           backfill: 'sync',
-          backfillLimit: 14,
+          backfillLimit: 12,
         },
         // A sequential run of 14 forecast generations cannot finish inside the
         // shared client's 20s default.
@@ -372,8 +376,8 @@ describe('History page', () => {
 
     renderHistory()
 
-    await screen.findByRole('button', { name: /build next 14/i })
-    await user.click(screen.getByRole('button', { name: /build next 14/i }))
+    await screen.findByRole('button', { name: /build next 12/i })
+    await user.click(screen.getByRole('button', { name: /build next 12/i }))
 
     expect(await screen.findByText(/Built 12 retrospective days/i)).toBeInTheDocument()
   })
@@ -473,6 +477,98 @@ describe('History page', () => {
     })) } })
     renderHistory()
     expect(await screen.findByText(/High 29°C/)).toBeInTheDocument()
+  })
+
+  it('disables history spending for a manager without permission and explains why', async () => {
+    mockHistoryUser = { role: 'manager', permissions: { canSpendCredits: false } }
+    mockGet.mockResolvedValue({ data: pendingWithCost })
+    renderHistory()
+    const button = await screen.findByRole('button', { name: /build next/i })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(/Ask the account owner.*permission/i)
+    expect(screen.getByText(/Ask the account owner.*permission/i)).toBeVisible()
+    expect(mockGet).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains a spending permission revoked after the page loaded without a network-loss claim', async () => {
+    mockHistoryUser = { role: 'manager', permissions: { canSpendCredits: true } }
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 403, data: { code: 'CREDIT_SPEND_FORBIDDEN' } } })
+    renderHistory()
+    await userEvent.setup().click(await screen.findByRole('button', { name: /build next/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Ask the account owner.*permission/i)
+    expect(screen.queryByText(/lost contact/i)).not.toBeInTheDocument()
+    expect(mockGet).toHaveBeenCalledTimes(2)
+  })
+
+  it('links an owner refused for credits to Billing and usage', async () => {
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 402, data: {} } })
+    mockGet.mockResolvedValue({ data: pendingWithCost })
+    renderHistory()
+    await userEvent.setup().click(await screen.findByRole('button', { name: /build next/i }))
+    expect(await screen.findByRole('link', { name: 'Settings > Billing & usage' }))
+      .toHaveAttribute('href', '/settings?section=billing')
+    expect(screen.getByRole('alert')).toHaveTextContent(/Not enough Guava Credits/)
+  })
+
+  it('asks a manager refused for credits to contact the owner', async () => {
+    mockHistoryUser = { role: 'manager', permissions: { canSpendCredits: true } }
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 402, data: {} } })
+    mockGet.mockResolvedValue({ data: pendingWithCost })
+    renderHistory()
+    await userEvent.setup().click(await screen.findByRole('button', { name: /build next/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Ask the account owner/i)
+    expect(screen.queryByRole('link', { name: /Billing & usage/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Top up in Settings/)).not.toBeInTheDocument()
+  })
+
+  it.each(['owner', 'manager'] as const)('explains read-only billing before credit shortage for a %s', async (role) => {
+    mockHistoryUser = { role, permissions: { canSpendCredits: true } }
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 402, data: {
+      code: 'BILLING_REQUIRED', billing: { readOnly: true, status: 'grace', graceEndsAt: '2026-10-31T23:30:00Z' },
+    } } })
+    mockGet.mockResolvedValue({ data: pendingWithCost })
+    renderHistory()
+    await userEvent.setup().click(await screen.findByRole('button', { name: /build next/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Read-only until 1 November 2026/)
+    expect(screen.queryByText(/Not enough Guava Credits/i)).not.toBeInTheDocument()
+    if (role === 'manager') {
+      expect(screen.getByRole('alert')).toHaveTextContent(/Ask the account owner to renew/)
+      expect(screen.queryByRole('link', { name: /Billing & usage/ })).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByRole('link', { name: 'Settings > Billing & usage' })).toHaveAttribute('href', '/settings?section=billing')
+    }
+  })
+
+  it('prices only the remaining days and describes the button with that cost', async () => {
+    mockGet.mockResolvedValue({ data: { ...pendingWithCost, meta: {
+      ...pendingWithCost.meta, pendingDays: 3,
+      backfill: { ...pendingWithCost.meta.backfill, pendingDays: 3, creditsPerDay: 2 },
+    } } })
+    renderHistory()
+    const button = await screen.findByRole('button', { name: /build next 3/i })
+    expect(button).toHaveAccessibleDescription(/Uses up to 6 Guava Credits \(2 per day built\)/)
+    expect(screen.queryByText(/28 Guava Credits/)).not.toBeInTheDocument()
+  })
+
+  it('states a free batch and sends only one sync request for a double click', async () => {
+    const free = { ...pendingWithCost, meta: { ...pendingWithCost.meta,
+      backfill: { ...pendingWithCost.meta.backfill, creditsPerDay: 0 },
+    } }
+    let finish!: (value: { data: typeof free }) => void
+    mockGet.mockResolvedValueOnce({ data: free })
+    mockGet.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    renderHistory()
+    const button = await screen.findByRole('button', { name: /build next 14/i })
+    expect(button).toHaveAccessibleDescription(/Free.*no Guava Credits/i)
+    await userEvent.setup().dblClick(button)
+    expect(mockGet).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: /building/i })).toBeDisabled()
+    finish({ data: free })
+    await waitFor(() => expect(screen.getByRole('button', { name: /build next 14/i })).toBeEnabled())
   })
 
 })
