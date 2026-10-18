@@ -26,7 +26,8 @@ import { paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeSt
 import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
 import { formatPlanChangeDate as formatDate, planChangeSentence, planChangeNotice, pendingChangeSentence, planNameFor, previewFor } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
-import type { Account, BillingPlan, BillingCycle, BillingProvider } from '@/types'
+import { gatewayCopy } from '@/lib/billingProvider'
+import type { Account, BillingPlan, BillingCycle } from '@/types'
 
 type SaveState = 'idle' | 'saving' | 'success' | 'error'
 type CheckoutResponse = { success: boolean; account?: Account; checkout: PaymentIntent }
@@ -35,15 +36,6 @@ type PaymentStatusResponse = { success: boolean; payment: PaymentIntent }
 
 const PAYMENT_POLL_ATTEMPTS = 4
 const PAYMENT_POLL_INTERVAL_MS = 4000
-
-const HOSTED_CHECKOUT_NOTE =
-  'Guava stores only the billing status, payment reference, and masked card metadata after confirmation.'
-const GATEWAY_COPY: Record<BillingProvider | 'none', string> = {
-  paystack: `Card details are captured by Paystack's hosted checkout. ${HOSTED_CHECKOUT_NOTE}`,
-  onegate: `Card details are captured by OneGate's hosted checkout. ${HOSTED_CHECKOUT_NOTE}`,
-  mock: 'Mock billing is on: no card is charged and nothing leaves this environment. It exists only on test environments.',
-  none: 'Card payments are not configured on this environment, so plans and credit packs cannot be bought here.',
-}
 
 const PREPARING_CHECKOUT_MESSAGE =
   'Secure checkout is still being prepared. Nothing has been charged. Try again in a moment — retrying resumes this same payment rather than starting a second one.'
@@ -783,6 +775,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                     <div className="space-y-1.5">
                       <Label htmlFor="billing-email">Billing Email</Label>
                       <Input id="billing-email" type="email" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} />
+                      <p className="text-xs text-muted-foreground">Checkout and receipts go to this address.</p>
                     </div>
                   </div>
                 )}
@@ -1148,7 +1141,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               <CardTitle>Payment Gateway</CardTitle>
             </div>
             <CardDescription>
-              {account ? GATEWAY_COPY[account.billing?.provider ?? 'none'] : 'Loading payment settings…'}
+              {gatewayCopy(account?.billing?.provider)}
             </CardDescription>
           </CardHeader>
         </Card>}

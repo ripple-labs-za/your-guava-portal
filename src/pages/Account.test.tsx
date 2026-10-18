@@ -148,6 +148,17 @@ function renderWithAuth(
 }
 
 describe('Account', () => {
+  it('shows neutral gateway text while account is loading', () => {
+    mockGet.mockReturnValue(new Promise(() => {}))
+    renderWithAuth(<Account />)
+    expect(screen.getByText(/payment provider handles card details/i)).toBeInTheDocument()
+  })
+
+  it('shows neutral gateway text after the account request fails', async () => {
+    mockGet.mockRejectedValue(new Error('offline'))
+    renderWithAuth(<Account />)
+    expect(await screen.findByText(/payment provider handles card details/i)).toBeInTheDocument()
+  })
   function serveBillingProvider(provider: 'paystack' | 'onegate' | 'mock' | null) {
     const payload = accountPayload()
     mockGet.mockImplementation((url: string) =>
