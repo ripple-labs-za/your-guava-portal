@@ -422,7 +422,9 @@ export default function History() {
           <div className="rounded-lg border border-guava-red/30 bg-guava-red/10 p-4 text-sm text-guava-red-text" role="alert">
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>{backfillError.message} {backfillError.billingLink && <Link className="underline" to="/settings?section=billing">Settings &gt; Billing &amp; usage</Link>}</p>
+              <p>{backfillError.billingLink
+                ? <Link className="underline" to="/settings?section=billing">{backfillError.message}</Link>
+                : backfillError.message}</p>
             </div>
           </div>
         )}

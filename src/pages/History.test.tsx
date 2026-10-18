@@ -507,9 +507,12 @@ describe('History page', () => {
     mockGet.mockResolvedValue({ data: pendingWithCost })
     renderHistory()
     await userEvent.setup().click(await screen.findByRole('button', { name: /build next/i }))
-    expect(await screen.findByRole('link', { name: 'Settings > Billing & usage' }))
+    expect(await screen.findByRole('link', {
+      name: 'Not enough Guava Credits to build this batch. Top up in Settings > Billing & usage, then carry on.',
+    }))
       .toHaveAttribute('href', '/settings?section=billing')
     expect(screen.getByRole('alert')).toHaveTextContent(/Not enough Guava Credits/)
+    expect(screen.getByRole('alert').textContent?.match(/Settings > Billing & usage/g)).toHaveLength(1)
   })
 
   it('asks a manager refused for credits to contact the owner', async () => {
@@ -539,7 +542,8 @@ describe('History page', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Ask the account owner to renew/)
       expect(screen.queryByRole('link', { name: /Billing & usage/ })).not.toBeInTheDocument()
     } else {
-      expect(screen.getByRole('link', { name: 'Settings > Billing & usage' })).toHaveAttribute('href', '/settings?section=billing')
+      expect(screen.getByRole('link', { name: /Read-only until 1 November 2026\. Renew in Billing\./ }))
+        .toHaveAttribute('href', '/settings?section=billing')
     }
   })
 
