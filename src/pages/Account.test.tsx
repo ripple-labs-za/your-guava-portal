@@ -985,4 +985,66 @@ describe('Account', () => {
     expect(notice).toHaveTextContent(/payment is held.*not been lost.*support/i)
   })
 
+it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announce a plan change with checkout status %s', async (status) => {
+  mockPost.mockResolvedValueOnce({
+    status: 200,
+    data: { success: true, account: accountPayload(), checkout: { provider: 'paystack', reference: 'ref-3', status } },
+  })
+  renderWithAuth(<Account />)
+  await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+
+  expect(await screen.findByText(/has not confirmed this payment yet/i)).toBeInTheDocument()
+  expect(screen.queryByText(/plan activated/i)).not.toBeInTheDocument()
+})
+
+it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announce credits with purchase status %s', async (status) => {
+  mockPost.mockResolvedValueOnce({
+    status: 200,
+    data: {
+      success: true,
+      account: accountPayload(),
+      purchase: { provider: 'paystack', credits: 500, reference: 'ref-4', status },
+    },
+  })
+  renderWithAuth(<Account />)
+  await userEvent.click(await screen.findByRole('button', { name: /500 credits/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
+
+  expect(await screen.findByText(/has not confirmed this payment yet/i)).toBeInTheDocument()
+  expect(screen.queryByText(/added 500/i)).not.toBeInTheDocument()
+})
+
+it('says payment confirmed, not activated, when a paid checkout carries no change summary', async () => {
+  mockPost.mockResolvedValueOnce({
+    status: 200,
+    data: { success: true, account: accountPayload(), checkout: { provider: 'mock', reference: 'ref-5', status: 'paid' } },
+  })
+  renderWithAuth(<Account />)
+  await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+
+  expect(await screen.findByText(/starter payment confirmed/i)).toBeInTheDocument()
+  expect(screen.queryByText(/activated/i)).not.toBeInTheDocument()
+})
+
+it.each(['plan', 'credits'])('keeps the %s idempotency key when a payment is not confirmed', async (kind) => {
+  const field = kind === 'plan' ? 'checkout' : 'purchase'
+  const url = kind === 'plan' ? '/account/checkout' : '/account/ai-credits'
+  mockPost.mockResolvedValue({ status: 200, data: {
+    success: true, account: accountPayload(),
+    [field]: { provider: 'paystack', reference: 'retry-pending', status: 'pending', credits: 500 },
+  } })
+  renderWithAuth(<Account />)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await userEvent.click(await screen.findByRole('button', { name: kind === 'plan' ? /move to starter/i : /500 credits/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
+    expect(await screen.findByText(/has not confirmed this payment yet/i)).toBeInTheDocument()
+  }
+  const calls = mockPost.mock.calls.filter(([target]) => target === url)
+  expect(calls).toHaveLength(2)
+  expect(calls[0][2].headers['Idempotency-Key']).toBeTruthy()
+  expect(calls[1][2].headers['Idempotency-Key']).toBe(calls[0][2].headers['Idempotency-Key'])
+})
+
 })

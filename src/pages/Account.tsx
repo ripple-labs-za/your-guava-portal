@@ -50,6 +50,9 @@ const isStillInitializing = (httpStatus: number | undefined, intent: PaymentInte
   intent.status === 'initializing' ||
   intent.initializationStatus === 'initializing'
 
+const NOT_CONFIRMED_MESSAGE =
+  'Checkout has not confirmed this payment yet, so nothing has changed. Retrying resumes the same payment; it will not charge twice.'
+
 const formatRand = (value: number) => `R${value.toLocaleString('en-ZA')}`
 
 const CYCLE_UNIT: Record<BillingCycle, string> = { monthly: 'month', annual: 'year' }
@@ -577,11 +580,16 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         return
       }
 
-      if (data.account) {
+      if (data.account && data.checkout.status === 'paid') {
         setAccount(data.account)
         publishBillingAccess(data.account.organization.billingAccess)
         planCheckoutRef.current = null
-        showNotice('success', planChangeNotice(data.checkout.planChange, plan.name))
+        showNotice('success', data.checkout.planChange
+          ? planChangeNotice(data.checkout.planChange, plan.name)
+          : `${plan.name} payment confirmed.`)
+      } else if (data.account) {
+        setAccount(data.account)
+        showNotice('info', NOT_CONFIRMED_MESSAGE, { persist: true })
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }
@@ -633,7 +641,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         return
       }
 
-      if (data.account) {
+      if (data.account && data.purchase.status === 'paid') {
         setAccount(data.account)
         // The toolbar caches the credit balance for 30s, so without this the
         // header still shows the pre-purchase figure while this page shows the
@@ -641,6 +649,9 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         publishGuavaCredits(data.account.usage?.guavaCredits ?? data.account.usage?.aiCredits)
         creditCheckoutRef.current = null
         showNotice('success', `Added ${packCredits.toLocaleString('en-ZA')} Guava Credits to this billing period.`)
+      } else if (data.account) {
+        setAccount(data.account)
+        showNotice('info', NOT_CONFIRMED_MESSAGE, { persist: true })
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }
