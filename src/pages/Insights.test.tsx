@@ -231,6 +231,18 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it.each([false, true])('keeps an explicit unknown charge after fallback failure with delivered=%s', async (delivered) => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse((delivered ? deltaEvent('Some answer') : '')
+      + 'event: error\ndata: ' + JSON.stringify({ charged: null, retryable: true }) + '\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'unknown-fallback', messages: [] }) } })
+      : Promise.reject({ response: { status: 503 } }))
+    render(<Insights />)
+    await askQuestion('Keep the charge unknown')
+    await within(answerBubble()).findByText('Charge not confirmed')
+    expect(screen.getByRole('status')).not.toHaveTextContent(/it was charged|nothing was charged/i)
+  })
   it('announces a refunded timeout using the server message when recovery fails', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({

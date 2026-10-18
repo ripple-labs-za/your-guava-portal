@@ -1719,7 +1719,7 @@ export default function Insights() {
       if (!isMountedRef.current) return
       const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current)
       // A failed fallback cannot settle a charge the stream explicitly left unknown.
-      if (streamFailure?.charged === null && failure.charged !== true) failure.charged = null
+      if (streamFailure?.charged === null) failure.charged = null
       if (failure.kind === 'transient' && failure.charged === false && !failure.serverMessage) {
         failure.serverMessage = streamFailure?.serverMessage
       }
