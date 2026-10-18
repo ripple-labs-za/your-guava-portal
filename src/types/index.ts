@@ -114,6 +114,7 @@ export interface Cafe {
   lastSyncAt?: string
   tradingHours?: TradingHoursEntry[]
   timezone?: string
+  timezoneEditable?: boolean
 }
 
 export interface ForecastItem {

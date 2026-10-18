@@ -73,21 +73,6 @@ function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
 }
 
-// The backend buckets transactions by cafe-local day. Reading the browser's
-// local calendar instead meant a device on UTC computed yesterday's Johannesburg
-// date for the first two hours of every trading day, so today's takings silently
-// dropped out of every tab — and a phone and a laptop disagreed.
-const JOHANNESBURG_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Africa/Johannesburg',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
-function formatDateParam(date: Date) {
-  return JOHANNESBURG_DATE.format(date)
-}
-
 type TabId = 'revenue' | 'items' | 'heatmap' | 'customers' | 'combos'
 
 const TABS: { id: TabId; label: string }[] = [
@@ -141,14 +126,9 @@ function daysForPeriod(period: PeriodId): number {
   return period === '7d' ? 7 : period === '30d' ? 30 : 90
 }
 
-function getDateRange(period: PeriodId) {
-  // Anchor on the Johannesburg calendar day, then step back whole days from
-  // that anchor so both ends of the window agree with the server's bucketing.
-  const endDate = formatDateParam(new Date())
-  const anchor = new Date(`${endDate}T00:00:00Z`)
-  const start = new Date(anchor)
-  start.setUTCDate(anchor.getUTCDate() - (daysForPeriod(period) - 1))
-  return { startDate: start.toISOString().slice(0, 10), endDate }
+// The server owns the cafe calendar, including local midnight and daylight saving.
+function windowQuery(period: PeriodId) {
+  return `days=${daysForPeriod(period)}`
 }
 
 const DAY_LABELS_BY_INDEX = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -236,9 +216,8 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    const { startDate, endDate } = getDateRange(period)
     api
-      .get<RevenueResponse>(`/analytics/revenue?period=daily&startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<RevenueResponse>(`/analytics/revenue?period=daily&${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))
@@ -428,10 +407,9 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    const { startDate, endDate } = getDateRange(period)
     api
       .get<{ items: ItemPerformance[]; meta?: RangeMeta & { risingItems?: MoverItem[]; decliningItems?: MoverItem[]; newItems?: NewItem[]; moverFloor?: MoverFloor } }>(
-        `/analytics/items?startDate=${startDate}&endDate=${endDate}`,
+        `/analytics/items?${windowQuery(period)}`,
         { signal: controller.signal }
       )
       .then(({ data }) => {
@@ -656,9 +634,8 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: RangeMeta & HeatmapMeta }>(`/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: RangeMeta & HeatmapMeta }>(`/analytics/heatmap?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(data.meta))
@@ -847,9 +824,8 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ insights: CustomerInsights; data?: CustomerInsights; meta?: RangeMeta }>(`/analytics/customers?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<{ insights: CustomerInsights; data?: CustomerInsights; meta?: RangeMeta }>(`/analytics/customers?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))
@@ -1022,9 +998,8 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ data: ComboItem[]; meta?: RangeMeta & { truncated?: boolean; basketsConsidered?: number } }>(`/analytics/combos?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<{ data: ComboItem[]; meta?: RangeMeta & { truncated?: boolean; basketsConsidered?: number } }>(`/analytics/combos?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))

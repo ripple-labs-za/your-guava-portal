@@ -625,21 +625,15 @@ describe('Analytics', () => {
     })
   })
 
-  it('anchors the date range to Johannesburg rather than the browser clock', async () => {
-    mockGet.mockImplementation(() => new Promise(() => {}))
-    render(<Analytics />)
+it('asks the server for the last N cafe days instead of computing dates in the browser', async () => {
+  mockGet.mockImplementation(() => new Promise(() => {}))
+  render(<Analytics />)
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalled())
-    const revenueCall = mockGet.mock.calls.find((call) => String(call[0]).includes('/analytics/revenue'))
-    const endDate = String(revenueCall?.[0]).match(/endDate=(\d{4}-\d{2}-\d{2})/)?.[1]
-    const johannesburgToday = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Africa/Johannesburg',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date())
-    expect(endDate).toBe(johannesburgToday)
-  })
+  await waitFor(() => expect(mockGet).toHaveBeenCalled())
+  const revenueUrl = String(mockGet.mock.calls.find((call) => String(call[0]).includes('/analytics/revenue'))?.[0])
+  expect(revenueUrl).toContain('days=30')
+  expect(revenueUrl).not.toMatch(/startDate|endDate/)
+})
 
   it('gives screen readers the revenue numbers the chart draws', async () => {
     const summary = {

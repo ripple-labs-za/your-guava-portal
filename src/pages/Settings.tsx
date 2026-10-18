@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { tradingHourHints, weekdaysWithSales } from '@/lib/tradingHoursHints'
-import { addLocalDays, toLocalDateOnly } from '@/lib/date'
+import { timezoneOptions } from '@/lib/timezones'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -124,6 +124,7 @@ interface LoadedSnapshot {
   cafeLatitude: string
   cafeLongitude: string
   cafeTimezone: string
+  timezoneEditable: boolean
   tradingHours: TradingHoursEntry[]
 }
 
@@ -276,11 +277,9 @@ export default function Settings() {
     // with forever. Eight weeks is what the forecast engine reasons over, so
     // the two messages describe the same span rather than quoting different
     // numbers for the same fact.
-    const endDate = toLocalDateOnly(new Date())
-    const startDate = toLocalDateOnly(addLocalDays(new Date(), -SALES_HINT_DAYS))
     api
       .get<{ heatmap?: HeatmapCell[]; data?: HeatmapCell[] }>(
-        `/analytics/heatmap?startDate=${startDate}&endDate=${endDate}`,
+        `/analytics/heatmap?days=${SALES_HINT_DAYS}`,
         { signal: controller.signal }
       )
       .then(({ data }) => setSalesByDay(weekdaysWithSales(data.heatmap || data.data || [])))
@@ -336,6 +335,7 @@ export default function Settings() {
           cafeLatitude: cafe.location?.lat == null ? '' : String(cafe.location.lat),
           cafeLongitude: cafe.location?.lng == null ? '' : String(cafe.location.lng),
           cafeTimezone: cafe.timezone || '',
+          timezoneEditable: cafe.timezoneEditable === true,
           tradingHours: ensureWeek(cafe.tradingHours),
         }
         setLoaded(snapshot)
@@ -421,6 +421,7 @@ export default function Settings() {
       await api.put('/cafe/me', {
         name: cafeName,
         location: buildLocationPayload(),
+        ...(loaded.timezoneEditable && cafeTimezone && cafeTimezone !== loaded.cafeTimezone ? { timezone: cafeTimezone } : {}),
       })
       setLoaded((prev) =>
         prev
@@ -436,6 +437,7 @@ export default function Settings() {
               cafeCountry,
               cafeLatitude,
               cafeLongitude,
+              cafeTimezone,
             }
           : prev
       )
@@ -464,6 +466,7 @@ export default function Settings() {
     setCafeCountry(snapshot.cafeCountry)
     setCafeLatitude(snapshot.cafeLatitude)
     setCafeLongitude(snapshot.cafeLongitude)
+    setCafeTimezone(snapshot.cafeTimezone)
     setCafeError(undefined)
     setCafeState('idle')
     setIsEditingCafe(false)
@@ -540,7 +543,8 @@ export default function Settings() {
     isEditingCafe &&
     Boolean(
       loaded &&
-        (cafeName !== loaded.cafeName ||
+        (cafeTimezone !== loaded.cafeTimezone ||
+          cafeName !== loaded.cafeName ||
           cafeAddress !== loaded.cafeAddress ||
           cafeAddressLine2 !== loaded.cafeAddressLine2 ||
           cafeSuburb !== loaded.cafeSuburb ||
@@ -937,13 +941,32 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label>Timezone</Label>
-                  <div className="flex items-center justify-between rounded-lg border border-border bg-[#0a0a0a] px-3 py-2 text-sm">
-                    <span className="text-text font-medium tabular-nums">{cafeTimezone || '—'}</span>
-                    <span className="text-muted text-xs">Contact support to change</span>
+                {loaded?.timezoneEditable ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cafe-timezone">Timezone</Label>
+                    <select
+                      id="cafe-timezone"
+                      value={cafeTimezone}
+                      onChange={(e) => setCafeTimezone(e.target.value)}
+                      className="flex h-9 w-full rounded-lg border border-border bg-[#111111] px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-red focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F0F0F]"
+                    >
+                      {timezoneOptions(cafeTimezone).map((zone) => (
+                        <option key={zone} value={zone}>{zone}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted">
+                      Sets where the cafe's day starts and ends for Performance, forecasts and imports. It can be changed until the first sales are imported.
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-medium text-text">Timezone</p>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2 text-sm">
+                      <span className="text-text font-medium tabular-nums">{cafeTimezone || '—'}</span>
+                      <span className="text-muted text-xs text-right">Fixed once sales are imported. Contact support to change it.</span>
+                    </div>
+                  </div>
+                )}
 
                 <StatusBanner state={cafeState} error={cafeError} />
                 <Separator />

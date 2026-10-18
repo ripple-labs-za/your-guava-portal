@@ -61,6 +61,63 @@ function renderWithAuth(ui: ReactNode, { role = 'owner' }: { role?: 'owner' | 'm
 }
 
 describe('Settings', () => {
+const cafeWithTimezone = (timezoneEditable: boolean) => (url: string) => {
+  if (url.includes('/cafe/me')) {
+    return Promise.resolve({
+      data: {
+        success: true,
+        cafe: { name: 'Cafe X', location: { city: 'London' }, timezone: 'Africa/Johannesburg', timezoneEditable },
+      },
+    })
+  }
+  return Promise.resolve({ data: {} })
+}
+
+it('lets the owner choose a timezone before the first import', async () => {
+  mockGet.mockImplementation(cafeWithTimezone(true))
+  mockPut.mockResolvedValueOnce({ data: { success: true } })
+  renderWithAuth(<Settings />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+  const select = (await screen.findByLabelText(/^Timezone$/i)) as HTMLSelectElement
+  expect(select.value).toBe('Africa/Johannesburg')
+  fireEvent.change(select, { target: { value: 'Europe/London' } })
+  fireEvent.click(screen.getByText('Save Cafe Details'))
+
+  await waitFor(() => {
+    expect(mockPut).toHaveBeenCalledWith('/cafe/me', expect.objectContaining({ timezone: 'Europe/London' }))
+  })
+})
+
+it('says the timezone is fixed once sales exist, and does not send it', async () => {
+  mockGet.mockImplementation(cafeWithTimezone(false))
+  mockPut.mockResolvedValueOnce({ data: { success: true } })
+  renderWithAuth(<Settings />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+  expect(await screen.findByText(/fixed once sales are imported/i)).toBeInTheDocument()
+  expect(screen.queryByLabelText(/^Timezone$/i)).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText(/^Cafe Name$/i), { target: { value: 'Cafe Y' } })
+  fireEvent.click(screen.getByText('Save Cafe Details'))
+
+  await waitFor(() => expect(mockPut).toHaveBeenCalled())
+  expect(mockPut.mock.calls[0][1]).not.toHaveProperty('timezone')
+})
+
+it('shows the server reason when a timezone is refused', async () => {
+  mockGet.mockImplementation(cafeWithTimezone(true))
+  mockPut.mockRejectedValueOnce({
+    response: { status: 400, data: { success: false, code: 'INVALID_TIMEZONE', message: 'Choose a timezone from the list, such as Africa/Johannesburg.' } },
+  })
+  renderWithAuth(<Settings />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+  fireEvent.change(await screen.findByLabelText(/^Timezone$/i), { target: { value: 'Europe/London' } })
+  fireEvent.click(screen.getByText('Save Cafe Details'))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(/choose a timezone from the list/i)
+})
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
