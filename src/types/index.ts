@@ -502,7 +502,8 @@ export interface ItemPerformance {
   totalQty: number
   totalRevenue: number
   avgPerDay: number
-  trend: number
+  trend: number | null
+  isNew?: boolean
 }
 
 /** GET /analytics/heatmap meta: how many sales in the window had a time of day (BE-03-T06). */
@@ -511,6 +512,7 @@ export interface HeatmapMeta {
 }
 
 export interface HeatmapCell {
+  isOpen?: boolean
   dayOfWeek: number
   hour: number
   revenue: number

@@ -390,7 +390,8 @@ describe('Analytics', () => {
               { name: 'Flat White', totalQty: 22, totalRevenue: 880, avgPerDay: 0.7, trend: 4 },
               { name: 'Croissant', totalQty: 9, totalRevenue: 270, avgPerDay: 0.3, trend: -2 },
             ],
-            meta: { startDate: null, endDate: null, risingItems: [], decliningItems: [] },
+            meta: { startDate: null, endDate: null, risingItems: [], decliningItems: [], newItems: [],
+              moverFloor: { minAvgPerDay: 2, windowDays: 7, minQty: 14, eligibleCount: 0, busiestQty: 9 } },
           },
         })
       }
@@ -403,8 +404,8 @@ describe('Analytics', () => {
     await waitFor(() => expect(screen.getByText('Movers')).toBeInTheDocument())
     const note = screen.getAllByText(/so ranking movers would be noise/i)[0]
     // The bar, the window it is measured over, and where they actually are.
-    expect(note).toHaveTextContent(/60\+ over these 30 days/)
-    expect(note).toHaveTextContent(/busiest line sold 22/)
+    expect(note).toHaveTextContent(/14\+ in either of the last two weeks/)
+    expect(note).toHaveTextContent(/busiest line sold 9 in a week/)
   })
 
   it('marks the Movers window as fixed and independent of the range selector', async () => {
@@ -904,5 +905,67 @@ it('says the daily average is per open day', async () => {
 
   expect(await screen.findByText('across 7 open days')).toBeInTheDocument()
 })
+
+  it('lists new items as new and shows the movers the server ranked', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/items')) {
+        return Promise.resolve({
+          data: {
+            items: [
+              { name: 'Latte', totalQty: 92, totalRevenue: 2760, avgPerDay: 6.6, trend: 30, isNew: false },
+              { name: 'Iced Matcha', totalQty: 20, totalRevenue: 900, avgPerDay: 1.4, trend: null, isNew: true },
+            ],
+            meta: {
+              risingItems: [{ name: 'Oat Latte', trend: 45 }],
+              decliningItems: [],
+              newItems: [{ name: 'Iced Matcha', currentQty: 20 }],
+              moverFloor: { minAvgPerDay: 2, windowDays: 7, minQty: 14, eligibleCount: 2, busiestQty: 52 },
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /items/i }))
+
+    // Oat Latte is not among the top items by revenue; the old client filter dropped it.
+    expect(await screen.findByText('Oat Latte')).toBeInTheDocument()
+    expect(screen.getByText('+45.0%')).toBeInTheDocument()
+    expect(screen.getByText('New this period')).toBeInTheDocument()
+    expect(screen.getByText('20 sold · new')).toBeInTheDocument()
+    expect(screen.queryByText('+100.0%')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getByText('New')).toBeInTheDocument()
+  })
+
+  it('dims hours the cafe is closed and says so', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/heatmap')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            heatmap: [
+              { dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3, isOpen: true },
+              { dayOfWeek: 0, hour: 8, revenue: 0, transactions: 0, isOpen: false },
+              { dayOfWeek: 0, hour: 10, revenue: 40, transactions: 1, isOpen: false },
+            ],
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+
+    const closed = await screen.findByRole('button', { name: /sunday 08:00, closed/i })
+    expect(closed).toHaveAttribute('title', 'Sun 08:00 - Closed')
+    expect(closed).toHaveAttribute('data-closed', 'true')
+    expect(screen.getByRole('button', { name: /sunday 10:00, closed/i })).toHaveAttribute('title', 'Sun 10:00 - Closed - R40 avg')
+    const open = screen.getByRole('button', { name: /monday 08:00/i })
+    expect(open).not.toHaveAttribute('data-closed')
+    expect(open.getAttribute('aria-label')).not.toMatch(/closed/i)
+  })
 
 })
