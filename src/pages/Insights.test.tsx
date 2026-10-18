@@ -274,6 +274,24 @@ describe('Insights', () => {
     expect(screen.getByRole('status', { name: 'Analysis status' })).toBe(region)
     expect(screen.getByText('Covers the 14 completed days before today')).toBeVisible()
   })
+
+  it('creates an account chat with only the newest eighty messages from a device transcript', async () => {
+    const messages = Array.from({ length: 80 }, (_, index) => ({
+      id: `device-${index}`, role: index % 2 === 0 ? 'user' : 'assistant', content: `Message ${index}`,
+    }))
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({ scopeId: CHAT_SCOPE_ID, activeChatId: null, messages }))
+    mockBaseRequests()
+    mockPost.mockResolvedValue({ data: { chat: chat({ messages: [] }) } })
+    mockPatch.mockResolvedValue({ data: { chat: chat({ messages: [] }) } })
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Fine.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+    render(<Insights />)
+    await askQuestion('Newest device question')
+    await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/insight-chats', expect.anything()))
+    const payload = mockPost.mock.calls.find((call) => call[0] === '/insight-chats')?.[1]
+    expect(payload.messages).toHaveLength(80)
+    expect(payload.messages[0]).toEqual({ role: 'assistant', content: 'Message 1' })
+    expect(payload.messages.at(-1)).toEqual({ role: 'user', content: 'Newest device question' })
+  })
   it.each([false, true])('keeps an explicit unknown charge after fallback failure with delivered=%s', async (delivered) => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse((delivered ? deltaEvent('Some answer') : '')
@@ -1383,4 +1401,54 @@ describe('Insights', () => {
     expect(await screen.findByText('Before the import.')).toBeInTheDocument()
     expect(screen.getByRole('status', { name: 'Analysis status' })).toHaveTextContent(/predates your last import/i)
   })
+it('does not attempt a paid fallback after the stream refuses an oversized question', async () => {
+  mockBaseRequests()
+  vi.mocked(fetch).mockResolvedValue(refusedResponse(413, {
+    details: { code: 'PAYLOAD_TOO_LARGE' },
+  }))
+  mockPost.mockResolvedValue({ data: { chat: chat({ messages: [] }) } })
+  render(<Insights />)
+  await askQuestion('Question too large for this server')
+  expect(await within(answerBubble()).findByText(/shorten it and try again.*nothing was charged/i)).toBeInTheDocument()
+  expect(chatFallbackCalls()).toHaveLength(0)
+  expect(within(answerBubble()).queryByRole('button', { name: /try again|ask again/i })).not.toBeInTheDocument()
+})
+
+it('shows a saved-chat 413 instead of silently creating a local conversation', async () => {
+  mockBaseRequests()
+  mockPost.mockRejectedValue({ response: { status: 413 } })
+  render(<Insights />)
+  await askQuestion('Keep this question')
+  expect(await screen.findByText(/too long to save to your account/i)).toBeInTheDocument()
+  expect(fetch).not.toHaveBeenCalled()
+  expect(chatFallbackCalls()).toHaveLength(0)
+})
+
+it('saves only the newest eighty messages after continuing a long transcript', async () => {
+  const saved = chat({ messages: Array.from({ length: 80 }, (_, index) => ({
+    id: `long-save-${index}`,
+    role: index % 2 === 0 ? 'user' : 'assistant',
+    content: `Message ${index}`,
+  })) })
+  storeActiveChat(saved)
+  mockBaseRequests([saved])
+  vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Fine.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+  mockPatch.mockResolvedValue({ data: { chat: saved } })
+  render(<Insights />)
+  await askQuestion('Newest question')
+  await waitFor(() => expect(mockPatch).toHaveBeenCalled())
+  const payload = mockPatch.mock.calls[mockPatch.mock.calls.length - 1]?.[1]
+  expect(payload.messages).toHaveLength(80)
+  expect(payload.messages[0]).toEqual({ role: 'user', content: 'Message 2' })
+  expect(payload.messages.at(-2)).toEqual({ role: 'user', content: 'Newest question' })
+  expect(payload.messages.at(-1)).toEqual({ role: 'assistant', content: 'Fine.' })
+})
+
+it('caps the composer at the four thousand characters the model reads', async () => {
+  mockBaseRequests()
+  render(<Insights />)
+  const composer = await screen.findByRole('textbox', { name: 'Ask a question about your cafe data' })
+  expect(composer).toHaveAttribute('maxlength', '4000')
+})
+
 })

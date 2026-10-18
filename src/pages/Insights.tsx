@@ -37,10 +37,10 @@ import { publishGuavaCredits, type GuavaCreditSnapshot } from '@/lib/creditEvent
 import { secureRandomId } from '@/lib/idempotency'
 import { resolveRefreshOutcome, insightRefreshErrorNotice, INSIGHT_WINDOW_COPY, type InsightCacheStatus } from '@/lib/insightRefresh'
 import { cn } from '@/lib/utils'
-import { getInsightChatStorageKeys, readScopedStorage, writeScopedStorage, trailingChatWindow } from '@/lib/chatStorage'
+import { getInsightChatStorageKeys, readScopedStorage, writeScopedStorage } from '@/lib/chatStorage'
+import { CHAT_MESSAGE_MAX_CHARS, trailingChatWindow } from '@/lib/chatWindow'
 import { useAuth } from '@/hooks/useAuth'
 import guavaIcon from '@/assets/guava-icon.png'
-
 interface Insight {
   id: string
   text: string
@@ -527,7 +527,7 @@ const ChatComposer = memo(function ChatComposer({
         }}
       >
         <textarea
-          value={input}
+          value={input} maxLength={CHAT_MESSAGE_MAX_CHARS}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -1420,7 +1420,7 @@ export default function Insights() {
 
     const payload = {
       title: titleFromMessages(chatMessages),
-      messages: messagesForApi(chatMessages),
+      messages: messagesForApi(chatMessages).slice(-80),
       contextStats: stats || undefined,
     }
 
@@ -1435,7 +1435,7 @@ export default function Insights() {
       // the user kept talking into a copy that only ever existed in this
       // browser, while the untouched server row reappeared, stale, at the next
       // load. The server chat stays; only the save is reported as failed.
-      setChatNotice((error as { response?: { status?: number } })?.response?.status === 413 ? 'This chat is too long to save to your account. Start a new chat to keep saving; this one stays on this device.' : savedChatFailureNotice(error) ?? 'Could not save this chat to your account. It is kept on this device for now.')
+      setChatNotice(savedChatFailureNotice(error) ?? 'Could not save this chat to your account. It is kept on this device for now.')
     }
   }
 
@@ -1445,7 +1445,7 @@ export default function Insights() {
     try {
       const { data } = await api.post('/insight-chats', {
         title: titleFromMessages(chatMessages),
-        messages: messagesForApi(chatMessages),
+        messages: messagesForApi(chatMessages).slice(-80),
         contextStats: contextStats || undefined,
       })
       const createdChat = withMessageIds(data.chat)

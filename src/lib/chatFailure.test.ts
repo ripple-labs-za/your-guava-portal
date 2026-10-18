@@ -78,3 +78,24 @@ describe('charge recovery copy', () => {
     expect(chatFailureCopy({ kind: 'cancelled', charged: false }).detail).toContain('No answer text had arrived')
   })
 })
+
+describe('oversized chat requests', () => {
+  const detail = 'That message is too long to send. Shorten it and try again. Nothing was charged.'
+  it.each([
+    [413, {}],
+    [400, { details: { code: 'PAYLOAD_TOO_LARGE' } }],
+  ])('refuses a stream HTTP %s without offering a paid retry', async (status, body) => {
+    const error = await chatRequestErrorFrom(new Response(JSON.stringify(body), { status }))
+    const failure = chatFailureFrom(error, false)
+    expect(failure).toMatchObject({ kind: 'payload-too-large', charged: false })
+    expect(chatFailureCopy(failure)).toMatchObject({ detail, action: null })
+  })
+  it.each([
+    { status: 413 },
+    { status: 400, data: { details: { code: 'PAYLOAD_TOO_LARGE' } } },
+  ])('maps the saved-chat length failure into the shared notice: %j', (response) => {
+    expect(savedChatFailureNotice({ response })).toContain('too long to save to your account')
+    expect(chatFailureCopy(chatFailureFrom({ response }, false))).toMatchObject({ detail, action: null })
+  })
+})
+

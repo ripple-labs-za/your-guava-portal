@@ -9,7 +9,10 @@ const retryAfterSecondsValue = (raw: unknown): number | undefined => {
 }
 
 export function savedChatFailureNotice(error: unknown): string | null {
-  const response = (error as { response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string } } })?.response
+  const response = (error as { response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string; details?: { code?: string } } } })?.response
+  if (response?.status === 413 || response?.data?.details?.code === 'PAYLOAD_TOO_LARGE') {
+    return 'This chat is too long to save to your account. Start a new chat to keep saving; this one stays on this device.'
+  }
   if (response?.status !== 429 || response.data?.code !== 'CHAT_RATE_LIMITED') return null
   const seconds = retryAfterSecondsValue(response.headers?.['retry-after'])
   const wait = seconds !== undefined ? `${seconds} seconds` : 'up to a minute'
@@ -27,6 +30,7 @@ export type ChatFailureKind =
   | 'cafe-access'
   | 'invalid-request'
   | 'provider-rejected'
+  | 'payload-too-large'
 
 export interface ChatFailure {
   kind: ChatFailureKind
@@ -64,6 +68,7 @@ export function chatFailureFromStreamEvent(data: {
 }
 
 function failureKindForStatus(status: number, code?: string): ChatFailureKind | null {
+  if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return 'payload-too-large'
   if (status === 403 && code === 'CAFE_ACCESS_REVOKED') return 'cafe-access'
   if (status === 400 && code === 'AI_CHAT_INVALID_INPUT') return 'invalid-request'
   if (status === 402) return 'out-of-credits'
@@ -91,7 +96,9 @@ export async function chatRequestErrorFrom(response: Response) {
 
   return new ChatRequestError(
     {
-      kind: body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
+      kind: status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? 'payload-too-large'
+        : body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
+      ...(status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? { charged: false } : {}),
       serverMessage: serverMessageFrom(body?.message),
       available: body?.details?.available,
       required: body?.details?.required,
@@ -105,7 +112,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
   if (error instanceof ChatRequestError) {
     const { failure } = error
-    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected']
+    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected', 'payload-too-large']
       .includes(failure.kind)
     return {
       ...failure,
@@ -126,6 +133,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   })?.response
   const status = response?.status
   const code = response?.data?.code ?? response?.data?.details?.code
+  if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return { kind: 'payload-too-large', charged: false }
   if (response?.data?.details?.retryable === false) {
     return { kind: 'provider-rejected', charged: delivered, serverMessage: serverMessageFrom(response.data.message) }
   }
@@ -172,6 +180,12 @@ export function chatFailureCopy(failure: ChatFailure) {
     }
   }
   switch (failure.kind) {
+    case 'payload-too-large':
+      return {
+        title: 'This message is too long',
+        detail: 'That message is too long to send. Shorten it and try again. Nothing was charged.',
+        action: null,
+      }
     case 'provider-rejected':
       return {
         title: 'The AI service could not take this request',
