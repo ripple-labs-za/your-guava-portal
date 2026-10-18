@@ -46,7 +46,7 @@ interface Insight {
   generatedAt: string | null
 }
 
-type InsightCacheStatus = 'fresh' | 'stale' | 'empty' | 'unconfigured'
+type InsightCacheStatus = 'fresh' | 'stale' | 'empty' | 'unconfigured' | 'insufficient_data'
 
 interface InsightReadResponse {
   success: boolean
@@ -57,6 +57,8 @@ interface InsightReadResponse {
 }
 
 interface InsightRefreshResponse extends Omit<InsightReadResponse, 'cacheStatus'> {
+  cacheStatus?: InsightCacheStatus
+  insufficientData?: boolean
   guavaCredits?: GuavaCreditSnapshot
   aiCredits?: GuavaCreditSnapshot
   meta?: { replayed?: boolean; coalesced?: boolean }
@@ -748,6 +750,7 @@ export default function Insights() {
   const [insightsError, setInsightsError] = useState(false)
   const [insightsRetryKind, setInsightsRetryKind] = useState<'load' | 'refresh'>('load')
   const [cacheStatus, setCacheStatus] = useState<InsightCacheStatus>('empty')
+  const [insufficientNotice, setInsufficientNotice] = useState<string | null>(null)
   const [requiresRefresh, setRequiresRefresh] = useState(false)
   const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null)
   const [hasData, setHasData] = useState(true)
@@ -972,8 +975,17 @@ export default function Insights() {
         {},
         { headers: { 'Idempotency-Key': idempotencyKey }, timeout: 90_000 }
       )
-      applyInsightPayload(data, 'fresh')
-      setRequiresRefresh(false)
+      const status: InsightCacheStatus = ['fresh', 'stale', 'insufficient_data', 'unconfigured'].includes(data.cacheStatus as string)
+        ? (data.cacheStatus as InsightCacheStatus)
+        : 'fresh'
+      if (status === 'insufficient_data') {
+        setInsufficientNotice(Array.isArray(data.insights) && typeof data.insights[0] === 'string' ? data.insights[0] : null)
+        applyInsightPayload({ insights: [], generatedAt: null }, status)
+      } else {
+        setInsufficientNotice(null)
+        applyInsightPayload(data, status)
+      }
+      setRequiresRefresh(Boolean(data.requiresRefresh))
       const creditSnapshot = data.guavaCredits ?? data.aiCredits
       setCreditsRemaining(creditSnapshot?.available ?? null)
       publishGuavaCredits(creditSnapshot)
@@ -1953,10 +1965,11 @@ export default function Insights() {
                       <Sparkles className="w-6 h-6 text-muted" />
                     </div>
                     <h2 className="text-text text-base font-semibold mb-2">
-                      {cacheStatus === 'unconfigured' ? 'AI insights are not configured' : 'No generated insights yet'}
+                      {cacheStatus === 'insufficient_data' ? 'Nothing to analyse yet'
+                        : cacheStatus === 'unconfigured' ? 'AI insights are not configured' : 'No generated insights yet'}
                     </h2>
                     <p className="text-muted text-sm mb-5 max-w-xs">
-                      {cacheStatus === 'unconfigured'
+                      {cacheStatus === 'insufficient_data' ? insufficientNotice : cacheStatus === 'unconfigured'
                         ? 'Insight generation is unavailable in this environment. Contact support for configuration help.'
                         : 'Generate an analysis from your imported sales data, or upload transactions if this cafe has none yet.'}
                     </p>

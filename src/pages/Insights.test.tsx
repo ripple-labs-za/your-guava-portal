@@ -1229,4 +1229,54 @@ describe('Insights', () => {
       expect(screen.getByText('Best sellers review')).toBeInTheDocument()
     })
   })
+  it('shows the no-data answer from a refresh as a notice, not as a fresh insight', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/forecasts/insights')) {
+        return Promise.resolve({
+          data: { success: true, insights: [], generatedAt: null, requiresRefresh: true, cacheStatus: 'empty' },
+        })
+      }
+      if (url.includes('/insight-chats')) return Promise.resolve({ data: { chats: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    const sentence = 'There are no approved sales in the 14 completed days before today, so there is nothing to analyse yet. Upload or sync your sales and refresh again — no Guava Credits were used.'
+    mockPost.mockResolvedValue({
+      data: {
+        success: true, insights: [sentence], generatedAt: '2026-09-28T08:00:00.000Z',
+        requiresRefresh: true, cacheStatus: 'insufficient_data', insufficientData: true,
+      },
+    })
+
+    render(<Insights />)
+    await userEvent.click(await screen.findByRole('button', { name: /generate \(10 credits\)/i }))
+
+    expect(await screen.findByRole('heading', { name: /nothing to analyse yet/i })).toBeInTheDocument()
+    expect(screen.getByText(sentence)).toBeInTheDocument()
+    expect(screen.queryByText(/updated just now/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /upload sales data/i })).toBeInTheDocument()
+  })
+
+  it('keeps a replayed pre-import analysis marked as out of date', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/forecasts/insights')) {
+        return Promise.resolve({
+          data: { success: true, insights: ['Older analysis'], generatedAt: '2026-09-28T06:00:00.000Z', requiresRefresh: true, cacheStatus: 'stale' },
+        })
+      }
+      if (url.includes('/insight-chats')) return Promise.resolve({ data: { chats: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    mockPost.mockResolvedValue({
+      data: {
+        success: true, insights: ['Before the import.'], generatedAt: '2026-09-28T07:00:00.000Z',
+        requiresRefresh: true, cacheStatus: 'stale', meta: { replayed: true, coalesced: false },
+      },
+    })
+
+    render(<Insights />)
+    await userEvent.click(await screen.findByRole('button', { name: /refresh \(10 credits\)/i }))
+
+    expect(await screen.findByText('Before the import.')).toBeInTheDocument()
+    expect(screen.getByText(/may be out of date/i)).toBeInTheDocument()
+  })
 })
