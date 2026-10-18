@@ -723,7 +723,7 @@ export default function Dashboard() {
     },
     {
       label: 'Total Items',
-      value: totalItems.toLocaleString(),
+      value: Math.round(totalItems).toLocaleString(),
       sub: coverage?.itemCount
         ? `across ${coverage.itemCount} forecast ${coverage.itemCount === 1 ? 'line' : 'lines'}`
         : stats

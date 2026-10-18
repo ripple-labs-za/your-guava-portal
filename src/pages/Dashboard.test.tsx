@@ -421,6 +421,17 @@ describe('Dashboard', () => {
     })
   }
 
+  it('rounds the unrounded item total for display', async () => {
+    mockWeek({
+      ...mockForecast,
+      _id: 'f-unrounded',
+      forecastCoverage: { itemCount: 41, storedItemCount: 25, totalPredictedQty: 812.4, includesAllRevenue: true },
+    })
+    render(<Dashboard />)
+    expect(await screen.findByText('812')).toBeInTheDocument()
+    expect(screen.queryByText('812.4')).not.toBeInTheDocument()
+  })
+
   it('counts every forecast line in Total Items, not only the 25 the API stores', async () => {
     // Revenue is accumulated over all 41 lines; summing the stored 25 put a
     // short Total Items directly beside a complete Forecast Revenue.

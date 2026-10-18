@@ -118,6 +118,7 @@ export interface Cafe {
 }
 
 export interface ForecastItem {
+  expectedQty?: number
   itemName: string
   baseQty?: number
   predictedQty: number
