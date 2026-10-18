@@ -43,6 +43,20 @@ export class ChatRequestError extends Error {
   }
 }
 
+const serverMessageFrom = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value : undefined
+
+export function chatFailureFromStreamEvent(data: {
+  message?: unknown; code?: string; charged?: boolean | null; retryable?: boolean; credits?: number
+}): ChatFailure {
+  return {
+    kind: data.retryable === false ? 'provider-rejected' : data.charged === true ? 'interrupted' : 'transient',
+    charged: typeof data.charged === 'boolean' ? data.charged : null,
+    credits: data.credits,
+    serverMessage: serverMessageFrom(data.message),
+  }
+}
+
 function failureKindForStatus(status: number, code?: string): ChatFailureKind | null {
   if (status === 403 && code === 'CAFE_ACCESS_REVOKED') return 'cafe-access'
   if (status === 400 && code === 'AI_CHAT_INVALID_INPUT') return 'invalid-request'
@@ -73,12 +87,12 @@ export async function chatRequestErrorFrom(response: Response) {
   return new ChatRequestError(
     {
       kind: body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
-      serverMessage: body?.message,
+      serverMessage: serverMessageFrom(body?.message),
       available: body?.details?.available,
       required: body?.details?.required,
       retryAfterSeconds: retryAfterSecondsFrom(response),
     },
-    body?.message || `Streaming chat request failed (${status || 'no status'})`
+    serverMessageFrom(body?.message) || `Streaming chat request failed (${status || 'no status'})`
   )
 }
 
@@ -107,7 +121,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   const status = response?.status
   const code = response?.data?.code ?? response?.data?.details?.code
   if (response?.data?.details?.retryable === false) {
-    return { kind: 'provider-rejected', charged: delivered, serverMessage: response.data.message }
+    return { kind: 'provider-rejected', charged: delivered, serverMessage: serverMessageFrom(response.data.message) }
   }
   if (typeof status === 'number') {
     const kind = failureKindForStatus(status, code)
@@ -124,6 +138,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
     return {
       kind: failureKindForStatus(status) ?? 'transient',
       charged: delivered,
+      serverMessage: serverMessageFrom(response?.data?.message),
       available: response?.data?.details?.available,
       required: response?.data?.details?.required,
     }
@@ -142,15 +157,17 @@ export function chatFailureCopy(failure: ChatFailure) {
   if (failure.charged === null) {
     return {
       title: 'Charge not confirmed',
-      detail: 'The charge could not be confirmed. Loading this request again will not create a second charge.',
-      action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
+      detail: failure.kind === 'provider-rejected'
+        ? 'The charge could not be confirmed. The AI service could not accept this request.'
+        : 'The charge could not be confirmed. Loading this request again will not create a second charge.',
+      action: failure.kind === 'provider-rejected' ? null : { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
     }
   }
   switch (failure.kind) {
     case 'provider-rejected':
       return {
         title: 'The AI service could not take this request',
-        detail: failure.serverMessage ?? 'Retrying will not help. Nothing was charged.',
+        detail: failure.serverMessage ?? 'The AI service could not accept this request.',
         action: null,
       }
     case 'cafe-access':
@@ -219,7 +236,9 @@ export function chatFailureCopy(failure: ChatFailure) {
     default:
       return {
         title: 'The AI analyst could not finish this answer',
-        detail: 'Anything above this line is what arrived before the answer stopped.',
+        detail: failure.serverMessage ?? (failure.charged === false
+          ? 'The AI service could not finish this answer. Nothing was charged. Try again.'
+          : 'Anything above this line is what arrived before the answer stopped.'),
         action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
       }
   }

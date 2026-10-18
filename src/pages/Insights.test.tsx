@@ -231,6 +231,32 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('announces a refunded timeout using the server message when recovery fails', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({
+      code: 'AI_PROVIDER_TIMEOUT', retryable: true, charged: false,
+      message: 'The AI service took too long to answer. Nothing was charged. Try again.',
+    }) + '\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'timeout-refund', messages: [] }) } })
+      : Promise.reject({ response: { status: 504, data: { details: { retryable: true } } } }))
+    render(<Insights />)
+    await askQuestion('Timeout question')
+    await within(answerBubble()).findByText(/nothing was charged/i)
+    expect(screen.getByRole('status')).toHaveTextContent(/nothing was charged/i)
+  })
+  it('does not use a paid fallback when an unfixable stream failure has an unknown charge', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({
+      code: 'AI_PROVIDER_AUTH_FAILED', retryable: false, charged: null,
+    }) + '\n\n'))
+    mockPost.mockResolvedValue({ data: { chat: chat({ _id: 'unknown-auth', messages: [] }) } })
+    render(<Insights />)
+    await askQuestion('Unknown charge question')
+    await within(answerBubble()).findByText('Charge not confirmed')
+    expect(chatFallbackCalls()).toHaveLength(0)
+    expect(within(answerBubble()).queryByRole('button', { name: /try again|load the full answer/i })).not.toBeInTheDocument()
+  })
   it('shows the saved-chat 429 wait instead of silently creating a local chat', async () => {
     mockBaseRequests()
     mockPost.mockRejectedValue({ response: { status: 429, data: { code: 'CHAT_RATE_LIMITED' }, headers: { 'retry-after': '17' } } })
@@ -313,7 +339,7 @@ describe('Insights', () => {
       : Promise.reject(new Error('connection failed')))
     render(<Insights />)
     await askQuestion('Check charge status')
-    await within(answerBubble()).findByText(/nothing came back from the server/i)
+    await within(answerBubble()).findByText(charged === false ? /nothing came back from the server/i : /charge not confirmed/i)
     expect(within(answerBubble()).queryByText(/it was charged/i)).not.toBeInTheDocument()
     expect(screen.getByRole('status')).not.toHaveTextContent(/nothing was charged/i)
   })

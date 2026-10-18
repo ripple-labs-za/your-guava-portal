@@ -1,4 +1,4 @@
-import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureCopy, savedChatFailureNotice, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
+import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureFromStreamEvent, chatFailureCopy, savedChatFailureNotice, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
 import {
   useState,
   useEffect,
@@ -1318,13 +1318,9 @@ export default function Insights() {
       return { type: 'done' as const, contextStats: data.contextStats || null }
     }
     if (eventName === 'error') {
-      if (data.retryable === false && data.charged === false) {
-        throw new ChatRequestError({ kind: 'provider-rejected', charged: false, serverMessage: data.message },
-          data.message || 'The AI service could not accept this request.')
-      }
+      const failure = chatFailureFromStreamEvent(data)
       throw new ChatRequestError(
-        { kind: data.charged === true ? 'interrupted' : 'transient', charged: typeof data.charged === 'boolean' ? data.charged : null, credits: data.credits },
-        data.message || 'The AI stream stopped unexpectedly.'
+        failure, failure.serverMessage || 'The AI stream stopped unexpectedly.'
       )
     }
     return { type: 'ignored' as const }
@@ -1647,6 +1643,7 @@ export default function Insights() {
     setIsChatLoading(true)
     setChatStatus('Guava is working on your answer.')
 
+    let streamFailure: ChatFailure | undefined
     try {
       const chatId = await ensureActiveChat(nextMessages)
       const payloadMessages = messagesForApi(nextMessages)
@@ -1683,6 +1680,7 @@ export default function Insights() {
         )
       } catch (streamError) {
         const failure = chatFailureFrom(streamError, userCancelledRef.current, streamDeliveredRef.current)
+        streamFailure = failure
         // The fallback is a second billable request. It is only worth issuing
         // when the failure could plausibly resolve: a 402, 403 or 429 cannot,
         // a stopped answer was not wanted, and an unmounted page has nowhere to
@@ -1720,6 +1718,11 @@ export default function Insights() {
     } catch (error) {
       if (!isMountedRef.current) return
       const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current)
+      // A failed fallback cannot settle a charge the stream explicitly left unknown.
+      if (streamFailure?.charged === null && failure.charged !== true) failure.charged = null
+      if (failure.kind === 'transient' && failure.charged === false && !failure.serverMessage) {
+        failure.serverMessage = streamFailure?.serverMessage
+      }
       // A refusal is settled: the same question later is a new request, so it
       // must not reuse a key the server would replay.
       if (failure.charged !== true && (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || failure.kind === 'interrupted')) {
