@@ -326,11 +326,11 @@ describe('Account', () => {
   // PaymentSession.status is an enum of five values. Reporting anything other
   // than 'failed'/'cancelled' as a failure invites a second card charge.
 
-  function mockPaymentStatus(status: string, reference = 'pay-1') {
+  function mockPaymentStatus(status: string, reference = 'pay-1', kind?: 'plan' | 'credits') {
     window.history.pushState({}, '', `/account?payment=${status}&reference=${reference}`)
     mockGet.mockImplementation((url: string) => {
       if (url.includes(`/account/payments/${reference}`)) {
-        return Promise.resolve({ data: { success: true, payment: { reference, status } } })
+        return Promise.resolve({ data: { success: true, payment: { reference, status, kind } } })
       }
       if (url.includes('/account')) {
         return Promise.resolve({ data: { success: true, account: accountPayload() } })
@@ -358,7 +358,10 @@ describe('Account', () => {
 
     const notice = await screen.findByText(/needs a manual check/i)
     expect(notice).toHaveTextContent(/do not pay again/i)
-    expect(notice).toHaveTextContent(/reference: pay-1/i)
+    const banner = notice.closest('[role="status"]')!
+    expect(banner).toHaveTextContent(/reference: pay-1/i)
+    expect(banner).toHaveTextContent(/email support@yourguava.co.za with this reference/i)
+    expect(screen.getByLabelText('Payment reference')).toHaveTextContent(/^pay-1$/)
     expect(window.location.search).toContain('reference=pay-1')
     expect(notice.closest('[role="alert"]')).toBeNull()
     expect(screen.queryByText(/no billing changes were made/i)).not.toBeInTheDocument()
@@ -369,6 +372,34 @@ describe('Account', () => {
     renderWithAuth(<Account />)
 
     expect(await screen.findByText(/refunded or reversed/i)).toBeInTheDocument()
+  })
+
+  it.each(['plan', 'credits'] as const)('explains a reversed %s payment without unrelated consequences', async (kind) => {
+    mockPaymentStatus('reversed', 'refund-kind', kind)
+    renderWithAuth(<Account />)
+    const notice = await screen.findByText(/refunded or reversed/i)
+    expect(notice).toHaveTextContent(kind === 'plan' ? /plan access is reviewed manually/i : /unspent pack credits are withdrawn/i)
+    expect(notice).not.toHaveTextContent(kind === 'plan' ? /pack credits/i : /plan access/i)
+  })
+
+  it('lets an abandoned checkout owner start again', async () => {
+    mockPaymentStatus('pending')
+    renderWithAuth(<Account />)
+    const notice = await screen.findByText(/has not been confirmed/i)
+    expect(notice).toHaveTextContent(/if you did not finish checkout, you can start it again/i)
+    expect(notice).not.toHaveTextContent(/do not pay again/i)
+  })
+
+  it('dismisses a held payment notice and removes only its payment URL parameters', async () => {
+    mockPaymentStatus('needs_attention')
+    window.history.replaceState({}, '', '/account?section=billing&payment=needs_attention&reference=pay-1&keep=yes')
+    renderWithAuth(<Account />)
+    await screen.findByText(/needs a manual check/i)
+    await userEvent.click(screen.getByRole('button', { name: /dismiss payment notice/i }))
+    await waitFor(() => expect(screen.queryByText(/needs a manual check/i)).not.toBeInTheDocument())
+    expect(window.location.search).not.toMatch(/(?:payment|reference)=/)
+    expect(window.location.search).toContain('section=billing')
+    expect(window.location.search).toContain('keep=yes')
   })
 
   it('keeps the reference in the URL while a payment is still settling', async () => {

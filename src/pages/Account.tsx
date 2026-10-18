@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 import {
   AlertCircle,
   CheckCircle,
-  Clock,
   CreditCard,
   KeyRound,
   Pencil,
@@ -22,112 +21,17 @@ import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
 import { publishBillingAccess } from '@/lib/billingEvents'
+import { AccountNotice } from '@/components/account/AccountNotice'
+import { paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeState, type NoticeTone, type PaymentIntent } from '@/lib/paymentOutcome'
 import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
 import { formatPlanChangeDate as formatDate, planChangeSentence } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
-import type { Account, BillingPlan, BillingCycle, PlanChangePreview } from '@/types'
+import type { Account, BillingPlan, BillingCycle } from '@/types'
 
 type SaveState = 'idle' | 'saving' | 'success' | 'error'
-type NoticeTone = 'success' | 'error' | 'info'
-type NoticeAction = { label: string; to: string }
-type NoticeState = { type: NoticeTone; message: string; action?: NoticeAction } | null
-
-/**
- * Every value PaymentSession.status can hold
- * (backend/src/models/PaymentSession.model.js:54). Enumerating it here rather
- * than a convenient subset is the point: the checkout-return handler used to
- * treat anything outside paid/pending/cancelled as an outright failure, which
- * meant a card sitting in 'processing' — the fulfilment lock held *while* a
- * successful charge is applied to the organisation — was reported to the owner
- * as "payment was not completed, no billing changes were made". The rational
- * response to that message is to pay again.
- */
-type PaymentSessionStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'needs_attention' | 'reversed'
-/**
- * Not a PaymentSession.status. The checkout and credit endpoints substitute it
- * on their 202 response while the gateway session is still being created
- * (account.controller.js:52).
- */
-type PaymentInitializationStatus = 'initializing' | 'ready' | 'failed'
-type PaymentIntent = {
-  planChange?: Omit<PlanChangePreview, 'blocked'> | null
-  provider: 'mock' | 'onegate' | 'paystack'
-  reference?: string
-  redirectUrl?: string
-  amount?: number
-  currency?: string
-  status?: PaymentSessionStatus | 'initializing'
-  initializationStatus?: PaymentInitializationStatus
-}
 type CheckoutResponse = { success: boolean; account?: Account; checkout: PaymentIntent }
-type CreditPurchaseResponse = {
-  success: boolean
-  account?: Account
-  purchase: PaymentIntent & { credits: number }
-}
-type PaymentStatusResponse = {
-  success: boolean
-  payment: PaymentIntent
-}
-
-type PaymentOutcome = { tone: NoticeTone; message: string; terminal: boolean }
-
-/**
- * Exhaustive over PaymentSessionStatus, so adding a status to the backend enum
- * without deciding what the customer is told is a compile error here.
- */
-const PAYMENT_OUTCOMES: Record<PaymentSessionStatus, PaymentOutcome> = {
-  needs_attention: {
-    tone: 'info',
-    message:
-      'Your payment reached us but needs a manual check before billing updates. Do not pay again; keep this page’s payment reference for your records.',
-    terminal: true,
-  },
-  reversed: {
-    tone: 'info',
-    message: 'This payment was refunded or reversed. Unspent pack credits are withdrawn; plan access is reviewed manually. No further charge was made.',
-    terminal: true,
-  },
-  paid: {
-    tone: 'success',
-    message: 'Card payment confirmed. Billing has been updated.',
-    terminal: true,
-  },
-  processing: {
-    tone: 'info',
-    message:
-      'Payment received. Guava is finalising your billing — this can take a moment. Do not pay again; this page updates as soon as it lands.',
-    terminal: false,
-  },
-  pending: {
-    tone: 'info',
-    message:
-      'Card payment has not been confirmed by your bank yet. Guava will update billing as soon as it is. Do not pay again.',
-    terminal: false,
-  },
-  failed: {
-    tone: 'error',
-    message: 'Card payment failed. No billing changes were made, and you have not been charged.',
-    terminal: true,
-  },
-  cancelled: {
-    tone: 'error',
-    message: 'Card payment was cancelled. No billing changes were made.',
-    terminal: true,
-  },
-}
-
-/**
- * A status the portal has never heard of is not evidence of failure. Saying
- * "no billing changes were made" about a charge we cannot account for is the
- * one answer that can cost the customer money.
- */
-const UNKNOWN_PAYMENT_OUTCOME: PaymentOutcome = {
-  tone: 'info',
-  message:
-    "We're still confirming this payment with the gateway. Nothing else is needed from you — please check billing again shortly rather than paying a second time.",
-  terminal: false,
-}
+type CreditPurchaseResponse = { success: boolean; account?: Account; purchase: PaymentIntent & { credits: number } }
+type PaymentStatusResponse = { success: boolean; payment: PaymentIntent }
 
 const PAYMENT_POLL_ATTEMPTS = 4
 const PAYMENT_POLL_INTERVAL_MS = 4000
@@ -193,33 +97,6 @@ function StatusBanner({
     )
   }
   return null
-}
-
-const NOTICE_STYLES: Record<NoticeTone, string> = {
-  success: 'bg-guava-green/10 border-guava-green/20 text-guava-green',
-  error: 'bg-red-900/10 border-red-900/30 text-red-400',
-  // Neutral: a payment that is still settling is not a failure and must not be
-  // dressed as one.
-  info: 'bg-surface border-border text-text',
-}
-
-function Notice({ notice }: { notice: NoticeState }) {
-  if (!notice) return null
-  const Icon = notice.type === 'error' ? AlertCircle : notice.type === 'success' ? CheckCircle : Clock
-  return (
-    <div
-      role={notice.type === 'error' ? 'alert' : 'status'}
-      className={`flex items-center gap-2 border rounded-lg px-3.5 py-2.5 text-sm ${NOTICE_STYLES[notice.type]}`}
-    >
-      <Icon className="w-4 h-4 shrink-0" />
-      <span>{notice.message}</span>
-      {notice.action && (
-        <Link to={notice.action.to} className="ml-auto font-medium underline underline-offset-2">
-          {notice.action.label}
-        </Link>
-      )}
-    </div>
-  )
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
@@ -455,12 +332,12 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
   // `persist` keeps a notice on screen. A payment that has not resolved yet is
   // exactly the case where a four-second toast leaves the owner with no record
   // that anything happened — which is what drives a second attempt to pay.
-  const showNotice = useCallback((type: NoticeTone, message: string, options?: { persist?: boolean; action?: NoticeAction }) => {
+  const showNotice = useCallback((type: NoticeTone, message: string, options?: NoticeOptions) => {
     if (noticeTimerRef.current !== null) {
       window.clearTimeout(noticeTimerRef.current)
       noticeTimerRef.current = null
     }
-    setNotice({ type, message, action: options?.action })
+    setNotice({ type, message, action: options?.action, reference: options?.reference })
     if (!options?.persist) {
       noticeTimerRef.current = window.setTimeout(() => {
         setNotice(null)
@@ -518,13 +395,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
     // gateway is still working leaves the owner on a page showing their old
     // plan, with no way to re-check what their money did.
     const clearPaymentParams = ({ billingResolved }: { billingResolved: boolean }) => {
-      const nextParams = new URLSearchParams(searchParams)
-      nextParams.delete('payment')
-      nextParams.delete('reference')
-      // The 402 interceptor sets billing=required. Leaving it set after a
-      // successful payment made the page report success and failure at once.
-      if (billingResolved) nextParams.delete('billing')
-      setSearchParams(nextParams, { replace: true })
+      setSearchParams(withoutPaymentParams(searchParams, billingResolved), { replace: true })
     }
 
     const verifyPayment = async () => {
@@ -536,10 +407,12 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
       for (let attempt = 0; attempt < PAYMENT_POLL_ATTEMPTS; attempt += 1) {
         let status: PaymentIntent['status']
+        let kind: PaymentIntent['kind']
         try {
           const { data } = await api.get<PaymentStatusResponse>(`/account/payments/${encodeURIComponent(reference)}`)
           if (cancelled) return
           status = data.payment.status
+          kind = data.payment.kind
         } catch {
           if (cancelled) return
           showNotice(
@@ -550,10 +423,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
           return
         }
 
-        const outcome =
-          status && status in PAYMENT_OUTCOMES
-            ? PAYMENT_OUTCOMES[status as PaymentSessionStatus]
-            : UNKNOWN_PAYMENT_OUTCOME
+        const outcome = paymentOutcome(status, kind)
 
         if (outcome.terminal) {
           if (status === 'paid') {
@@ -561,7 +431,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
             if (cancelled) return
           }
           const keepReference = status === 'needs_attention' || status === 'reversed'
-          showNotice(outcome.tone, keepReference ? `${outcome.message} Reference: ${reference}.` : outcome.message, { persist: keepReference })
+          showNotice(outcome.tone, outcome.message, { persist: keepReference, reference: keepReference ? reference : undefined })
           if (!keepReference) clearPaymentParams({ billingResolved: status === 'paid' })
           return
         }
@@ -842,7 +712,10 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
   return (
       <div className="space-y-6">
-        <Notice notice={notice} />
+        <AccountNotice notice={notice} onDismiss={() => {
+          setNotice(null)
+          setSearchParams(withoutPaymentParams(searchParams), { replace: true })
+        }} />
         {accountError && (
           <div className="flex flex-col gap-3 rounded-lg border border-red-900/30 bg-red-900/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="alert">
             <p className="text-sm text-red-300">Account and billing details could not be loaded.</p>
