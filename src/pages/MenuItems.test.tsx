@@ -550,7 +550,8 @@ describe('MenuItems counts and paging', () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1))
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100)
-  })
+    // Role queries over 100 cards are slow in jsdom: 5.5 to 6.4 s on a shared host against vitest's 5 s default (codex-b90-b, 18 Oct).
+  }, 20_000)
 
   // Review of BE-03-T14: a refresh re-read only the visible page, so a stored value that moved under an edit made on
   // another page was never flagged, and Save all overwrote it.
