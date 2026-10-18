@@ -629,17 +629,39 @@ export interface LeaveRequest {
   endDate: string
   days: number
   reason?: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled'
   approvedBy?: string
   approvedAt?: string
+  cancelledAt?: string
+  cancelReason?: string
+}
+
+export type LeaveCycleType = 'annual' | 'sick' | 'family'
+
+export interface LeaveCycleBalance {
+  total: number
+  used: number
+  remaining?: number
+  cycleStart?: string
+  cycleEnd?: string
+}
+
+export interface LeaveAdjustment {
+  type: LeaveCycleType
+  cycleStart: string
+  previousTotal: number
+  total: number
+  reason: string
+  at: string
 }
 
 export interface LeaveBalanceData {
   staffId: string | { _id: string; name?: string; role?: StaffMember['role'] }
   staffName?: string
-  annual: { total: number; used: number }
-  sick: { total: number; used: number }
-  family: { total: number; used: number }
+  annual: LeaveCycleBalance
+  sick: LeaveCycleBalance
+  family: LeaveCycleBalance
+  adjustments?: LeaveAdjustment[]
 }
 
 export interface LeaveCalendarDay {

@@ -490,3 +490,62 @@ describe('Staff leave balances', () => {
     expect(screen.getByText('-3/15 days')).toBeInTheDocument()
   })
 })
+
+const CYCLE_BALANCE = {
+  staffId: 'staff123',
+  annual: { total: 15, used: 5, remaining: 10, cycleStart: '2026-06-01', cycleEnd: '2027-05-31' },
+  sick: { total: 30, used: 2, remaining: 28, cycleStart: '2025-06-01', cycleEnd: '2028-05-31' },
+  family: { total: 3, used: 0, remaining: 3, cycleStart: '2026-06-01', cycleEnd: '2027-05-31' },
+}
+
+describe('Staff leave cycles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockPut.mockResolvedValue({ data: {} })
+  })
+
+  it('says which cycle each balance belongs to', async () => {
+    mockStaffList([mockStaffMember], [CYCLE_BALANCE])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    expect(screen.getAllByText(/cycle ends/i)).toHaveLength(3)
+    expect(screen.getByText('10/15 days')).toBeInTheDocument()
+  })
+
+  it('lets the owner set a cycle total with a reason', async () => {
+    mockStaffList([mockStaffMember], [CYCLE_BALANCE])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /adjust leave for sarah/i }))
+    await userEvent.selectOptions(screen.getByLabelText(/leave type to adjust/i), 'annual')
+    await userEvent.clear(screen.getByLabelText(/new total for this cycle/i))
+    await userEvent.type(screen.getByLabelText(/new total for this cycle/i), '12')
+    await userEvent.type(screen.getByLabelText(/reason for the change/i), 'Joined mid-year')
+    await userEvent.click(screen.getByRole('button', { name: /^save adjustment$/i }))
+
+    await waitFor(() =>
+      expect(mockPut).toHaveBeenCalledWith('/leave/balances/staff123', { type: 'annual', total: 12, reason: 'Joined mid-year' })
+    )
+  })
+
+  it('refuses an adjustment without a reason', async () => {
+    mockStaffList([mockStaffMember], [CYCLE_BALANCE])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /adjust leave for sarah/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^save adjustment$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/say why/i)
+    expect(mockPut).not.toHaveBeenCalled()
+  })
+
+  it('hides the adjust control from a manager', async () => {
+    mockStaffList([mockStaffMember], [CYCLE_BALANCE])
+    renderAs('manager', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /adjust leave/i })).not.toBeInTheDocument()
+  })
+})

@@ -396,12 +396,11 @@ function mockSinglePendingRequest(overrides: Record<string, unknown> = {}) {
   })
 }
 
-// Approval is irreversible in both the UI and the API: leave.controller `$inc`s
-// the days onto the staff member's LeaveBalance inside a transaction, and
-// leave.routes exposes no revert, cancel or delete path at all. Once the status
-// leaves 'pending' the action cell renders empty. A misclick on a 28px icon
-// button sitting 4px from its opposite therefore permanently consumes someone's
-// annual leave, and the only remedy is direct database surgery.
+// Approval spends the balance straight away (used days are derived from approved
+// requests in the cycle), so a misclick on a 28px icon button sitting 4px from
+// its opposite still costs someone their leave until it is noticed. Approval is
+// reversible now - the owner can cancel an approved request and the days return
+// (BE-08-T02) - but the confirmation still stands between a stray click and that.
 describe('Leave approval confirmation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -435,11 +434,12 @@ describe('Leave approval confirmation', () => {
     expect(dialog).toHaveTextContent(/5 days/i)
   })
 
-  it('says the balance is spent and that it cannot be undone', async () => {
+  it('says the balance is spent and that approved leave can be cancelled later', async () => {
     const dialog = await openApprovalConfirmation()
 
     expect(dialog).toHaveTextContent(/balance/i)
-    expect(dialog).toHaveTextContent(/cannot be undone/i)
+    expect(dialog).toHaveTextContent(/cancel the approved leave later/i)
+    expect(dialog).not.toHaveTextContent(/cannot be undone/i)
   })
 
   it('approves only after the confirmation is accepted', async () => {
@@ -507,7 +507,7 @@ describe('Leave approval confirmation', () => {
     await userEvent.click(screen.getByRole('button', { name: /Approve leave for Sarah/i }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/cannot be undone/i)
+    expect(dialog).toHaveTextContent(/cancel it later/i)
     expect(dialog).not.toHaveTextContent(/leave balance/i)
   })
 })
@@ -668,5 +668,83 @@ describe('Leave calendar', () => {
     // The clipped names still have to be reachable, not merely counted.
     expect(overflow).toHaveAttribute('title', expect.stringContaining('Nomsa'))
     expect(overflow.getAttribute('title')).toContain('Pieter')
+  })
+})
+
+function mockSingleApprovedRequest() {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/leave/calendar')) return Promise.resolve({ data: { calendar: [] } })
+    if (url.includes('/leave')) {
+      return Promise.resolve({
+        data: {
+          requests: [
+            {
+              _id: 'lr9',
+              staffId: { _id: 'staff1', name: 'Sarah' },
+              cafeId: 'cafe1',
+              type: 'annual',
+              startDate: '2026-02-02',
+              endDate: '2026-02-06',
+              days: 5,
+              status: 'approved',
+            },
+          ],
+        },
+      })
+    }
+    if (url.includes('/staff')) {
+      return Promise.resolve({
+        data: { staff: [{ _id: 'staff1', name: 'Sarah', role: 'barista', hourlyRate: 45, startDate: '2025-01-06', isActive: true }] },
+      })
+    }
+    if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+    return Promise.resolve({ data: {} })
+  })
+}
+
+describe('Leave cancellation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockPut.mockResolvedValue({ data: {} })
+  })
+
+  async function openCancelConfirmation() {
+    mockSingleApprovedRequest()
+    renderWithAuth(<Leave />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /Cancel approved leave for Sarah/i }))
+    return screen.findByRole('dialog')
+  }
+
+  it('offers the owner a cancel control named after the approved request', async () => {
+    mockSingleApprovedRequest()
+    renderWithAuth(<Leave />)
+    expect(await screen.findByRole('button', { name: /Cancel approved leave for Sarah/i })).toBeInTheDocument()
+  })
+
+  it('says the days go back to the balance before cancelling', async () => {
+    const dialog = await openCancelConfirmation()
+    expect(dialog).toHaveTextContent(/5 days go back to their annual leave balance/i)
+    expect(mockPut).not.toHaveBeenCalled()
+  })
+
+  it('cancels only after the confirmation is accepted', async () => {
+    await openCancelConfirmation()
+    await userEvent.click(screen.getByRole('button', { name: /^Cancel the leave$/i }))
+    await waitFor(() => expect(mockPut).toHaveBeenCalledWith('/leave/lr9/cancel', {}))
+  })
+
+  it('keeps the leave when the owner chooses to keep it', async () => {
+    await openCancelConfirmation()
+    await userEvent.click(screen.getByRole('button', { name: /^Keep it$/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mockPut).not.toHaveBeenCalled()
+  })
+
+  it('offers a Cancelled filter', async () => {
+    mockSingleApprovedRequest()
+    renderWithAuth(<Leave />)
+    expect(await screen.findByText('Cancelled')).toBeInTheDocument()
   })
 })

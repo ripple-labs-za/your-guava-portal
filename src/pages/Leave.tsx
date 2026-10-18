@@ -24,12 +24,13 @@ import type { LeaveRequest, StaffMember, LeaveCalendarDay } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-type FilterTab = 'all' | 'pending' | 'approved' | 'rejected'
+type FilterTab = 'all' | 'pending' | 'approved' | 'rejected' | 'cancelled'
 
-const STATUS_VARIANT: Record<string, 'warning' | 'success' | 'destructive'> = {
+const STATUS_VARIANT: Record<string, 'warning' | 'success' | 'destructive' | 'secondary'> = {
   pending: 'warning',
   approved: 'success',
   rejected: 'destructive',
+  cancelled: 'secondary',
 }
 
 const LEAVE_TYPE_COLORS: Record<string, string> = {
@@ -57,7 +58,7 @@ function formatDate(dateStr: string) {
 // accessible name has to carry the row context a sighted user reads across the
 // table. "Approve" on its own tells a screen-reader user nothing about which
 // request they are about to action.
-function leaveActionLabel(action: 'Approve' | 'Reject', req: LeaveRequest): string {
+function leaveActionLabel(action: 'Approve' | 'Reject' | 'Cancel approved', req: LeaveRequest): string {
   return `${action} leave for ${getStaffName(req.staffId)}, ${formatDate(req.startDate)} to ${formatDate(req.endDate)}`
 }
 
@@ -90,17 +91,17 @@ interface ConfirmRequest {
   title: string
   body: string
   confirmLabel: string
+  dismissLabel?: string
   destructive: boolean
   onConfirm: () => Promise<void>
 }
 
 /**
- * Approving leave is irreversible in both directions: the backend `$inc`s the
- * days onto the staff member's LeaveBalance and exposes no path that ever
- * decrements it, and the row's actions disappear the moment the status leaves
- * 'pending'. A 28px icon button 4px from its opposite is not a proportionate
- * control for that, so the action is spelled out — who, what and how much —
- * before it is taken.
+ * Approving leave spends the balance straight away, and the owner can cancel an
+ * approved request afterwards, which returns the days. A 28px icon button 4px
+ * from its opposite is still not a proportionate control for spending someone's
+ * leave, so the action is spelled out — who, what and how much — before it is
+ * taken.
  */
 function ConfirmDialog({ request, onCancel }: { request: ConfirmRequest; onCancel: () => void }) {
   const [busy, setBusy] = useState(false)
@@ -153,7 +154,7 @@ function ConfirmDialog({ request, onCancel }: { request: ConfirmRequest; onCance
         </div>
         <div className="mt-6 flex items-center justify-end gap-2">
           <Button ref={cancelRef} variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
+            {request.dismissLabel ?? 'Cancel'}
           </Button>
           <Button
             variant={request.destructive ? 'destructive' : 'success'}
@@ -509,8 +510,8 @@ export default function Leave() {
     setConfirmRequest({
       title: `Approve ${pluraliseDays(req.days)} of ${req.type} leave for ${staffName}?`,
       body: spendsBalance
-        ? `${staffName} will be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}, and ${pluraliseDays(req.days)} will be taken off their ${req.type} leave balance straight away. This cannot be undone — nothing in the portal can return the days.`
-        : `${staffName} will be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}. Unpaid leave is not deducted from an entitlement, but this cannot be undone.`,
+        ? `${staffName} will be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}, and ${pluraliseDays(req.days)} will be taken off their ${req.type} leave balance for this leave cycle straight away. If this was a mistake, you can cancel the approved leave later and the days go back.`
+        : `${staffName} will be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}. Unpaid leave is not deducted from an entitlement, and you can cancel it later if plans change.`,
       confirmLabel: `Approve ${pluraliseDays(req.days)}`,
       destructive: false,
       onConfirm: () => runAction(() => api.put(`/leave/${req._id}/approve`), 'Could not approve the request.'),
@@ -526,6 +527,22 @@ export default function Leave() {
       confirmLabel: 'Reject request',
       destructive: true,
       onConfirm: () => runAction(() => api.put(`/leave/${req._id}/reject`), 'Could not reject the request.'),
+    })
+  }
+
+  function askToCancel(req: LeaveRequest) {
+    const staffName = getStaffName(req.staffId)
+    const returnsDays = req.type !== 'unpaid'
+    setActionError(null)
+    setConfirmRequest({
+      title: `Cancel ${staffName}'s approved ${req.type} leave?`,
+      body: returnsDays
+        ? `${staffName} will no longer be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}, and ${pluraliseDays(req.days)} go back to their ${req.type} leave balance.`
+        : `${staffName} will no longer be booked off from ${formatDate(req.startDate)} to ${formatDate(req.endDate)}.`,
+      confirmLabel: 'Cancel the leave',
+      dismissLabel: 'Keep it',
+      destructive: true,
+      onConfirm: () => runAction(() => api.put(`/leave/${req._id}/cancel`, {}), 'Could not cancel the leave.'),
     })
   }
 
@@ -548,6 +565,7 @@ export default function Leave() {
     { id: 'pending', label: 'Pending' },
     { id: 'approved', label: 'Approved' },
     { id: 'rejected', label: 'Rejected' },
+    { id: 'cancelled', label: 'Cancelled' },
   ]
 
   return (
@@ -686,6 +704,17 @@ export default function Leave() {
                                     <X className="w-3.5 h-3.5" />
                                   </Button>
                                 </div>
+                              )}
+                              {req.status === 'approved' && (
+                                <Button
+                                  aria-label={leaveActionLabel('Cancel approved', req)}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs text-muted hover:text-text"
+                                  onClick={() => askToCancel(req)}
+                                >
+                                  Cancel
+                                </Button>
                               )}
                             </td>
                           )}
