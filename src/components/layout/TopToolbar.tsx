@@ -5,10 +5,13 @@ import {
   ChevronDown,
   Loader2,
   LogOut,
+  Lock,
   WalletCards,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
+import { GUAVA_BILLING_READ_ONLY_EVENT, type BillingReadOnlyDetail } from '@/lib/billingEvents'
+import type { BillingAccess } from '@/types'
 import {
   GUAVA_CREDITS_UPDATED_EVENT,
   type GuavaCreditSnapshot,
@@ -24,6 +27,7 @@ interface CreditBalance {
     resetAt: string | null
   }
   organization: {
+    billingAccess?: BillingAccess
     plan: 'starter' | 'growth' | 'pro'
     billingStatus?: 'trialing' | 'active' | 'past_due' | 'canceled'
     billingCycle?: 'monthly' | 'annual'
@@ -58,12 +62,20 @@ export function TopToolbar() {
   const latestCreditSnapshotRef = useRef<GuavaCreditSnapshot | null>(null)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [credits, setCredits] = useState<CreditBalance | null>(null)
+  const [readOnlyOverride, setReadOnlyOverride] = useState<BillingReadOnlyDetail | null>(null)
+
+  useEffect(() => {
+    const update = (event: Event) => setReadOnlyOverride((event as CustomEvent<BillingReadOnlyDetail>).detail)
+    window.addEventListener(GUAVA_BILLING_READ_ONLY_EVENT, update)
+    return () => window.removeEventListener(GUAVA_BILLING_READ_ONLY_EVENT, update)
+  }, [])
   const [creditSnapshotOverride, setCreditSnapshotOverride] = useState<GuavaCreditSnapshot | null>(null)
   const [creditsLoading, setCreditsLoading] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     latestCreditSnapshotRef.current = null
+    setReadOnlyOverride(null)
     setCreditSnapshotOverride(null)
     if (!user) {
       setCredits(null)
@@ -172,12 +184,22 @@ export function TopToolbar() {
   }
 
   const availableCredits = creditSnapshotOverride?.available ?? credits?.credits?.available
+  const access = credits?.organization?.billingAccess
+  const readOnlyUntil = readOnlyOverride ? readOnlyOverride.graceEndsAt : access?.status === 'grace' ? access.graceEndsAt : null
+  const shortDate = (value: string) => new Date(value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
   const lowCredits = typeof availableCredits === 'number' && availableCredits <= 100
   const notificationCount = lowCredits ? 1 : 0
   const initials = initialsFor(user?.name, user?.email)
 
   return (
     <div ref={toolbarRef} className="flex min-w-0 items-center justify-end gap-2">
+      {readOnlyUntil && (
+        <button type="button" onClick={() => goTo('/settings?section=billing')}
+          className="flex h-8 items-center gap-2 rounded-lg border border-guava-red/40 bg-guava-red/10 px-2 text-xs font-semibold text-guava-red-text sm:px-3"
+          aria-label={`Read-only until ${shortDate(readOnlyUntil)}. Open billing to renew`}>
+          <Lock className="h-4 w-4" /><span className="hidden sm:inline">Read-only until</span><span>{shortDate(readOnlyUntil)}</span>
+        </button>
+      )}
       <button
         type="button"
         onClick={() => goTo('/settings?section=billing')}

@@ -26,6 +26,15 @@ export interface User {
   }
 }
 
+export interface BillingAccess {
+  allowed: boolean
+  status: 'trialing' | 'active' | 'grace' | 'past_due' | 'canceled' | 'missing'
+  reason: string | null
+  periodEnd: string | null
+  readOnly?: boolean
+  graceEndsAt?: string | null
+}
+
 export interface Organization {
   _id: string
   name: string
@@ -34,6 +43,8 @@ export interface Organization {
   billingStatus?: 'trialing' | 'active' | 'past_due' | 'canceled'
   billingCycle?: 'monthly' | 'annual'
   currentPeriodEnd?: string | null
+  trialEndsAt?: string | null
+  billingAccess?: BillingAccess
   pendingPlanChange?: PendingPlanChange | null
   billingEmail?: string
   paymentMethod?: { brand: string; last4: string; expiresAt: string; provider?: 'mock' | 'onegate' | string }

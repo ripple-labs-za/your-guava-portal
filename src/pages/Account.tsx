@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
+import { publishBillingAccess } from '@/lib/billingEvents'
 import { secureRandomId } from '@/lib/idempotency'
 import type { Account, BillingPlan, BillingCycle, PlanChangePreview } from '@/types'
 
@@ -279,6 +280,8 @@ function PlanCard({
   cycle,
   onSelect,
   disabled,
+  renewable,
+  trialing,
 }: {
   plan: BillingPlan
   /** The organisation is on this plan tier, whatever the cycle. */
@@ -288,6 +291,8 @@ function PlanCard({
   cycle: BillingCycle
   onSelect: () => void
   disabled: boolean
+  renewable: boolean
+  trialing: boolean
 }) {
   const price = cycle === 'annual' ? plan.priceAnnual : plan.priceMonthly
   const includedCredits = plan.includedGuavaCredits ?? plan.includedAiCredits
@@ -296,7 +301,7 @@ function PlanCard({
   // to Growth-annual — the cheaper option the cycle toggle is advertising.
   const active = isCurrentPlan && isCurrentCycle
   const label = active
-    ? 'Active plan'
+    ? trialing ? `Choose ${plan.name}` : renewable ? `Renew ${plan.name}` : 'Active plan'
     : isCurrentPlan
       ? `Switch to ${cycle === 'annual' ? 'annual' : 'monthly'}`
       : `Move to ${plan.name}`
@@ -331,7 +336,7 @@ function PlanCard({
           </div>
         ))}
       </div>
-      <Button type="button" variant={active ? 'secondary' : 'default'} className="w-full" onClick={onSelect} disabled={disabled || active}>
+      <Button type="button" variant={active ? 'secondary' : 'default'} className="w-full" onClick={onSelect} disabled={disabled || (active && !renewable && !trialing)}>
         {label}
       </Button>
     </div>
@@ -499,6 +504,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       .then(({ data }) => {
         setAccountError(false)
         setAccount(data.account)
+        publishBillingAccess(data.account.organization.billingAccess)
         setBillingCycle(data.account.organization.billingCycle || 'monthly')
         setProfileName(data.account.user.name)
         setOrganizationName(data.account.organization.name)
@@ -725,6 +731,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
       if (data.account) {
         setAccount(data.account)
+        publishBillingAccess(data.account.organization.billingAccess)
         planCheckoutRef.current = null
         const change = data.checkout.planChange
         if (change && (change.type === 'downgrade' || change.type === 'cycle_switch')) {
@@ -807,6 +814,14 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
   const previewFor = (planId: string, cycle: BillingCycle) =>
     planChanges.find((change) => change.plan === planId && change.billingCycle === cycle)
   const planNameFor = (planId: string) => (account?.plans || []).find((plan) => plan.id === planId)?.name ?? planId
+  const access = account?.organization.billingAccess
+  const paidThrough = pendingPlanChange?.periodEnd ?? account?.organization.currentPeriodEnd ?? null
+  const renewable = access?.allowed === false || (paidThrough !== null && new Date(paidThrough).getTime() - Date.now() <= 7 * 24 * 60 * 60 * 1000)
+  const trialing = account?.organization.billingStatus === 'trialing'
+  const periodSummary = !account || access?.status === 'grace' ? null
+    : trialing && account.organization.trialEndsAt ? `Trial ends ${formatDate(account.organization.trialEndsAt)}`
+      : account.organization.billingStatus === 'active' && paidThrough
+        ? `Paid until ${formatDate(paidThrough)}. Nothing renews automatically; Guava emails the owner 7 days and 1 day before.` : null
 
   // Read through the router hook so it reacts when the flag is cleared after a
   // successful payment; the raw window.location read never did.
@@ -1017,7 +1032,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
         {/* Arrived here from a 402 on some other page: say why, so landing on
             Billing without warning does not read as a random redirect. */}
-        {showBillingSection && billingRequired && (
+        {showBillingSection && billingRequired && access?.status !== 'grace' && (
           <div
             role="alert"
             className="rounded-lg border border-guava-red/30 bg-guava-red/10 px-4 py-3"
@@ -1030,6 +1045,12 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
           </div>
         )}
 
+        {showBillingSection && access?.status === 'grace' && (
+          <div role="alert" className="rounded-lg border border-guava-red/30 bg-guava-red/10 px-4 py-3">
+            <p className="text-sm font-medium text-text">Your {access.reason === 'trial_expired' ? 'free trial' : 'plan'} ended on {formatDate(access.periodEnd)}. Guava is read-only until {formatDate(access.graceEndsAt)}.</p>
+            <p className="mt-1 text-sm text-muted">You can still view forecasts, analytics and history. Imports, edits and AI tools are paused. Choose a plan below to restore everything.</p>
+          </div>
+        )}
         {showBillingSection && <Card>
           <CardHeader>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1041,6 +1062,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                 <CardDescription className="mt-1">
                   Plans are priced around organisation seats, cafe locations, and Guava Credits.
                 </CardDescription>
+                {periodSummary && <p className="text-muted text-xs mt-1">{periodSummary}</p>}
               </div>
               {account && (
                 <div className="flex flex-wrap gap-2">
@@ -1188,6 +1210,8 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                   isCurrentPlan={selectedPlan === plan.id}
                   isCurrentCycle={currentCycle === billingCycle}
                   cycle={billingCycle}
+                  renewable={renewable}
+                  trialing={trialing}
                   onSelect={() => setPendingPurchase({ kind: 'plan', plan, cycle: billingCycle })}
                   // Every card, not just the one in flight. Disabling only the
                   // clicked card let a second click on a different plan mint a

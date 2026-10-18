@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { publishBillingReadOnly } from './billingEvents'
 import { clearAccessToken, getAccessToken, setAccessToken } from './accessToken'
 import { CafeContextChangedError, getTabCafeId, setTabCafeId } from './cafeContext'
 
@@ -260,7 +261,12 @@ api.interceptors.response.use(
     // data "could not load" and offers a Try again that can never succeed —
     // telling a paying customer the product is broken at exactly the moment
     // they need to be sent to the payment screen.
-    if (error.response?.status === 402 && error.response?.data?.code === 'BILLING_REQUIRED') {
+    if (error.response?.status === 402 && (error.response?.data?.code ?? error.response?.data?.details?.code) === 'BILLING_REQUIRED') {
+      const billing = error.response.data.billing ?? error.response.data.details?.billing ?? error.response.data.details
+      if (billing?.readOnly) {
+        publishBillingReadOnly({ periodEnd: billing.periodEnd ?? null, graceEndsAt: billing.graceEndsAt ?? null })
+        return Promise.reject(error)
+      }
       // Suppress for the whole of Settings, not just the billing section. Only
       // /api/account and /api/auth are billing-exempt on the server, so loading
       // any other Settings section re-triggers the 402 — and the old check,

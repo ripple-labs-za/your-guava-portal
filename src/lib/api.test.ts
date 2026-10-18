@@ -301,3 +301,74 @@ describe('api interceptors', () => {
     }
   })
 })
+
+describe('lapsed billing', () => {
+  it('announces read-only mode for the metering error details shape without redirecting', async () => {
+    const { responseRejected } = await loadApi()
+    stubLocation('/today')
+    const heard = vi.fn()
+    window.addEventListener('guava:billing-read-only', heard)
+    const error = {
+      config: { url: '/insights', headers: {} },
+      response: { status: 402, data: { details: {
+        code: 'BILLING_REQUIRED', billingStatus: 'grace', readOnly: true,
+        periodEnd: '2026-10-01T12:00:00.000Z', graceEndsAt: '2026-10-04T12:00:00.000Z',
+      } } },
+    }
+    try {
+      await expect(responseRejected(error)).rejects.toBe(error)
+      expect(window.location.href).toBe('http://localhost/today')
+      expect(heard).toHaveBeenCalledTimes(1)
+    } finally { window.removeEventListener('guava:billing-read-only', heard) }
+  })
+  const originalLocation = window.location
+  const stubLocation = (pathname: string) => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, pathname, href: `http://localhost${pathname}` },
+    })
+  }
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+  })
+
+  it('stays on the page and announces read-only mode on a grace-period 402', async () => {
+    const { responseRejected } = await loadApi()
+    stubLocation('/today')
+    const heard = vi.fn()
+    window.addEventListener('guava:billing-read-only', heard)
+    const error = {
+      config: { url: '/cafe/me', headers: {} },
+      response: {
+        status: 402,
+        data: {
+          code: 'BILLING_REQUIRED',
+          billing: { status: 'grace', readOnly: true, periodEnd: '2026-10-01T12:00:00.000Z', graceEndsAt: '2026-10-04T12:00:00.000Z' },
+        },
+      },
+    }
+
+    await expect(responseRejected(error)).rejects.toBe(error)
+
+    expect(window.location.href).toBe('http://localhost/today')
+    expect(heard).toHaveBeenCalledTimes(1)
+    expect((heard.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      periodEnd: '2026-10-01T12:00:00.000Z',
+      graceEndsAt: '2026-10-04T12:00:00.000Z',
+    })
+    window.removeEventListener('guava:billing-read-only', heard)
+  })
+
+  it('still sends a fully lapsed organisation to billing', async () => {
+    const { responseRejected } = await loadApi()
+    stubLocation('/today')
+    const error = {
+      config: { url: '/cafe/me', headers: {} },
+      response: { status: 402, data: { code: 'BILLING_REQUIRED', billing: { status: 'past_due', readOnly: false } } },
+    }
+
+    await expect(responseRejected(error)).rejects.toBe(error)
+
+    expect(window.location.href).toBe('/settings?section=billing&billing=required')
+  })
+})

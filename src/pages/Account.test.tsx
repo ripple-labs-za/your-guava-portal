@@ -148,6 +148,47 @@ function renderWithAuth(
 }
 
 describe('Account', () => {
+  function serveOrganization(organization: Record<string, unknown>) {
+    const payload = accountPayload()
+    mockGet.mockImplementation((url: string) =>
+      url.includes('/account')
+        ? Promise.resolve({ data: { success: true, account: { ...payload, organization: { ...payload.organization, ...organization } } } })
+        : Promise.resolve({ data: {} }))
+  }
+
+  it('explains the read-only grace period and offers to renew the current plan', async () => {
+    serveOrganization({
+      billingStatus: 'past_due',
+      currentPeriodEnd: '2026-10-01T12:00:00.000Z',
+      billingAccess: {
+        allowed: false, status: 'grace', readOnly: true, reason: 'billing_period_expired',
+        periodEnd: '2026-10-01T12:00:00.000Z', graceEndsAt: '2026-10-04T12:00:00.000Z',
+      },
+    })
+    renderWithAuth(<Account />)
+
+    const banner = await screen.findByText(/your plan ended on 0?1 Oct 2026/i)
+    expect(banner).toHaveTextContent(/read-only until 0?4 Oct 2026/i)
+    expect(screen.getByRole('button', { name: /renew growth/i })).toBeEnabled()
+  })
+
+  it('lets a trialling owner choose the plan the trial runs on', async () => {
+    serveOrganization({ plan: 'starter', billingStatus: 'trialing', trialEndsAt: '2026-10-05T12:00:00.000Z' })
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByRole('button', { name: /choose starter/i })).toBeEnabled()
+    expect(screen.getByText(/trial ends 0?5 Oct 2026/i)).toBeInTheDocument()
+  })
+
+  it('says until when the plan is paid', async () => {
+    // Far enough ahead that the 7-day renew window never opens while this suite exists.
+    serveOrganization({ billingStatus: 'active', currentPeriodEnd: '2030-11-01T12:00:00.000Z' })
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/paid until 0?1 Nov 2030/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /active plan/i })).toBeDisabled()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()

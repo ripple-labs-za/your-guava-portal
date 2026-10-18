@@ -17,11 +17,11 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}{location.search}</div>
 }
 
-function renderToolbar({ available = 1234, logout = vi.fn().mockResolvedValue(undefined) } = {}) {
+function renderToolbar({ available = 1234, logout = vi.fn().mockResolvedValue(undefined), organization = { plan: 'starter', billingStatus: 'trialing', billingCycle: 'monthly' } } = {}) {
   apiMock.get.mockResolvedValue({
     data: {
       credits: { included: 500, bonus: 1000, used: 266, available, resetAt: '2026-06-01T00:00:00.000Z' },
-      organization: { plan: 'starter', billingStatus: 'trialing', billingCycle: 'monthly' },
+      organization,
       plan: { id: 'starter', name: 'Starter', includedGuavaCredits: 500 },
     },
   })
@@ -57,6 +57,51 @@ function renderToolbar({ available = 1234, logout = vi.fn().mockResolvedValue(un
 }
 
 describe('TopToolbar', () => {
+  const GRACE = {
+    plan: 'growth',
+    billingStatus: 'past_due',
+    billingCycle: 'monthly',
+    billingAccess: {
+      allowed: false,
+      status: 'grace',
+      readOnly: true,
+      reason: 'billing_period_expired',
+      periodEnd: '2026-10-01T12:00:00.000Z',
+      graceEndsAt: '2026-10-04T12:00:00.000Z',
+    },
+  }
+
+  it('shows the read-only grace state and links it to billing', async () => {
+    renderToolbar({ available: 0, organization: GRACE })
+
+    const control = await screen.findByRole('button', { name: /read-only until 0?4 Oct 2026/i })
+    fireEvent.click(control)
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings?section=billing')
+  })
+
+  it('shows read-only mode as soon as a request is refused during grace', async () => {
+    renderToolbar()
+    await waitFor(() => expect(apiMock.get).toHaveBeenCalledWith('/account/credits'))
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('guava:billing-read-only', {
+        detail: { periodEnd: '2026-10-01T12:00:00.000Z', graceEndsAt: '2026-10-04T12:00:00.000Z' },
+      }))
+    })
+
+    expect(await screen.findByRole('button', { name: /read-only until 0?4 Oct 2026/i })).toBeInTheDocument()
+  })
+
+  it('removes the grace control when a confirmed account response restores access', async () => {
+    renderToolbar({ available: 0, organization: GRACE })
+    await screen.findByRole('button', { name: /read-only until/i })
+    act(() => window.dispatchEvent(new CustomEvent('guava:billing-read-only', {
+      detail: { periodEnd: '2026-11-01T12:00:00.000Z', graceEndsAt: null },
+    })))
+    expect(screen.queryByRole('button', { name: /read-only until/i })).not.toBeInTheDocument()
+  })
+
   beforeEach(() => {
     apiMock.get.mockReset()
   })
