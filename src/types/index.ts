@@ -1,4 +1,5 @@
 export type BillingCycle = 'monthly' | 'annual'
+export type BillingProvider = 'paystack' | 'onegate' | 'mock'
 export type PlanChangeType = 'new' | 'renewal' | 'upgrade' | 'downgrade' | 'cycle_switch'
 export interface PendingPlanChange {
   plan: BillingPlan['id']
@@ -100,6 +101,7 @@ export interface AccountUsage {
 }
 
 export interface Account {
+  billing?: { provider: BillingProvider | null }
   user: User
   organization: Organization
   usage: AccountUsage

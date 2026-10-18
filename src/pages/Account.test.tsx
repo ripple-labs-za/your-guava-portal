@@ -148,6 +148,37 @@ function renderWithAuth(
 }
 
 describe('Account', () => {
+  function serveBillingProvider(provider: 'paystack' | 'onegate' | 'mock' | null) {
+    const payload = accountPayload()
+    mockGet.mockImplementation((url: string) =>
+      url.includes('/account')
+        ? Promise.resolve({ data: { success: true, account: { ...payload, billing: { provider } } } })
+        : Promise.resolve({ data: {} }))
+  }
+
+  it('names the payment provider the API reports, never a hard-coded one', async () => {
+    serveBillingProvider('paystack')
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/captured by Paystack's hosted checkout/i)).toBeInTheDocument()
+    expect(screen.queryByText(/OneGate/)).not.toBeInTheDocument()
+  })
+
+  it('says plainly when billing is mocked', async () => {
+    serveBillingProvider('mock')
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/mock billing is on: no card is charged/i)).toBeInTheDocument()
+  })
+
+  it('says when card payments are not configured', async () => {
+    serveBillingProvider(null)
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/card payments are not configured/i)).toBeInTheDocument()
+  })
+
+
   function serveOrganization(organization: Record<string, unknown>) {
     const payload = accountPayload()
     mockGet.mockImplementation((url: string) =>
