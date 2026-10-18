@@ -145,6 +145,33 @@ function renderHistory() {
 }
 
 describe('History page', () => {
+  it('shows item accuracy beside the daily and period figures', async () => {
+    mockGet.mockResolvedValue({ data: {
+      ...historyPayload,
+      meta: { ...historyPayload.meta,
+        liveAccuracy: { ...historyPayload.meta.liveAccuracy, avgItemAccuracy: 61.6 },
+      },
+    } })
+    renderHistory()
+    expect(await screen.findByText(/Per item: 61.6%/)).toBeVisible()
+    expect(screen.getByText('Per item: 76.0%')).toBeVisible()
+  })
+
+  it('explains excluded rows visibly and distinguishes all-excluded backtests from no backtests', async () => {
+    mockGet.mockResolvedValue({ data: {
+      ...historyPayload,
+      history: [{ ...historyPayload.history[0], origin: 'backfill', countsTowardAccuracy: false }],
+      meta: { ...historyPayload.meta,
+        backtestAccuracy: { ...historyPayload.meta.backtestAccuracy, rowCount: 0, excludedRowCount: 1 },
+      },
+    } })
+    renderHistory()
+    expect(await screen.findByText('Not counted')).toBeVisible()
+    expect(screen.getByText('This day was still building history, so it is not in the accuracy figures.')).toBeVisible()
+    expect(screen.getByText(/No counted retrospective backtests in this period/)).toBeVisible()
+    expect(screen.queryByText(/^No retrospective backtests in this period/)).not.toBeInTheDocument()
+  })
+
   it('lets keyboard users focus the horizontally scrolling daily history', async () => {
     renderHistory()
     const region = await screen.findByRole('region', { name: 'Daily prediction history' })

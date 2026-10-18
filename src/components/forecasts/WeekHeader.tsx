@@ -28,6 +28,8 @@ interface Props {
    */
   basis?: 'live' | 'backtest' | 'none' | null
   itemAccuracy?: number | null
+  itemAccuracyDays?: number
+  excludedInsufficientDays?: number
   basisNote?: string | null
 }
 
@@ -38,6 +40,8 @@ export function WeekHeader({
   matchedDays = null,
   basis = null,
   itemAccuracy = null,
+  itemAccuracyDays,
+  excludedInsufficientDays = 0,
   basisNote = null,
 }: Props) {
   const accuracyColor = accuracyTextClass(accuracy)
@@ -123,6 +127,13 @@ export function WeekHeader({
               </p>
               {sampleNote && <p className="text-muted text-xs mt-1">{sampleNote}</p>}
               {itemAccuracy != null && <p className="text-muted text-xs mt-1">Per item: {Math.round(itemAccuracy)}%</p>}
+              {itemAccuracy != null && <p className="text-muted text-xs mt-1">How close each menu item was; units can match overall while single items are off.</p>}
+              {itemAccuracy != null && itemAccuracyDays != null && (
+                <p className="text-muted text-xs mt-1">Per-item figure from {itemAccuracyDays} day{itemAccuracyDays === 1 ? '' : 's'}.</p>
+              )}
+              {excludedInsufficientDays > 0 && (
+                <p className="text-muted text-xs mt-1">{excludedInsufficientDays} building-history day{excludedInsufficientDays === 1 ? '' : 's'} not counted.</p>
+              )}
               {basis === 'backtest' && basisNote && <p className="text-muted text-xs mt-1">{basisNote}</p>}
             </div>
           </div>

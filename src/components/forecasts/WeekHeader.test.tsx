@@ -3,6 +3,17 @@ import { render, screen } from '@testing-library/react'
 import { WeekHeader } from './WeekHeader'
 
 describe('WeekHeader', () => {
+  it('explains the per-item figure and its sample separately from excluded days', () => {
+    render(
+      <WeekHeader weekTotal={1000} peakDay={null} accuracy={91} matchedDays={12}
+        itemAccuracy={61.6} itemAccuracyDays={7} excludedInsufficientDays={3} />
+    )
+    expect(screen.getByText('Per item: 62%')).toBeInTheDocument()
+    expect(screen.getByText('How close each menu item was; units can match overall while single items are off.')).toBeVisible()
+    expect(screen.getByText('Per-item figure from 7 days.')).toBeVisible()
+    expect(screen.getByText('3 building-history days not counted.')).toBeVisible()
+  })
+
   it('shows item-level accuracy beside the headline', () => {
     render(<WeekHeader weekTotal={1000} peakDay={null} accuracy={91} matchedDays={12} itemAccuracy={61.6} />)
     expect(screen.getByText('91%')).toBeInTheDocument()

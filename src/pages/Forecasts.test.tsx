@@ -416,6 +416,9 @@ describe('Forecasts', () => {
         return Promise.resolve({
           data: {
             avgAccuracy: 88,
+            avgItemAccuracy: 61.6,
+            itemAccuracyDays: 7,
+            excludedInsufficientDays: 3,
             forecasts: [{ date: '2026-03-20', accuracy: 88, totalPredictedRevenue: 100 }],
           },
         })
@@ -430,6 +433,8 @@ describe('Forecasts', () => {
     expect(await screen.findByText('88%')).toBeInTheDocument()
     expect(screen.getByText(/From 1 matched day — too few for a verdict yet/i)).toBeInTheDocument()
     expect(screen.queryByText('Strong')).not.toBeInTheDocument()
+    expect(screen.getByText('Per-item figure from 7 days.')).toBeVisible()
+    expect(screen.getByText('3 building-history days not counted.')).toBeVisible()
   })
 
   it('opens the day drawer from a real button and returns focus to it on close', async () => {

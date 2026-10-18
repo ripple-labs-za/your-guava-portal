@@ -14,11 +14,13 @@ import {
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
+import { HistoryStatPanel as StatPanel } from '@/components/forecasts/HistoryStatPanel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import api, { isSessionRejection } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { ForecastHistoryResponse, ForecastHistoryRow, ForecastHistoryAccuracySummary } from '@/types'
+import type { ForecastHistoryResponse, ForecastHistoryRow } from '@/types'
+import { formatAccuracyPercent as formatPercent, historyAccuracyDetail, NOT_COUNTED_REASON } from '@/lib/historyAccuracy'
 import { parseDateOnly } from '@/lib/date'
 import {
   isLoadSheddingAvailable,
@@ -59,17 +61,6 @@ function formatDate(date: string) {
   })
 }
 
-function formatPercent(value: number | null | undefined, showSign = false) {
-  if (value == null || Number.isNaN(value)) return '-'
-  const sign = showSign && value > 0 ? '+' : ''
-  return `${sign}${value.toFixed(1)}%`
-}
-
-function excludedNote(summary?: ForecastHistoryAccuracySummary) {
-  const n = summary?.excludedRowCount ?? 0
-  return n > 0 ? ` · ${n} building-history day${n === 1 ? '' : 's'} not counted` : ''
-}
-
 function weatherLabel(row: ForecastHistoryRow) {
   const weather = row.weather
   if (!weather) return '-'
@@ -99,34 +90,6 @@ function factorLabels(row: ForecastHistoryRow) {
   }
 
   return [...labels.values()]
-}
-
-function StatPanel({
-  label,
-  value,
-  detail,
-  tone = 'neutral',
-}: {
-  label: string
-  value: string
-  detail?: string
-  tone?: 'neutral' | 'good' | 'bad'
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-[#9E9E9E]">{label}</p>
-      <p
-        className={cn(
-          'mt-2 text-2xl font-semibold text-text',
-          tone === 'good' && 'text-guava-green',
-          tone === 'bad' && 'text-guava-red-text'
-        )}
-      >
-        {value}
-      </p>
-      {detail && <p className="mt-1 text-xs text-muted">{detail}</p>}
-    </div>
-  )
 }
 
 function LoadingState() {
@@ -313,16 +276,12 @@ export default function History() {
                   <StatPanel
                     label="Live forecast accuracy"
                     value={formatPercent(meta.liveAccuracy?.avgDailyRevenueAccuracy)}
-                    detail={`${meta.liveAccuracy?.rowCount
-                      ? `Typical day across ${meta.liveAccuracy.rowCount} live day${meta.liveAccuracy.rowCount === 1 ? '' : 's'} · ${formatPercent(meta.liveAccuracy.overallRevenueAccuracy)} on period totals`
-                      : 'No completed live forecasts in this period'}${excludedNote(meta.liveAccuracy)}`}
+                    detail={historyAccuracyDetail(meta.liveAccuracy, 'live')}
                   />
                   <StatPanel
                     label="Backtest accuracy"
                     value={formatPercent(meta.backtestAccuracy?.avgDailyRevenueAccuracy)}
-                    detail={`${meta.backtestAccuracy?.rowCount
-                      ? `Typical day across ${meta.backtestAccuracy.rowCount} retrospective day${meta.backtestAccuracy.rowCount === 1 ? '' : 's'} · ${formatPercent(meta.backtestAccuracy.overallRevenueAccuracy)} on period totals`
-                      : 'No retrospective backtests in this period'}${excludedNote(meta.backtestAccuracy)}`}
+                    detail={historyAccuracyDetail(meta.backtestAccuracy, 'backtest')}
                   />
                 </>
               ) : (
@@ -438,11 +397,14 @@ export default function History() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-muted">
                             {formatPercent(row.revenueAccuracy)}
+                            {row.itemAccuracy != null && (
+                              <div className="mt-1 text-xs">Per item: {formatPercent(row.itemAccuracy)}</div>
+                            )}
                             {row.countsTowardAccuracy === false && (
-                              <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted"
-                                title="This day was still building history, so it is not in the accuracy figures.">
-                                Not counted
-                              </span>
+                              <div className="mt-1 max-w-52 whitespace-normal">
+                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted">Not counted</span>
+                                <p className="mt-1 text-xs">{NOT_COUNTED_REASON}</p>
+                              </div>
                             )}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-muted">

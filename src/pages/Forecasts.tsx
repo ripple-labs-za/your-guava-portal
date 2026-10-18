@@ -14,27 +14,7 @@ import { WeekTrajectoryChart } from '@/components/forecasts/WeekTrajectoryChart'
 import { DayCard } from '@/components/forecasts/DayCard'
 import { DayDetailDrawer } from '@/components/forecasts/DayDetailDrawer'
 import { ItemsHeatmap } from '@/components/forecasts/ItemsHeatmap'
-
-interface AccuracyPayload {
-  avgAccuracy: number | null
-  avgItemAccuracy?: number | null
-  itemAccuracyDays?: number
-  excludedInsufficientDays?: number
-  basisNote?: string | null
-  /** Which set `avgAccuracy` was computed over. See DECISIONS D-004. */
-  basis?: 'live' | 'backtest' | 'none'
-  liveCount?: number
-  backtestCount?: number
-  liveFrom?: string | null
-  forecasts: {
-    date: string
-    accuracy: number
-    totalPredictedRevenue: number
-    actualRevenue?: number | null
-    actualTransactionCount?: number | null
-    actualsUpdatedAt?: string | null
-  }[]
-}
+import type { AccuracyPayload } from '@/lib/historyAccuracy'
 
 interface WeekMeta {
   expectedDays: number
@@ -374,6 +354,8 @@ export default function Forecasts() {
               matchedDays={accuracy ? accuracy.forecasts?.length ?? 0 : null}
               basis={accuracy?.basis ?? null}
               itemAccuracy={accuracy?.avgItemAccuracy ?? null}
+              itemAccuracyDays={accuracy?.itemAccuracyDays}
+              excludedInsufficientDays={accuracy?.excludedInsufficientDays}
               basisNote={accuracy?.basisNote ?? null}
             />
             {/* Say what the headline figures are drawn from. Without this the
