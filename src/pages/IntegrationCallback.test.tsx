@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import IntegrationCallback from './IntegrationCallback'
 
@@ -39,5 +39,25 @@ describe('IntegrationCallback', () => {
     })
     expect(window.location.href).not.toContain('secret-code')
     expect(window.location.href).not.toContain('opaque-state')
+  })
+
+  it('shows the server reason when the provider account is refused, and offers the way back', async () => {
+    const reason =
+      'Your Xero login authorised 2 organisations. Connect again and choose only the organisation this cafe uses.'
+    mockPost.mockRejectedValue({
+      response: { status: 409, data: { code: 'INTEGRATION_ACCOUNT_CHOICE_REQUIRED', message: reason } },
+    })
+    window.history.replaceState(null, '', '/integrations/xero/callback?code=c&state=s')
+
+    render(
+      <BrowserRouter>
+        <Routes>
+          <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+        </Routes>
+      </BrowserRouter>
+    )
+
+    expect(await screen.findByText(reason)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to integrations/i })).toHaveAttribute('href', '/integrations')
   })
 })
