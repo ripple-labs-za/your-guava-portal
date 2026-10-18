@@ -22,7 +22,7 @@ import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
 import { publishBillingAccess } from '@/lib/billingEvents'
 import { AccountNotice } from '@/components/account/AccountNotice'
-import { paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeState, type NoticeTone, type PaymentIntent } from '@/lib/paymentOutcome'
+import { NOT_CONFIRMED_MESSAGE, paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeState, type NoticeTone, type PaymentIntent } from '@/lib/paymentOutcome'
 import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
 import { formatPlanChangeDate as formatDate, planChangeSentence, planChangeNotice, pendingChangeSentence, planNameFor, previewFor } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
@@ -49,9 +49,6 @@ const isStillInitializing = (httpStatus: number | undefined, intent: PaymentInte
   httpStatus === 202 ||
   intent.status === 'initializing' ||
   intent.initializationStatus === 'initializing'
-
-const NOT_CONFIRMED_MESSAGE =
-  'Checkout has not confirmed this payment yet, so nothing has changed. Retrying resumes the same payment; it will not charge twice.'
 
 const formatRand = (value: number) => `R${value.toLocaleString('en-ZA')}`
 
@@ -589,7 +586,10 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
           : `${plan.name} payment confirmed.`)
       } else if (data.account) {
         setAccount(data.account)
-        showNotice('info', NOT_CONFIRMED_MESSAGE, { persist: true })
+        const outcome = paymentOutcome(data.checkout.status, 'plan', data.checkout.planChangeConflict)
+        if (data.checkout.status === 'failed' || data.checkout.status === 'cancelled') planCheckoutRef.current = null
+        showNotice(outcome.terminal ? outcome.tone : 'info', outcome.terminal ? outcome.message : NOT_CONFIRMED_MESSAGE,
+          { persist: true, reference: data.checkout.reference })
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }
@@ -651,7 +651,10 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         showNotice('success', `Added ${packCredits.toLocaleString('en-ZA')} Guava Credits to this billing period.`)
       } else if (data.account) {
         setAccount(data.account)
-        showNotice('info', NOT_CONFIRMED_MESSAGE, { persist: true })
+        const outcome = paymentOutcome(data.purchase.status, 'credits')
+        if (data.purchase.status === 'failed' || data.purchase.status === 'cancelled') creditCheckoutRef.current = null
+        showNotice(outcome.terminal ? outcome.tone : 'info', outcome.terminal ? outcome.message : NOT_CONFIRMED_MESSAGE,
+          { persist: true, reference: data.purchase.reference })
       } else {
         showNotice('error', 'Secure checkout is still being prepared. Try again in a moment.')
       }

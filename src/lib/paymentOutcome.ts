@@ -20,6 +20,9 @@ export type PaymentIntent = {
 
 type PaymentOutcome = { tone: NoticeTone; message: string; terminal: boolean }
 
+export const NOT_CONFIRMED_MESSAGE =
+  'Checkout has not confirmed this payment yet, so nothing has changed. Retrying resumes the same payment; it will not charge twice.'
+
 const OUTCOMES: Record<PaymentSessionStatus, PaymentOutcome> = {
   needs_attention: {
     tone: 'info', terminal: true,

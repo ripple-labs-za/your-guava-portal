@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import Account from './Account'
 import type { ReactNode } from 'react'
 import type { User } from '@/types'
+import { paymentOutcome } from '@/lib/paymentOutcome'
 
 vi.mock('@/assets/logo.png', () => ({ default: 'logo.png' }))
 vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
@@ -985,7 +986,7 @@ describe('Account', () => {
     expect(notice).toHaveTextContent(/payment is held.*not been lost.*support/i)
   })
 
-it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announce a plan change with checkout status %s', async (status) => {
+it.each(['pending', 'processing', 'failed', 'cancelled', 'needs_attention', 'reversed'] as const)('does not announce a plan change with checkout status %s', async (status) => {
   mockPost.mockResolvedValueOnce({
     status: 200,
     data: { success: true, account: accountPayload(), checkout: { provider: 'paystack', reference: 'ref-3', status } },
@@ -994,11 +995,12 @@ it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announ
   await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
   await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
 
-  expect(await screen.findByText(/has not confirmed this payment yet/i)).toBeInTheDocument()
+  const outcome = paymentOutcome(status, 'plan')
+  expect(await screen.findByText(outcome.terminal ? outcome.message : /has not confirmed this payment yet/i)).toBeInTheDocument()
   expect(screen.queryByText(/plan activated/i)).not.toBeInTheDocument()
 })
 
-it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announce credits with purchase status %s', async (status) => {
+it.each(['pending', 'processing', 'failed', 'cancelled', 'needs_attention', 'reversed'] as const)('does not announce credits with purchase status %s', async (status) => {
   mockPost.mockResolvedValueOnce({
     status: 200,
     data: {
@@ -1011,7 +1013,8 @@ it.each(['pending', 'processing', 'failed', 'needs_attention'])('does not announ
   await userEvent.click(await screen.findByRole('button', { name: /500 credits/i }))
   await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
 
-  expect(await screen.findByText(/has not confirmed this payment yet/i)).toBeInTheDocument()
+  const outcome = paymentOutcome(status, 'credits')
+  expect(await screen.findByText(outcome.terminal ? outcome.message : /has not confirmed this payment yet/i)).toBeInTheDocument()
   expect(screen.queryByText(/added 500/i)).not.toBeInTheDocument()
 })
 
@@ -1045,6 +1048,27 @@ it.each(['plan', 'credits'])('keeps the %s idempotency key when a payment is not
   expect(calls).toHaveLength(2)
   expect(calls[0][2].headers['Idempotency-Key']).toBeTruthy()
   expect(calls[1][2].headers['Idempotency-Key']).toBe(calls[0][2].headers['Idempotency-Key'])
+})
+
+it.each([
+  ['plan', 'failed'], ['plan', 'cancelled'], ['credits', 'failed'], ['credits', 'cancelled'],
+] as const)('starts a fresh %s payment after %s', async (kind, status) => {
+  const field = kind === 'plan' ? 'checkout' : 'purchase'
+  const url = kind === 'plan' ? '/account/checkout' : '/account/ai-credits'
+  mockPost.mockResolvedValue({ status: 200, data: {
+    success: true, account: accountPayload(),
+    [field]: { provider: 'paystack', reference: 'terminal-retry', status, credits: 500 },
+  } })
+  renderWithAuth(<Account />)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await userEvent.click(await screen.findByRole('button', { name: kind === 'plan' ? /move to starter/i : /500 credits/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
+    await waitFor(() => expect(mockPost.mock.calls.filter(([target]) => target === url)).toHaveLength(attempt + 1))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /confirm and pay|confirm purchase/i })).not.toBeInTheDocument())
+  }
+  const calls = mockPost.mock.calls.filter(([target]) => target === url)
+  expect(calls[0][2].headers['Idempotency-Key']).toBeTruthy()
+  expect(calls[1][2].headers['Idempotency-Key']).not.toBe(calls[0][2].headers['Idempotency-Key'])
 })
 
 })
