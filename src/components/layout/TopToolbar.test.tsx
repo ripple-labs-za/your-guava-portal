@@ -74,7 +74,7 @@ describe('TopToolbar', () => {
   it('shows the read-only grace state and links it to billing', async () => {
     renderToolbar({ available: 0, organization: GRACE })
 
-    const control = await screen.findByRole('button', { name: /read-only until 0?4 Oct 2026/i })
+    const control = await screen.findByRole('button', { name: /read-only until 0?4 October 2026/i })
     fireEvent.click(control)
 
     expect(screen.getByTestId('location')).toHaveTextContent('/settings?section=billing')
@@ -90,7 +90,7 @@ describe('TopToolbar', () => {
       }))
     })
 
-    expect(await screen.findByRole('button', { name: /read-only until 0?4 Oct 2026/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /read-only until 0?4 October 2026/i })).toBeInTheDocument()
   })
 
   it('removes the grace control when a confirmed account response restores access', async () => {
