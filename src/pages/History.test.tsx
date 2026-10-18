@@ -412,16 +412,21 @@ describe('History page', () => {
     expect(screen.queryByText(/Free — building history/i)).not.toBeInTheDocument()
   })
 
-  it('explains a batch refused for lack of credits, without reloading', async () => {
+  it('reloads days kept before a batch ran out of credits and explains the refusal', async () => {
     const user = userEvent.setup()
-    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockResolvedValueOnce({ data: { ...pendingWithCost, history: [], meta: { ...pendingWithCost.meta, totalRows: 0 } } })
     mockGet.mockRejectedValueOnce({ response: { status: 402, data: { message: 'Guava credit limit reached for this billing period' } } })
+    mockGet.mockResolvedValue({ data: { ...pendingWithCost, meta: { ...pendingWithCost.meta, pendingDays: 15 } } })
     renderHistory()
 
     await user.click(await screen.findByRole('button', { name: /build next 14/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Not enough Guava Credits/i)
-    expect(mockGet).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3))
+    expect(mockGet).toHaveBeenLastCalledWith('/forecasts/history', {
+      params: { days: 90, page: 1, limit: 30 },
+    })
+    expect(await screen.findByText(/Patchy rain nearby/)).toBeInTheDocument()
   })
 
   it('asks the owner to wait when batches come too fast', async () => {

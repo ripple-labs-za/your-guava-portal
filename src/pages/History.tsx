@@ -218,6 +218,8 @@ export default function History() {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 402) {
         setBackfillError('Not enough Guava Credits to build this batch. Top up in Settings › Account, then carry on.')
+        // Credits can run out after earlier days have already been saved.
+        setRefreshNonce((value) => value + 1)
         return
       }
       if (status === 429) {
