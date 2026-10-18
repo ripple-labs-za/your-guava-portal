@@ -676,4 +676,62 @@ describe('Factors', () => {
     expect(await screen.findByText(/High 29°C/)).toBeInTheDocument()
   })
 
+  it('sends an event that repeats every year as recurring', async () => {
+    mockPost.mockResolvedValue({ data: { event: { _id: 'e2', name: 'Heritage market', date: '2099-09-24', impact: 'medium', recurring: true } } })
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Events' }))
+
+    await userEvent.type(screen.getByLabelText('Event name'), 'Heritage market')
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2099-09-24' } })
+    await userEvent.click(screen.getByRole('checkbox', { name: /repeats every year on this date/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add Event' }))
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith('/events', expect.objectContaining({ name: 'Heritage market', recurring: true }))
+    )
+  })
+
+  it('says an event uplift was not applied, instead of printing an expectation the forecast never had', async () => {
+    const defaultGet = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/events/effects')) {
+        return Promise.resolve({
+          data: {
+            effects: [{
+              eventId: 'event1', name: 'Saturday Market', date: '2026-06-06', dateKey: '2026-06-06', impact: 'high',
+              expectedImpactPct: 0, expectedApplied: false, expectedNote: 'Local events are not applied to forecasts on the Starter plan.',
+              actualRevenue: 15000, actualTransactions: 120, baselineRevenue: 10000, baselineTransactions: 90, baselineDayCount: 6,
+              revenueImpactPct: 50, transactionImpactPct: 33.3, vsExpectedPct: 50, confidence: 'medium',
+            }],
+            summary: { eventsAnalyzed: 1, avgRevenueImpactPct: 50, aboveExpected: 1, belowExpected: 0, insufficientData: 0 },
+          },
+        })
+      }
+      return defaultGet(url)
+    })
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Events' }))
+
+    expect(await screen.findByText('Local events are not applied to forecasts on the Starter plan.')).toBeInTheDocument()
+  })
+
+  it('reads an event’s calendar day from dateKey', async () => {
+    const defaultGet = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/events') && !url.includes('/events/effects')) {
+        // An instant stored before dateKey existed would slice to the previous day; dateKey is the day the owner chose.
+        return Promise.resolve({ data: { events: [
+          { _id: 'e3', name: 'Night market', date: '2099-07-17T22:00:00.000Z', dateKey: '2099-07-18', impact: 'high', recurring: false },
+        ] } })
+      }
+      return defaultGet(url)
+    })
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Events' }))
+
+    // The row (and the "Next event" tile) must show the 18th, never the 17th that slicing the instant would give.
+    expect((await screen.findAllByText(/\b18 Jul/)).length).toBeGreaterThan(0)
+    expect(screen.queryAllByText(/\b17 Jul/)).toHaveLength(0)
+  })
+
 })

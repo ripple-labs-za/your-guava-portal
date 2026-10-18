@@ -355,6 +355,8 @@ export interface LocalEvent {
   _id: string
   name: string
   date: string
+  dateKey?: string
+  type?: 'event' | 'closure' | 'partial_closure'
   impact: 'low' | 'medium' | 'high'
   impactPct?: number
   notes?: string
@@ -365,8 +367,11 @@ export interface EventSalesEffect {
   eventId: string
   name: string
   date: string
+  dateKey?: string
   impact: 'low' | 'medium' | 'high'
   expectedImpactPct: number
+  expectedApplied?: boolean
+  expectedNote?: string | null
   actualRevenue: number
   actualTransactions: number
   baselineRevenue: number
