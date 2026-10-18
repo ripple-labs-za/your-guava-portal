@@ -29,6 +29,7 @@ export interface ChatFailure {
   required?: number
   retryAfterSeconds?: number
   charged?: boolean | null
+  chargeInferred?: boolean
   credits?: number
   serverMessage?: string
 }
@@ -107,13 +108,14 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
       charged: failure.charged === undefined
         ? (delivered ? true : (refusedBeforeDelivery ? false : null))
         : failure.charged,
+      chargeInferred: failure.charged === undefined || failure.chargeInferred,
     }
   }
 
   const name = (error as Error | undefined)?.name
   // A torn-down or timed-out stream is recoverable in principle, but it is
   // never worth a second reservation the user did not ask for.
-  if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered }
+  if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered, chargeInferred: true }
 
   const response = (error as {
     response?: { status?: number; data?: { code?: string; message?: string; details?: { code?: string; available?: number; required?: number; retryable?: boolean } } }
@@ -138,6 +140,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
     return {
       kind: failureKindForStatus(status) ?? 'transient',
       charged: delivered,
+      chargeInferred: true,
       serverMessage: serverMessageFrom(response?.data?.message),
       available: response?.data?.details?.available,
       required: response?.data?.details?.required,
@@ -158,7 +161,7 @@ export function chatFailureCopy(failure: ChatFailure) {
     return {
       title: 'Charge not confirmed',
       detail: failure.kind === 'provider-rejected'
-        ? 'The charge could not be confirmed. The AI service could not accept this request.'
+        ? `The charge could not be confirmed. ${failure.serverMessage || 'The AI service could not accept this request.'}`
         : 'The charge could not be confirmed. Loading this request again will not create a second charge.',
       action: failure.kind === 'provider-rejected' ? null : { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
     }
@@ -236,7 +239,7 @@ export function chatFailureCopy(failure: ChatFailure) {
     default:
       return {
         title: 'The AI analyst could not finish this answer',
-        detail: failure.serverMessage ?? (failure.charged === false
+        detail: failure.serverMessage ?? (failure.charged === false && !failure.chargeInferred
           ? 'The AI service could not finish this answer. Nothing was charged. Try again.'
           : 'Anything above this line is what arrived before the answer stopped.'),
         action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },

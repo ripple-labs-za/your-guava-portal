@@ -35,6 +35,18 @@ describe('provider failure boundary', () => {
 })
 
 describe('charge recovery copy', () => {
+  it.each([
+    Object.assign(new Error('aborted'), { name: 'AbortError' }),
+    { response: { status: 503 } },
+  ])('does not call an inferred undelivered failure refunded: %j', (error) => {
+    const failure = chatFailureFrom(error, false, false)
+    expect(chatFailureCopy(failure).detail).not.toMatch(/nothing was charged|no credits were charged/i)
+    expect(chatFailureCopy(failure).detail).toContain('Anything above this line')
+  })
+  it('keeps the provider rejection reason under an unknown charge', () => {
+    const failure = chatFailureFromStreamEvent({ retryable: false, charged: null, message: 'The provider credentials need fixing.' })
+    expect(chatFailureCopy(failure)).toMatchObject({ title: 'Charge not confirmed', detail: expect.stringContaining('The provider credentials need fixing.'), action: null })
+  })
   it.each(['cafe-access', 'invalid-request'])('maps the axios %s refusal', (kind) => {
     const status = kind === 'cafe-access' ? 403 : 400
     const code = kind === 'cafe-access' ? 'CAFE_ACCESS_REVOKED' : 'AI_CHAT_INVALID_INPUT'
