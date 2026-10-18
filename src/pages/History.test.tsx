@@ -467,7 +467,6 @@ describe('History page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/wait a few minutes/i)
   })
 
-
   it('shows the daytime high in the History weather cell', async () => {
     mockGet.mockResolvedValue({ data: { ...historyPayload, history: historyPayload.history.map((row) => ({
       ...row, weather: { ...row.weather, temp: 20, maxTemp: 29 },
