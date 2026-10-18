@@ -214,7 +214,7 @@ function deltaEvent(text: string) {
 }
 
 async function askQuestion(question: string) {
-  const input = await screen.findByPlaceholderText(/how can i help/i)
+  const input = await screen.findByPlaceholderText(/how can i help|write a message/i)
   await userEvent.type(input, question)
   fireEvent.submit(input.closest('form')!)
 }
@@ -231,6 +231,33 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('sends only the trailing user-anchored window for a long chat', async () => {
+    const saved = chat({ messages: Array.from({ length: 14 }, (_, index) => ({
+      id: `long-${index}`, role: index % 2 === 0 ? 'user' : 'assistant', content: `Message ${index}`,
+    })) })
+    storeActiveChat(saved)
+    mockBaseRequests([saved])
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Fine.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+    mockPatch.mockResolvedValue({ data: { chat: saved } })
+    render(<Insights />)
+    await askQuestion('Question 15')
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled())
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
+    expect(body.messages).toHaveLength(9)
+    expect(body.messages[0].role).toBe('user')
+    expect(body.messages.at(-1)).toEqual({ role: 'user', content: 'Question 15' })
+  })
+
+  it('explains a named 413 while keeping the long chat on this device', async () => {
+    const saved = chat()
+    storeActiveChat(saved)
+    mockBaseRequests([saved])
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Fine.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+    mockPatch.mockRejectedValue({ response: { status: 413, data: { details: { code: 'PAYLOAD_TOO_LARGE' } } } })
+    render(<Insights />)
+    await askQuestion('One more')
+    expect(await screen.findByText(/too long to save to your account/i)).toBeInTheDocument()
+  })
   it('keeps loaded analysis when a no-data refresh returns and announces the outcome once', async () => {
     mockBaseRequests()
     mockGet.mockImplementation((url: string) => url.includes('/forecasts/insights')

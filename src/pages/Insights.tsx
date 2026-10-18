@@ -37,7 +37,7 @@ import { publishGuavaCredits, type GuavaCreditSnapshot } from '@/lib/creditEvent
 import { secureRandomId } from '@/lib/idempotency'
 import { resolveRefreshOutcome, insightRefreshErrorNotice, INSIGHT_WINDOW_COPY, type InsightCacheStatus } from '@/lib/insightRefresh'
 import { cn } from '@/lib/utils'
-import { getInsightChatStorageKeys, readScopedStorage, writeScopedStorage } from '@/lib/chatStorage'
+import { getInsightChatStorageKeys, readScopedStorage, writeScopedStorage, trailingChatWindow } from '@/lib/chatStorage'
 import { useAuth } from '@/hooks/useAuth'
 import guavaIcon from '@/assets/guava-icon.png'
 
@@ -1435,7 +1435,7 @@ export default function Insights() {
       // the user kept talking into a copy that only ever existed in this
       // browser, while the untouched server row reappeared, stale, at the next
       // load. The server chat stays; only the save is reported as failed.
-      setChatNotice(savedChatFailureNotice(error) ?? 'Could not save this chat to your account. It is kept on this device for now.')
+      setChatNotice((error as { response?: { status?: number } })?.response?.status === 413 ? 'This chat is too long to save to your account. Start a new chat to keep saving; this one stays on this device.' : savedChatFailureNotice(error) ?? 'Could not save this chat to your account. It is kept on this device for now.')
     }
   }
 
@@ -1637,7 +1637,7 @@ export default function Insights() {
     let streamFailure: ChatFailure | undefined
     try {
       const chatId = await ensureActiveChat(nextMessages)
-      const payloadMessages = messagesForApi(nextMessages)
+      const payloadMessages = trailingChatWindow(messagesForApi(nextMessages))
       const conversationText = JSON.stringify(payloadMessages)
       const fingerprint = globalThis.crypto?.subtle
         ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(conversationText))))

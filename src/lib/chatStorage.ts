@@ -4,6 +4,14 @@ export interface InsightChatStorageScope {
   cafeId: string
 }
 
+/** Mirrors the backend's trailing message count and oldest-user anchor. */
+export const CHAT_HISTORY_WINDOW = 10
+export function trailingChatWindow<T extends { role: 'user' | 'assistant' }>(messages: T[], size = CHAT_HISTORY_WINDOW): T[] {
+  const window = messages.slice(-size)
+  const firstUser = window.findIndex((message) => message.role === 'user')
+  return firstUser === -1 ? [] : window.slice(firstUser)
+}
+
 const CURRENT_PREFIX = 'your-guava:insights-chat:v2:'
 const LIST_PREFIX = 'your-guava:insights-chat-list:v2:'
 const LEGACY_KEYS = new Set([
