@@ -49,6 +49,13 @@ describe('savedMappingNotice', () => {
 })
 
 describe('mappingAssistNotice', () => {
+  it.each([
+    ['usage_limit_reached', /last 24 hours.*Nothing was charged/],
+    ['permission_required', /cannot spend Guava Credits/],
+    ['provider_unavailable', /could not suggest matches.*Nothing was charged/],
+  ] as const)('explains %s', (reason, copy) => {
+    expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: reason })).toMatch(copy)
+  })
   it('reports the credits an AI mapping used', () => {
     expect(mappingAssistNotice({ mappingAssistedByAi: true, mappingCreditsUsed: 10 }))
       .toMatch(/used 10 Guava Credits/)
@@ -58,7 +65,7 @@ describe('mappingAssistNotice', () => {
     expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'insufficient_credits' }))
       .toMatch(/needs 10 Guava Credits.*Nothing was charged/)
     expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'rate_limited' }))
-      .toMatch(/paused for a minute.*Nothing was charged/)
+      .toMatch(/paused for up to a minute.*Nothing was charged/)
     expect(mappingAssistNotice({ mappingAssistedByAi: false, mappingAiUnavailableReason: 'sensitive_headers' }))
       .toMatch(/customer data/)
   })

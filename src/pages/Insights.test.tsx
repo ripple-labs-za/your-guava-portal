@@ -231,6 +231,15 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('shows the saved-chat 429 wait instead of silently creating a local chat', async () => {
+    mockBaseRequests()
+    mockPost.mockRejectedValue({ response: { status: 429, data: { code: 'CHAT_RATE_LIMITED' }, headers: { 'retry-after': '17' } } })
+    render(<Insights />)
+    await askQuestion('Wait for the saved chat')
+    await screen.findByText(/saved chats.*17 seconds/i)
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+    expect(localStorage.getItem(CHAT_LIST_STORAGE_KEY) || '').not.toContain('local-')
+  })
   it('keeps the same idempotency key when a charged fallback returns 401 and the free replay is requested', async () => {
     mockBaseRequests()
     vi.mocked(fetch)

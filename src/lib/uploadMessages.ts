@@ -1,4 +1,4 @@
-import type { StageUploadResponse } from '@/types/upload'
+import type { StageUploadResponse, DeleteUploadResponse, SavedMappingStatus, UploadOverlap, UploadOverlapStats } from '@/types/upload'
 
 type MappingNoticeInput = Pick<StageUploadResponse, 'mappingAssistedByAi' | 'mappingCreditsUsed' | 'mappingAiUnavailableReason'>
 
@@ -13,9 +13,9 @@ export const mappingAssistNotice = (stage: MappingNoticeInput): string | null =>
     case 'insufficient_credits':
       return 'AI column matching needs 10 Guava Credits and your balance cannot cover it, so match the columns below yourself. Nothing was charged.'
     case 'rate_limited':
-      return 'AI column matching is paused for a minute because this login has made a lot of AI requests. Match the columns below yourself, or cancel and upload again shortly. Nothing was charged.'
+      return 'AI column matching is paused for up to a minute because this login has made a lot of AI requests. Match the columns below yourself, or cancel and upload again shortly. Nothing was charged.'
     case 'usage_limit_reached':
-      return "AI column matching has reached today's AI safety limit for your account. Match the columns below yourself. Nothing was charged."
+      return 'AI column matching has reached an AI safety limit for your login or account. Wait for current AI work to finish; usage limits count the last 24 hours. Match the columns below yourself. Nothing was charged.'
     case 'permission_required':
       return 'Your login cannot spend Guava Credits, so AI column matching was skipped. Match the columns below yourself, or ask the owner to allow credit spending.'
     case 'provider_unavailable':
@@ -26,8 +26,6 @@ export const mappingAssistNotice = (stage: MappingNoticeInput): string | null =>
       return null
   }
 }
-
-import type { DeleteUploadResponse, SavedMappingStatus, UploadOverlap, UploadOverlapStats } from '@/types/upload'
 
 // Copy shown when a chosen file is refused before it is sent. Kept in one place
 // because the .xls message is load-bearing: production's backend cannot import

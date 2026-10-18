@@ -2,6 +2,14 @@ import { isSessionRejection } from './api'
 
 export const CHAT_CREDIT_COST = 3
 export const DEFAULT_RATE_LIMIT_SECONDS = 60
+
+export function savedChatFailureNotice(error: unknown): string | null {
+  const response = (error as { response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string } } })?.response
+  if (response?.status !== 429 || response.data?.code !== 'CHAT_RATE_LIMITED') return null
+  const seconds = Number(response.headers?.['retry-after'])
+  const wait = Number.isFinite(seconds) && seconds > 0 ? `${Math.ceil(seconds)} seconds` : 'up to a minute'
+  return `Saved chats are being changed too quickly. Wait ${wait}, then try again.`
+}
 export type ChatFailureKind =
   | 'out-of-credits'
   | 'not-permitted'

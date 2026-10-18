@@ -1,4 +1,4 @@
-import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureCopy, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
+import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureCopy, savedChatFailureNotice, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
 import {
   useState,
   useEffect,
@@ -1431,12 +1431,12 @@ export default function Insights() {
       setChats((current) =>
         sortChats([updatedChat, ...current.filter((chat) => chat._id !== updatedChat._id)])
       )
-    } catch {
+    } catch (error) {
       // Replacing the server chat with a local clone forked the conversation:
       // the user kept talking into a copy that only ever existed in this
       // browser, while the untouched server row reappeared, stale, at the next
       // load. The server chat stays; only the save is reported as failed.
-      setChatNotice('Could not save this chat to your account. It is kept on this device for now.')
+      setChatNotice(savedChatFailureNotice(error) ?? 'Could not save this chat to your account. It is kept on this device for now.')
     }
   }
 
@@ -1453,7 +1453,9 @@ export default function Insights() {
       setChats((current) => sortChats([createdChat, ...current.filter((chat) => chat._id !== createdChat._id)]))
       setActiveChat(createdChat._id)
       return createdChat._id
-    } catch {
+    } catch (error) {
+      const notice = savedChatFailureNotice(error)
+      if (notice) { setChatNotice(notice); throw error }
       const localChat = createLocalChat(chatMessages, contextStats)
       setChats((current) => sortChats([localChat, ...current.filter((chat) => chat._id !== localChat._id)]))
       setActiveChat(localChat._id)
@@ -1522,8 +1524,8 @@ export default function Insights() {
         setActiveChat(updatedChat._id)
       }
       setChatNotice('Chat renamed.')
-    } catch {
-      setChatNotice('Could not rename this chat. Please try again.')
+    } catch (error) {
+      setChatNotice(savedChatFailureNotice(error) ?? 'Could not rename this chat. Please try again.')
     }
   }
 
@@ -1541,8 +1543,8 @@ export default function Insights() {
       const updatedChat = withMessageIds(data.chat)
       setChats((current) => current.map((item) => (item._id === updatedChat._id ? updatedChat : item)))
       if (archived && activeChatIdRef.current === chat._id) startNewChat({ preserve: false })
-    } catch {
-      setChatNotice(`Could not ${archived ? 'archive' : 'restore'} this chat. Please try again.`)
+    } catch (error) {
+      setChatNotice(savedChatFailureNotice(error) ?? `Could not ${archived ? 'archive' : 'restore'} this chat. Please try again.`)
     }
   }
 
@@ -1559,8 +1561,8 @@ export default function Insights() {
     if (!isLocalChat(chat._id)) {
       try {
         await api.delete(`/insight-chats/${chat._id}`)
-      } catch {
-        setChatNotice(`Could not delete ${chat.title}. Please try again.`)
+      } catch (error) {
+        setChatNotice(savedChatFailureNotice(error) ?? `Could not delete ${chat.title}. Please try again.`)
         return
       }
     }

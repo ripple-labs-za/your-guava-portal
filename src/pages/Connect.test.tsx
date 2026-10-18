@@ -8,10 +8,11 @@ vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
 
 // Mock ColumnMappingWizard for wizard-appearance tests
 vi.mock('@/components/upload/ColumnMappingWizard', () => ({
-  ColumnMappingWizard: ({ open, onCancel }: { open: boolean; onCancel: () => void }) =>
+  ColumnMappingWizard: ({ open, onCancel, assistiveNotice }: { open: boolean; onCancel: () => void; assistiveNotice?: string | null }) =>
     open ? (
       <div data-testid="column-mapping-wizard">
         Map your CSV columns
+        <p>{assistiveNotice}</p>
         <button onClick={onCancel}>Cancel mapping</button>
       </div>
     ) : null,
@@ -288,7 +289,8 @@ describe('Connect', () => {
             itemsMode: 'packed',
             headers: ['When', 'Items', 'Total'],
             preview: [],
-            needsConfirmation: true,
+              needsConfirmation: true,
+              mappingAiUnavailableReason: 'rate_limited',
           },
         })
       }
@@ -310,6 +312,7 @@ describe('Connect', () => {
     })
 
     expect(screen.getByText('Map your CSV columns')).toBeInTheDocument()
+    expect(screen.getByText(/AI column matching is paused for up to a minute/i)).toBeInTheDocument()
   })
 
   it('recovers a completed import after the confirmation response is lost', async () => {

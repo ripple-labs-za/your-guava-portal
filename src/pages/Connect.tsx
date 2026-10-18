@@ -1,4 +1,3 @@
-import { mappingAssistNotice } from '@/lib/uploadMessages'
 import { useState, useRef, useEffect, type DragEvent, type ChangeEvent } from 'react'
 import { Upload, CheckCircle, AlertCircle, Clock, TrendingUp, LoaderCircle, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router'
@@ -18,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import api, { isSessionRejection } from '@/lib/api'
-import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage, savedMappingNotice } from '@/lib/uploadMessages'
+import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage, savedMappingNotice, mappingAssistNotice } from '@/lib/uploadMessages'
 import { confirmUpload as confirmUploadRequest, type ConfirmUploadResponse } from '@/lib/uploads'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
