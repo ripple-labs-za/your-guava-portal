@@ -1,5 +1,13 @@
 const pad2 = (value: number) => String(value).padStart(2, '0')
 
+/** Billing dates follow the platform's SAST calendar, like the server. */
+export function formatBillingDate(value?: string | null, short = false): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return '-'
+  return date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: short ? undefined : 'numeric', timeZone: 'Africa/Johannesburg' })
+}
+
 /**
  * Formats a calendar date without converting it through UTC.
  * Use this for API fields whose contract is YYYY-MM-DD rather than an instant.

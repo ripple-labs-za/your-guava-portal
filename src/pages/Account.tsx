@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { publishGuavaCredits } from '@/lib/creditEvents'
 import { publishBillingAccess } from '@/lib/billingEvents'
+import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
 import { formatPlanChangeDate as formatDate, planChangeSentence } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
 import type { Account, BillingPlan, BillingCycle, PlanChangePreview } from '@/types'
@@ -313,7 +314,7 @@ function PlanCard({
           </div>
         ))}
       </div>
-      <Button type="button" variant={active ? 'secondary' : 'default'} className="w-full" onClick={onSelect} disabled={disabled || (active && !renewable && !trialing)}>
+      <Button type="button" variant={active && !renewable ? 'secondary' : 'default'} className="w-full" onClick={onSelect} disabled={disabled || (active && !renewable && !trialing)}>
         {label}
       </Button>
     </div>
@@ -730,7 +731,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         showNotice('error', err.response.data.message, { persist: true, action: { label: 'Open Team', to: '/team' } })
         return
       }
-      showNotice('error', err?.response?.data?.message || 'Could not start card checkout.')
+      showNotice('error', billingReadOnlyMessage(err) || err?.response?.data?.message || 'Could not start card checkout.')
     } finally {
       setCheckoutPlan(null)
     }
@@ -777,7 +778,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       if (err?.response && err.response.status < 500 && err.response.status !== 408 && err.response.status !== 429) {
         creditCheckoutRef.current = null
       }
-      showNotice('error', err?.response?.data?.message || 'Could not start card checkout.')
+      showNotice('error', billingReadOnlyMessage(err) || err?.response?.data?.message || 'Could not start card checkout.')
     } finally {
       setIsBuyingCredits(false)
     }
@@ -791,14 +792,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
   const previewFor = (planId: string, cycle: BillingCycle) =>
     planChanges.find((change) => change.plan === planId && change.billingCycle === cycle)
   const planNameFor = (planId: string) => (account?.plans || []).find((plan) => plan.id === planId)?.name ?? planId
-  const access = account?.organization.billingAccess
-  const paidThrough = pendingPlanChange?.periodEnd ?? account?.organization.currentPeriodEnd ?? null
-  const renewable = access?.allowed === false || (paidThrough !== null && new Date(paidThrough).getTime() - Date.now() <= 7 * 24 * 60 * 60 * 1000)
-  const trialing = account?.organization.billingStatus === 'trialing'
-  const periodSummary = !account || access?.status === 'grace' ? null
-    : trialing && account.organization.trialEndsAt ? `Trial ends ${formatDate(account.organization.trialEndsAt)}`
-      : account.organization.billingStatus === 'active' && paidThrough
-        ? `Paid until ${formatDate(paidThrough)}. Nothing renews automatically; Guava emails the owner 7 days and 1 day before.` : null
+  const { access, renewable, trialing, periodSummary, graceHeading, graceDetail, statusLabel } = billingPageState(account?.organization, isOwner)
 
   // Read through the router hook so it reacts when the flag is cleared after a
   // successful payment; the raw window.location read never did.
@@ -1024,8 +1018,8 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
 
         {showBillingSection && access?.status === 'grace' && (
           <div role="alert" className="rounded-lg border border-guava-red/30 bg-guava-red/10 px-4 py-3">
-            <p className="text-sm font-medium text-text">Your {access.reason === 'trial_expired' ? 'free trial' : 'plan'} ended on {formatDate(access.periodEnd)}. Guava is read-only until {formatDate(access.graceEndsAt)}.</p>
-            <p className="mt-1 text-sm text-muted">You can still view forecasts, analytics and history. Imports, edits and AI tools are paused. Choose a plan below to restore everything.</p>
+            <p className="text-sm font-medium text-text">{graceHeading}</p>
+            <p className="mt-1 text-sm text-muted">{graceDetail}</p>
           </div>
         )}
         {showBillingSection && <Card>
@@ -1043,7 +1037,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               </div>
               {account && (
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="success">{account.organization.billingStatus || 'trialing'}</Badge>
+                  <Badge variant="success">{statusLabel}</Badge>
                   <Badge variant="secondary">{account.organization.plan} plan</Badge>
                   {isOwner && account.organization.paymentMethod && (
                     <Badge variant="outline">
@@ -1095,7 +1089,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
                   type="button"
                   variant="secondary"
                   onClick={() => setPendingPurchase({ kind: 'credits', credits: pack.credits, price: pack.price })}
-                  disabled={!isOwner || isBuyingCredits}
+                  disabled={!isOwner || isBuyingCredits || Boolean(access?.readOnly)}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   {isBuyingCredits

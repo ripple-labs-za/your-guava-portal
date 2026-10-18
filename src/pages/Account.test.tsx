@@ -792,4 +792,38 @@ describe('Account', () => {
     expect(screen.queryByText(/starter plan activated/i)).not.toBeInTheDocument()
   })
 
+  it('asks a manager to contact the account owner during grace', async () => {
+    serveOrganization({ billingStatus: 'past_due', billingAccess: {
+      allowed: false, status: 'grace', readOnly: true, reason: 'billing_period_expired',
+      periodEnd: '2026-10-01T22:30:00.000Z', graceEndsAt: '2026-10-04T22:30:00.000Z',
+    } })
+    renderWithAuth(<Account />, { role: 'manager' })
+    expect(await screen.findByText(/ask the account owner to renew/i)).toBeInTheDocument()
+    expect(screen.queryByText(/choose a plan below/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /renew growth/i })).not.toBeInTheDocument()
+  })
+
+  it('disables credit packs during grace and names the state in words', async () => {
+    serveOrganization({ billingStatus: 'past_due', billingAccess: {
+      allowed: false, status: 'grace', readOnly: true, reason: 'billing_period_expired',
+      periodEnd: '2026-10-01T12:00:00.000Z', graceEndsAt: '2026-10-04T12:00:00.000Z',
+    } })
+    renderWithAuth(<Account />)
+    expect(await screen.findByRole('button', { name: /500 credits/i })).toBeDisabled()
+    expect(screen.getAllByText('Read-only', { exact: true }).length).toBeGreaterThan(0)
+    expect(screen.queryByText('past_due', { exact: true })).not.toBeInTheDocument()
+  })
+
+  it('explains a grace refusal when billing changes after a credit-pack dialog opens', async () => {
+    mockPost.mockRejectedValueOnce({ response: { status: 402, data: { details: {
+      code: 'BILLING_REQUIRED', billingStatus: 'grace', readOnly: true, graceEndsAt: '2026-10-04T22:30:00Z',
+    } } } })
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /500 credits/i }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: /confirm and pay/i }))
+    expect(await screen.findByText('Read-only until 05 Oct 2026. Renew in Billing.')).toBeInTheDocument()
+    expect(screen.queryByText(/could not start card checkout/i)).not.toBeInTheDocument()
+  })
+
 })

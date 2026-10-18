@@ -99,3 +99,24 @@ describe('oversized chat requests', () => {
   })
 })
 
+
+describe('read-only billing refusals', () => {
+  const billing = { readOnly: true, status: 'grace', graceEndsAt: '2026-10-04T22:30:00Z' }
+  it('explains a streaming grace 402 before considering credit balance', async () => {
+    const error = await chatRequestErrorFrom(new Response(JSON.stringify({ code: 'BILLING_REQUIRED', billing }), { status: 402 }))
+    const failure = chatFailureFrom(error, false)
+    expect(failure).toMatchObject({ kind: 'billing-read-only', charged: false })
+    expect(chatFailureCopy(failure)).toMatchObject({
+      detail: 'Read-only until 05 Oct 2026. Renew in Billing.',
+      action: { kind: 'link', to: '/settings?section=billing' },
+    })
+  })
+  it('explains an Axios usage-envelope grace 402', () => {
+    const failure = chatFailureFrom({ response: { status: 402, data: { details: {
+      ...billing, billingStatus: 'grace', code: 'BILLING_REQUIRED',
+    } } } }, false)
+    expect(failure.kind).toBe('billing-read-only')
+    expect(chatFailureCopy(failure).title).toBe('Guava is read-only')
+    expect(chatFailureCopy(failure).detail).not.toMatch(/out of|balance|credits/i)
+  })
+})

@@ -1,7 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { addLocalDays, getLocalMonthBounds, parseDateOnly, toLocalDateOnly } from './date'
+import { describe, expect, it, vi } from 'vitest'
+import { addLocalDays, formatBillingDate, getLocalMonthBounds, parseDateOnly, toLocalDateOnly } from './date'
 
 describe('date-only helpers', () => {
+  it('uses the server billing calendar even when the browser is west of SAST', () => {
+    vi.stubEnv('TZ', 'America/New_York')
+    try {
+      expect(formatBillingDate('2026-10-04T22:30:00Z')).toBe('05 Oct 2026')
+      expect(formatBillingDate('2026-10-04T22:30:00Z', true)).toBe('05 Oct')
+      expect(formatBillingDate(null)).toBe('-')
+      expect(formatBillingDate('invalid')).toBe('-')
+    } finally { vi.unstubAllEnvs() }
+  })
   it('formats local calendar dates without a UTC conversion', () => {
     const localMidnight = new Date(2026, 6, 30, 0, 0, 0)
     expect(toLocalDateOnly(localMidnight)).toBe('2026-07-30')

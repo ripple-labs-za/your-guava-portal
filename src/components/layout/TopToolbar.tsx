@@ -10,39 +10,18 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
+import { billingToolbarCopy } from '@/lib/billingAccess'
+import { formatBillingDate } from '@/lib/date'
+import { cachedCreditBalance, cacheCreditBalance, clearCreditBalanceCache, type CreditBalance } from '@/lib/creditBalanceCache'
 import { GUAVA_BILLING_READ_ONLY_EVENT, type BillingReadOnlyDetail } from '@/lib/billingEvents'
-import type { BillingAccess } from '@/types'
 import {
   GUAVA_CREDITS_UPDATED_EVENT,
   type GuavaCreditSnapshot,
 } from '@/lib/creditEvents'
 import { cn } from '@/lib/utils'
 
-interface CreditBalance {
-  credits: {
-    included: number
-    bonus: number
-    used: number
-    available: number
-    resetAt: string | null
-  }
-  organization: {
-    billingAccess?: BillingAccess
-    plan: 'starter' | 'growth' | 'pro'
-    billingStatus?: 'trialing' | 'active' | 'past_due' | 'canceled'
-    billingCycle?: 'monthly' | 'annual'
-  }
-  plan: {
-    id: 'starter' | 'growth' | 'pro'
-    name: string
-    includedGuavaCredits: number
-  }
-}
-
 type OpenMenu = 'notifications' | 'user' | null
-const CREDIT_CACHE_TTL_MS = 30000
 const USE_CREDIT_CACHE = import.meta.env.MODE !== 'test'
-let creditBalanceCache: { orgId: string | null; data: CreditBalance; fetchedAt: number } | null = null
 
 const formatCompactNumber = (value?: number) => {
   if (typeof value !== 'number') return '...'
@@ -56,7 +35,7 @@ const initialsFor = (name?: string | null, email?: string | null) => {
 }
 
 export function TopToolbar() {
-  const { user, logout } = useAuth()
+  const { user, logout, isOwner } = useAuth()
   const navigate = useNavigate()
   const toolbarRef = useRef<HTMLDivElement | null>(null)
   const latestCreditSnapshotRef = useRef<GuavaCreditSnapshot | null>(null)
@@ -84,13 +63,9 @@ export function TopToolbar() {
     let cancelled = false
     const orgId = user.orgId || null
 
-    if (
-      USE_CREDIT_CACHE &&
-      creditBalanceCache &&
-      creditBalanceCache.orgId === orgId &&
-      Date.now() - creditBalanceCache.fetchedAt < CREDIT_CACHE_TTL_MS
-    ) {
-      setCredits(creditBalanceCache.data)
+    const cached = USE_CREDIT_CACHE ? cachedCreditBalance(orgId) : null
+    if (cached) {
+      setCredits(cached)
       setCreditsLoading(false)
       return
     }
@@ -110,7 +85,7 @@ export function TopToolbar() {
             }
           : data
         if (USE_CREDIT_CACHE) {
-          creditBalanceCache = { orgId, data: resolvedData, fetchedAt: Date.now() }
+          cacheCreditBalance(orgId, resolvedData)
         }
         if (!cancelled) setCredits(resolvedData)
       })
@@ -130,7 +105,7 @@ export function TopToolbar() {
     const updateCredits = (event: Event) => {
       const snapshot = (event as CustomEvent<GuavaCreditSnapshot>).detail
       if (!snapshot) return
-      creditBalanceCache = null
+      clearCreditBalanceCache()
       latestCreditSnapshotRef.current = snapshot
       setCreditSnapshotOverride(snapshot)
       setCredits((current) => {
@@ -186,18 +161,17 @@ export function TopToolbar() {
   const availableCredits = creditSnapshotOverride?.available ?? credits?.credits?.available
   const access = credits?.organization?.billingAccess
   const readOnlyUntil = readOnlyOverride ? readOnlyOverride.graceEndsAt : access?.status === 'grace' ? access.graceEndsAt : null
-  const shortDate = (value: string) => new Date(value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
   const lowCredits = typeof availableCredits === 'number' && availableCredits <= 100
   const notificationCount = lowCredits ? 1 : 0
   const initials = initialsFor(user?.name, user?.email)
 
   return (
-    <div ref={toolbarRef} className="flex min-w-0 items-center justify-end gap-2">
+    <div ref={toolbarRef} className="flex min-w-0 shrink-0 items-center justify-end gap-2">
       {readOnlyUntil && (
         <button type="button" onClick={() => goTo('/settings?section=billing')}
-          className="flex h-8 items-center gap-2 rounded-lg border border-guava-red/40 bg-guava-red/10 px-2 text-xs font-semibold text-guava-red-text sm:px-3"
-          aria-label={`Read-only until ${shortDate(readOnlyUntil)}. Open billing to renew`}>
-          <Lock className="h-4 w-4" /><span className="hidden sm:inline">Read-only until</span><span>{shortDate(readOnlyUntil)}</span>
+          className="flex h-8 flex-col items-center justify-center gap-0 rounded-lg border border-guava-red/40 bg-guava-red/10 px-2 text-[10px] leading-3 font-semibold text-guava-red-text sm:flex-row sm:gap-2 sm:px-3 sm:text-xs"
+          aria-label={billingToolbarCopy(readOnlyUntil, isOwner)}>
+          <Lock className="hidden h-4 w-4 shrink-0 sm:block" /><span className="whitespace-nowrap">Read-only</span><span className="hidden sm:inline">until</span><span className="whitespace-nowrap">{formatBillingDate(readOnlyUntil, true)}</span>
         </button>
       )}
       <button

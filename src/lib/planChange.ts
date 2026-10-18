@@ -1,7 +1,7 @@
 import type { BillingCycle, PlanChangePreview } from '@/types'
+import { formatBillingDate } from './date'
 
-export const formatPlanChangeDate = (value?: string | null) =>
-  value ? new Date(value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
+export const formatPlanChangeDate = formatBillingDate
 
 /** D-019, in the words the owner reads before paying. The server decided; this only phrases it. */
 export function planChangeSentence(

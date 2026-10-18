@@ -1,4 +1,5 @@
 import { isSessionRejection } from './api'
+import { billingReadOnlyMessage } from './billingAccess'
 
 export const CHAT_CREDIT_COST = 3
 export const DEFAULT_RATE_LIMIT_SECONDS = 60
@@ -19,6 +20,7 @@ export function savedChatFailureNotice(error: unknown): string | null {
   return `Saved chats are being changed too quickly. Wait ${wait}, then try again.`
 }
 export type ChatFailureKind =
+  | 'billing-read-only'
   | 'out-of-credits'
   | 'not-permitted'
   | 'rate-limited'
@@ -93,13 +95,14 @@ export async function chatRequestErrorFrom(response: Response) {
   if (typeof response.json === 'function') {
     body = await response.json().catch(() => null)
   }
+  const billingMessage = billingReadOnlyMessage(body)
 
   return new ChatRequestError(
     {
-      kind: status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? 'payload-too-large'
+      kind: billingMessage ? 'billing-read-only' : status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? 'payload-too-large'
         : body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
-      ...(status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? { charged: false } : {}),
-      serverMessage: serverMessageFrom(body?.message),
+      ...(billingMessage || status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? { charged: false } : {}),
+      serverMessage: billingMessage ?? serverMessageFrom(body?.message),
       available: body?.details?.available,
       required: body?.details?.required,
       retryAfterSeconds: retryAfterSecondsFrom(response),
@@ -112,7 +115,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
   if (error instanceof ChatRequestError) {
     const { failure } = error
-    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected', 'payload-too-large']
+    const refusedBeforeDelivery = ['billing-read-only', 'out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected', 'payload-too-large']
       .includes(failure.kind)
     return {
       ...failure,
@@ -134,6 +137,8 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   const status = response?.status
   const code = response?.data?.code ?? response?.data?.details?.code
   if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return { kind: 'payload-too-large', charged: false }
+  const billingMessage = billingReadOnlyMessage(error)
+  if (billingMessage) return { kind: 'billing-read-only', charged: delivered, serverMessage: billingMessage }
   if (response?.data?.details?.retryable === false) {
     return { kind: 'provider-rejected', charged: delivered, serverMessage: serverMessageFrom(response.data.message) }
   }
@@ -180,6 +185,12 @@ export function chatFailureCopy(failure: ChatFailure) {
     }
   }
   switch (failure.kind) {
+    case 'billing-read-only':
+      return {
+        title: 'Guava is read-only',
+        detail: failure.serverMessage ?? 'Guava is read-only. Renew in Billing.',
+        action: { kind: 'link' as const, label: 'Open Billing', to: '/settings?section=billing' },
+      }
     case 'payload-too-large':
       return {
         title: 'This message is too long',
