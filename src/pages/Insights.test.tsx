@@ -231,6 +231,24 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('keeps the same idempotency key when a charged fallback returns 401 and the free replay is requested', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(droppedStreamResponse(deltaEvent('Delivered text')))
+      .mockResolvedValueOnce(streamResponse(deltaEvent('Full answer') + 'event: done\ndata: {}\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'charged-401', messages: [] }) } })
+      : Promise.reject({ response: { status: 401 } }))
+    render(<Insights />)
+    await askQuestion('Keep my paid answer')
+    const replay = await within(answerBubble()).findByRole('button', { name: /load the full answer \(no extra charge\)/i })
+    const first = (vi.mocked(fetch).mock.calls[0][1]?.headers as Record<string, string>)['Idempotency-Key']
+    await userEvent.click(replay)
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls).toHaveLength(2))
+    const second = (vi.mocked(fetch).mock.calls[1][1]?.headers as Record<string, string>)['Idempotency-Key']
+    expect(second).toBe(first)
+  })
+
   it('does not re-bill a request the AI service rejected as unfixable', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({

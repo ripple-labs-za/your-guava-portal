@@ -1595,6 +1595,9 @@ export default function Insights() {
     if (index < 1) return
     const question = current[index - 1].role === 'user' ? current[index - 1].content : ''
     if (!question) return
+    // A provider-interrupted answer offers an explicit new paid ask; all free
+    // recovery buttons retain the original key, including a charged 401.
+    if (current[index].failure?.kind === 'interrupted') chatRequestKeyRef.current = null
     // Drop the failed turn so the retry does not stack a second copy of the
     // same question; the idempotency key is what keeps it from being re-billed.
     setTrackedMessages(current.slice(0, index - 1))
@@ -1705,7 +1708,7 @@ export default function Insights() {
       const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current)
       // A refusal is settled: the same question later is a new request, so it
       // must not reuse a key the server would replay.
-      if (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || failure.kind === 'interrupted') {
+      if (failure.charged !== true && (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || failure.kind === 'interrupted')) {
         chatRequestKeyRef.current = null
       }
       applyChatFailure(assistantId, failure)
