@@ -815,6 +815,9 @@ it('keeps the refund explanation visible when a range has refunds and no sales',
   await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
   expect(await screen.findByText(/1 refund .*not counted as a sale/)).toBeInTheDocument()
   expect(screen.queryByText('No customer data for this period')).not.toBeInTheDocument()
+  expect(screen.getByText('No sales in this range, so there is nothing to split')).toBeInTheDocument()
+  expect(screen.getAllByText('—')).toHaveLength(4)
+  expect(screen.queryByText('0.0%')).not.toBeInTheDocument()
 })
 
 it('keeps a persistent status container and clears a stale window when the next tab has no metadata', async () => {
@@ -906,6 +909,19 @@ it('says the daily average is per open day', async () => {
   expect(await screen.findByText('across 7 open days')).toBeInTheDocument()
 })
 
+  it('does not invent optional analytics facts for an older customer response', async () => {
+    mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/customers') ? {
+      insights: { avgTransactionValue: 50, avgItemsPerTransaction: 1, tippingRate: 0, avgTip: 0,
+        cashVsCardRatio: { card: 75, cash: 25 } },
+    } : {} }))
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
+    expect(await screen.findByText('Card: 75.0%')).toBeInTheDocument()
+    expect(screen.queryByText(/^Other:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/open days|refund/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /payment method split/i })).not.toHaveAccessibleName(/other/i)
+  })
+
   it('lists new items as new and shows the movers the server ranked', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/items')) {
@@ -937,6 +953,7 @@ it('says the daily average is per open day', async () => {
     expect(screen.getByText('20 sold · new')).toBeInTheDocument()
     expect(screen.queryByText('+100.0%')).not.toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('New')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Avg per open day' })).toBeInTheDocument()
   })
 
   it('dims hours the cafe is closed and says so', async () => {

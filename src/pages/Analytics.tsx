@@ -1,4 +1,5 @@
-import { formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
+import { analyticsCustomersFrom } from '@/lib/analyticsCustomers'
+import { openDaysCaption, formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import {
@@ -270,7 +271,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
           <>
             <KpiCard label="Total Revenue" value={formatZAR(data.totalRevenue)} icon={DollarSign} accent="#4DA63B" />
             <KpiCard label="Avg Daily" value={formatZAR(data.avgDailyRevenue)} icon={CalendarDays} accent="#4A9ECC"
-              sub={data.openDays ? `across ${data.openDays} open ${data.openDays === 1 ? 'day' : 'days'}` : undefined} />
+              sub={openDaysCaption(data.openDays)} />
             <KpiCard
               label="Best Day"
               value={formatZAR(data.bestDay.revenue)}
@@ -595,7 +596,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                     <th className="text-left py-2 pr-4 text-muted font-medium">Item</th>
                     <th className="text-right py-2 px-4 text-muted font-medium">Sold</th>
                     <th className="text-right py-2 px-4 text-muted font-medium">Revenue</th>
-                    <th className="text-right py-2 px-4 text-muted font-medium">Avg/Day</th>
+                    <th className="text-right py-2 px-4 text-muted font-medium">Avg per open day</th>
                     {/* Sold, Revenue and Avg/Day follow the range above; the
                         trend does not. Two windows in one row, one heading. */}
                     <th className="text-right py-2 pl-4 text-muted font-medium">Trend (7d vs prior 7d)</th>
@@ -881,15 +882,7 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
         (data.refunds?.count ?? 0) > 0)
   )
   const paymentSplit = data?.cashVsCardRatio ?? null
-  const refunds = data?.refunds
-  const coverage = data?.paymentMethodCoverage
-  const donutData = paymentSplit
-    ? [
-        { name: 'Card', value: paymentSplit.card },
-        { name: 'Cash', value: paymentSplit.cash },
-        ...((paymentSplit.other ?? 0) > 0 ? [{ name: 'Other', value: paymentSplit.other }] : []),
-      ]
-    : []
+  const { noSales, otherShare, refundCaption, shares: donutData, donutLabel, coverageNote, emptyPaymentMessage } = analyticsCustomersFrom(data)
 
   if (!loading && !hasCustomerData) {
     return (
@@ -921,28 +914,26 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
           <>
             <KpiCard
               label="Avg Transaction"
-              value={formatZAR(data.avgTransactionValue, 2)}
-              sub={refunds && refunds.count > 0
-                ? `${refunds.count} ${refunds.count === 1 ? 'refund' : 'refunds'} (${formatZAR(refunds.value, 2)}) not counted as ${refunds.count === 1 ? 'a sale' : 'sales'}`
-                : undefined}
+              value={noSales ? '—' : formatZAR(data.avgTransactionValue, 2)}
+              sub={refundCaption}
               icon={DollarSign}
               accent="#4DA63B"
             />
             <KpiCard
               label="Avg Items/Transaction"
-              value={data.avgItemsPerTransaction.toFixed(1)}
+              value={noSales ? '—' : data.avgItemsPerTransaction.toFixed(1)}
               icon={BarChart3}
               accent="#4A9ECC"
             />
             <KpiCard
               label="Tipping Rate"
-              value={`${data.tippingRate.toFixed(1)}%`}
+              value={noSales ? '—' : `${data.tippingRate.toFixed(1)}%`}
               icon={Percent}
               accent="#FFD166"
             />
             <KpiCard
               label="Avg Tip"
-              value={formatZAR(data.avgTip, 2)}
+              value={noSales ? '—' : formatZAR(data.avgTip, 2)}
               icon={Banknote}
               accent="#4DA63B"
             />
@@ -963,14 +954,14 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
                 never counted, next to the fee decision it would inform. */}
             {!paymentSplit ? (
               <p className="text-muted text-sm text-center py-10">
-                Your import does not include payment methods, so cash and card cannot be split.
+                {emptyPaymentMessage}
               </p>
             ) : (
               <div className="flex items-center justify-center gap-8">
                 <div
                   style={{ height: DONUT_SIZE, width: DONUT_SIZE }}
                   role="img"
-                  aria-label={`Payment method split: card ${paymentSplit.card.toFixed(1)} percent, cash ${paymentSplit.cash.toFixed(1)} percent, other ${(paymentSplit.other ?? 0).toFixed(1)} percent`}
+                  aria-label={donutLabel}
                 >
                   <ResponsiveContainer
                     width="100%"
@@ -1008,21 +999,16 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
                     <Banknote className="w-4 h-4 text-guava-red-text" />
                     <span className="text-text text-sm">Cash: {paymentSplit.cash.toFixed(1)}%</span>
                   </div>
-                  {(paymentSplit.other ?? 0) > 0 && (
+                  {(otherShare ?? 0) > 0 && (
                     <div className="flex items-center gap-2">
-                      <Wallet className="w-4 h-4 text-[#4A9ECC]" />
-                      <span className="text-text text-sm">Other: {(paymentSplit.other ?? 0).toFixed(1)}%</span>
+                      <Wallet className="w-4 h-4 text-text" />
+                      <span className="text-text text-sm">Other: {(otherShare ?? 0).toFixed(1)}%</span>
                     </div>
                   )}
                 </div>
               </div>
             )}
-            {coverage && coverage.unknown > 0 && (
-              <p className="text-muted text-xs mt-3">
-                {coverage.unknown} {coverage.unknown === 1 ? 'sale has' : 'sales have'} no payment method and{' '}
-                {coverage.unknown === 1 ? 'is' : 'are'} left out of this split.
-              </p>
-            )}
+            {coverageNote && <p className="text-muted text-xs mt-3">{coverageNote}</p>}
           </CardContent>
         </Card>
       )}

@@ -29,6 +29,10 @@ export interface QueriedWindow {
   defaulted: boolean
 }
 
+export function openDaysCaption(days?: number) {
+  return days ? `across ${days} open ${days === 1 ? 'day' : 'days'}` : undefined
+}
+
 export const TREND_REASON_COPY: Record<TrendReason, string> = {
   no_data_in_window: 'No completed days with sales in this range',
   window_not_complete: 'Today is still in progress, so nothing is complete to compare yet',
