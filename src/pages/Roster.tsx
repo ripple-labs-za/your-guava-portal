@@ -127,7 +127,7 @@ function AddShiftForm({ date, staffList, onSubmit, onCancel }: AddShiftFormProps
       </div>
       <div>
         <Label htmlFor={`shift-notes-${date}`} className="text-xs text-muted">Notes (optional)</Label>
-        <Input id={`shift-notes-${date}`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes..." />
+        <Input id={`shift-notes-${date}`} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes..." />
       </div>
       <Button type="submit" size="sm" variant="success" className="w-full" disabled={!staffId || submitting}>
         {submitting ? 'Adding...' : 'Add Shift'}

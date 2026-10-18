@@ -665,3 +665,32 @@ describe('Staff working days', () => {
     expect(screen.getByRole('checkbox', { name: 'Mon' })).not.toBeChecked()
   })
 })
+
+describe('Staff field limits', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('limits the add form to what the server accepts', async () => {
+    mockStaffList([])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('No staff yet')).toBeInTheDocument())
+    await userEvent.click(screen.getAllByRole('button', { name: /add staff/i })[0])
+
+    expect(screen.getByLabelText(/^name/i)).toHaveAttribute('maxlength', '100')
+    expect(screen.getByLabelText(/^email/i)).toHaveAttribute('maxlength', '254')
+    expect(screen.getByLabelText(/^phone/i)).toHaveAttribute('maxlength', '30')
+  })
+
+  it('limits the edit form the same way', async () => {
+    mockStaffList()
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /edit sarah/i }))
+
+    expect(screen.getByLabelText(/edit name/i)).toHaveAttribute('maxlength', '100')
+    expect(screen.getByLabelText(/edit email/i)).toHaveAttribute('maxlength', '254')
+    expect(screen.getByLabelText(/edit phone/i)).toHaveAttribute('maxlength', '30')
+  })
+})

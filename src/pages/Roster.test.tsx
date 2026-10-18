@@ -471,3 +471,14 @@ describe.skip('Roster load failures', () => {
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
 })
+
+
+it('limits shift notes to 500 characters', async () => {
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+    return Promise.resolve({ data: { shifts: [], staff: [], summaries: [] } })
+  })
+  render(<Roster />)
+  await userEvent.click(await screen.findByRole('button', { name: /^Add Shift on Mon/i }))
+  expect(screen.getByLabelText(/notes/i)).toHaveAttribute('maxlength', '500')
+})

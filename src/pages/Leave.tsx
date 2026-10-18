@@ -287,7 +287,7 @@ function SubmitLeaveForm({ staffList, onSubmit, onCancel }: SubmitLeaveFormProps
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="leave-reason" className="text-xs text-muted">Reason (optional)</Label>
-            <Input id="leave-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for leave..." />
+            <Input id="leave-reason" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for leave..." />
           </div>
           {/* The day count was previously only revealed after the request was
               created, so an owner could not tell whether it would fit inside the

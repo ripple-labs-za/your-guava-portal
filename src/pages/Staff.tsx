@@ -204,15 +204,15 @@ function AddStaffForm({ onSubmit, onCancel }: AddStaffFormProps) {
         <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <Label htmlFor="staff-name" className="text-xs text-muted">Name *</Label>
-            <Input id="staff-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+            <Input id="staff-name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
           </div>
           <div>
             <Label htmlFor="staff-email" className="text-xs text-muted">Email</Label>
-            <Input id="staff-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
+            <Input id="staff-email" type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
           </div>
           <div>
             <Label htmlFor="staff-phone" className="text-xs text-muted">Phone</Label>
-            <Input id="staff-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="082 123 4567" />
+            <Input id="staff-phone" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="082 123 4567" />
           </div>
           <div>
             <Label htmlFor="staff-role" className="text-xs text-muted">Role</Label>
@@ -332,15 +332,15 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label htmlFor={fieldId('name')} className="text-xs text-muted">Edit name</Label>
-          <Input id={fieldId('name')} value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id={fieldId('name')} maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
           <Label htmlFor={fieldId('email')} className="text-xs text-muted">Edit email</Label>
-          <Input id={fieldId('email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input id={fieldId('email')} type="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div>
           <Label htmlFor={fieldId('phone')} className="text-xs text-muted">Edit phone</Label>
-          <Input id={fieldId('phone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input id={fieldId('phone')} maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div>
           <Label htmlFor={fieldId('role')} className="text-xs text-muted">Edit role</Label>

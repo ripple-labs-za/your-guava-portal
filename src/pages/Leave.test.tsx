@@ -815,3 +815,12 @@ describe('Leave on the working pattern', () => {
     expect(await screen.findByText('Thabo')).toBeInTheDocument()
   })
 })
+
+
+it('limits the leave reason to 500 characters', async () => {
+  mockSinglePendingRequest()
+  renderWithAuth(<Leave />)
+  await waitFor(() => expect(screen.getByText('Request Leave')).toBeInTheDocument())
+  await userEvent.click(screen.getByText('Request Leave'))
+  expect(await screen.findByLabelText(/reason/i)).toHaveAttribute('maxlength', '500')
+})
