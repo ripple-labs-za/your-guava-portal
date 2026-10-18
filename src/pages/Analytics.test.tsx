@@ -949,7 +949,7 @@ it('says the daily average is per open day', async () => {
     // Oat Latte is not among the top items by revenue; the old client filter dropped it.
     expect(await screen.findByText('Oat Latte')).toBeInTheDocument()
     expect(screen.getByText('+45.0%')).toBeInTheDocument()
-    expect(screen.getByText('New this period')).toBeInTheDocument()
+    expect(screen.getByText('New in the last 7 days')).toBeInTheDocument()
     expect(screen.getByText('20 sold · new')).toBeInTheDocument()
     expect(screen.queryByText('+100.0%')).not.toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('New')).toBeInTheDocument()
@@ -977,9 +977,10 @@ it('says the daily average is per open day', async () => {
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
     const closed = await screen.findByRole('button', { name: /sunday 08:00, closed/i })
-    expect(closed).toHaveAttribute('title', 'Sun 08:00 - Closed')
+    expect(closed).toHaveAttribute('title', 'Sun 08:00 - Closed: outside your trading hours')
     expect(closed).toHaveAttribute('data-closed', 'true')
-    expect(screen.getByRole('button', { name: /sunday 10:00, closed/i })).toHaveAttribute('title', 'Sun 10:00 - Closed - R40 avg')
+    expect(closed.querySelector('[data-closed-fill]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: /sunday 10:00, closed/i })).toHaveAttribute('title', 'Sun 10:00 - Closed: outside your trading hours; sales recorded while closed')
     const open = screen.getByRole('button', { name: /monday 08:00/i })
     expect(open).not.toHaveAttribute('data-closed')
     expect(open.getAttribute('aria-label')).not.toMatch(/closed/i)
@@ -1023,6 +1024,17 @@ it('says the daily average is per open day', async () => {
 
     expect(await screen.findByText('Too many Performance requests. Wait a minute and try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('keeps an older item with no trend readable as an accessible dash', async () => {
+    mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/items') ? {
+      items: [{ name: 'Legacy Latte', totalQty: 2, totalRevenue: 80, avgPerDay: 1 }],
+    } : {} }))
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    const row = await screen.findByRole('row', { name: /Legacy Latte/ })
+    expect(within(row).getByText('No sales in the earlier week')).toBeInTheDocument()
+    expect(screen.queryByText(/undefined|NaN/)).not.toBeInTheDocument()
   })
 
 })

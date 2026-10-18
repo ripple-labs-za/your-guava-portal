@@ -1,3 +1,4 @@
+import { MOVERS_CAPTION, moverThresholdNote, belowFloorNote, ItemTrend, closedCellLabels, CLOSED_CELL_BORDER, type MoverItem, type NewItem, type MoverFloor } from '@/lib/analyticsMovers'
 import { analyticsCustomersFrom } from '@/lib/analyticsCustomers'
 import { openDaysCaption, formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
@@ -128,13 +129,8 @@ interface RevenueResponse {
   meta?: TrendMeta & { summary?: RevenueResponse['summary'] }
 }
 
-interface MoverItem {
-  name: string
-  trend: number
-}
 
-interface NewItem { name: string; currentQty: number }
-interface MoverFloor { minAvgPerDay: number; windowDays: number; minQty: number; eligibleCount: number; busiestQty: number }
+
 
 interface ComboItem {
   pair: [string, string]
@@ -156,7 +152,6 @@ function getDateRange(period: PeriodId) {
 }
 
 const DAY_LABELS_BY_INDEX = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const DAY_NAMES_BY_INDEX = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const DAY_ROWS = [
   { label: 'Mon', value: 1 },
   { label: 'Tue', value: 2 },
@@ -459,14 +454,11 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
   const rising = risingItems.slice(0, 5)
   const declining = decliningItems.slice(0, 5)
   const hasMovers = items.length > 0 || rising.length > 0 || declining.length > 0 || newItems.length > 0
-  const noneEligible = moverFloor ? moverFloor.eligibleCount === 0 : false
-  const moversThresholdNote = moverFloor
-    ? `No line sold ${moverFloor.minQty}+ in either of the last two weeks (${moverFloor.minAvgPerDay} a day), so ranking movers ` +
-      `would be noise. Your busiest line sold ${moverFloor.busiestQty.toLocaleString('en-ZA')} in a week.`
-    : ''
+  const moversThresholdNote = moverThresholdNote(moverFloor)
 
   const risingNames = new Set(rising.map((i) => i.name))
   const decliningNames = new Set(declining.map((i) => i.name))
+  const newNames = new Set(newItems.map((i) => i.name))
 
   if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
@@ -481,19 +473,18 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
               <Badge variant="secondary" className="text-[10px]">Fixed 7-day window</Badge>
             </div>
             <p className="text-muted text-xs mt-0.5">
-              Last 7 days against the 7 before. This panel ignores the range above — changing
-              it will not change these percentages. Only lines selling 2+ a day in at least one
-              of the two weeks are ranked, so a jump from 1 to 8 doesn&rsquo;t show as &ldquo;+700%&rdquo;,
-              and a line with no sales in the earlier week is listed as new rather than &ldquo;+100%&rdquo;.
+              {MOVERS_CAPTION}
             </p>
           </CardHeader>
           <CardContent>
+            {moversThresholdNote && <p className="text-muted text-xs mb-3">{moversThresholdNote}</p>}
+            {belowFloorNote(moverFloor, rising.length) && <p className="text-muted text-xs mb-3">{belowFloorNote(moverFloor, rising.length)}</p>}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-guava-green text-xs font-semibold uppercase tracking-wider mb-2">Rising</p>
                 {rising.length === 0 ? (
                   <p className="text-muted text-xs">
-                    {noneEligible ? moversThresholdNote : 'No rising items'}
+                    {'No rising items'}
                   </p>
                 ) : (
                   <ul className="space-y-1.5">
@@ -512,7 +503,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                 <p className="text-guava-red-text text-xs font-semibold uppercase tracking-wider mb-2">Declining</p>
                 {declining.length === 0 ? (
                   <p className="text-muted text-xs">
-                    {noneEligible ? moversThresholdNote : 'No declining items'}
+                    {'No declining items'}
                   </p>
                 ) : (
                   <ul className="space-y-1.5">
@@ -530,7 +521,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
             </div>
             {newItems.length > 0 && (
               <div className="mt-4">
-                <p className="text-text text-xs font-semibold uppercase tracking-wider mb-2">New this period</p>
+                <p className="text-text text-xs font-semibold uppercase tracking-wider mb-2">New in the last 7 days</p>
                 <ul className="space-y-1.5">
                   {newItems.map((item) => (
                     <li key={item.name} className="flex items-center justify-between text-xs">
@@ -632,16 +623,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                         <td className="py-2.5 px-4 text-right text-text tabular-nums">{formatZAR(item.totalRevenue)}</td>
                         <td className="py-2.5 px-4 text-right text-muted tabular-nums">{item.avgPerDay.toFixed(1)}</td>
                         <td className="py-2.5 pl-4 text-right">
-                          {item.isNew ? (
-                            <Badge variant="secondary" className="text-[10px]">New</Badge>
-                          ) : item.trend === null ? (
-                            <span className="text-muted" aria-label="No sales in the earlier week">—</span>
-                          ) : (
-                            <Badge variant={item.trend >= 0 ? 'success' : 'destructive'} className="text-[10px]">
-                              {item.trend >= 0 ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
-                              {formatTrend(item.trend)}
-                            </Badge>
-                          )}
+                          <ItemTrend trend={item.trend} isNew={item.isNew && newNames.has(item.name)} />
                         </td>
 
                       </tr>
@@ -738,19 +720,19 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                   </p>
                   <p className="text-muted">{formatZAR(hoveredCell.revenue, 2)} avg</p>
                   <p className="text-muted">{formatCount(hoveredCell.transactions)} avg transactions</p>
-                  {hoveredCell.isOpen === false && <p className="text-muted">Closed (trading hours)</p>}
+                  {hoveredCell.isOpen === false && <p className="text-muted">Closed: outside your trading hours{hoveredCell.revenue > 0 ? '; sales shown were made while closed' : ''}</p>}
                   {(hoveredCell.observedDays ?? 0) > 0 && (
                     <p className="text-muted">{hoveredCell.observedDays} observed days</p>
                   )}
                 </div>
               )}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" role="region" aria-label="Hourly revenue heatmap" tabIndex={0}>
                 {/* A real table with real headers, and a focusable cell carrying
                     the figure in its accessible name. As a grid of empty divs
                     the whole tab was unreachable by keyboard and carried no
                     text at all, so its numbers did not exist for a screen
                     reader. */}
-                <table className="min-w-150 w-full border-separate border-spacing-0.5">
+                <table className="table-fixed min-w-150 w-full border-separate border-spacing-0.5">
                   <caption className="sr-only">
                     Average revenue by day of week and hour
                   </caption>
@@ -774,20 +756,17 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                           const cell = cellMap.get(`${row.value}-${hour}`)
                           const revenue = cell?.revenue ?? 0
                           const transactions = cell?.transactions ?? 0
-                          const hourLabel = `${String(hour).padStart(2, '0')}:00`
                           const isClosed = cell?.isOpen === false
-                          const title = isClosed
-                            ? `${row.label} ${hourLabel} - Closed${revenue > 0 ? ` - ${formatZAR(revenue)} avg` : ''}`
-                            : `${row.label} ${hourLabel} - ${formatZAR(revenue)} avg`
+                          const labels = closedCellLabels({ day: row.value, hour, revenue, transactions, closed: isClosed })
                           return (
                             <td key={hour} className="p-0">
                               <button
                                 type="button"
-                                className={cn('block aspect-square w-full rounded-sm transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-green', isClosed && 'opacity-40')}
-                                style={{ backgroundColor: getCellColor(revenue) }}
-                                title={title}
+                                className={cn('relative block h-7 w-full rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-green', !isClosed && 'hover:opacity-80')}
+                                style={isClosed ? CLOSED_CELL_BORDER : undefined}
+                                title={labels.title}
                                 data-closed={isClosed ? 'true' : undefined}
-                                aria-label={`${DAY_NAMES_BY_INDEX[row.value]} ${hourLabel}${isClosed ? ', closed' : ''}, ${formatZAR(revenue, 2)} average revenue, ${formatCount(transactions)} average transactions`}
+                                aria-label={labels.label}
                                 onMouseEnter={() =>
                                   setHoveredCell(cell ?? { dayOfWeek: row.value, hour, revenue: 0, transactions: 0 })
                                 }
@@ -796,7 +775,9 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                                   setHoveredCell(cell ?? { dayOfWeek: row.value, hour, revenue: 0, transactions: 0 })
                                 }
                                 onBlur={() => setHoveredCell(null)}
-                              />
+                              >
+                                <span aria-hidden="true" data-closed-fill={isClosed ? 'true' : undefined} className="absolute inset-0 rounded-sm" style={{ backgroundColor: getCellColor(revenue), opacity: isClosed ? 0.4 : 1 }} />
+                              </button>
                             </td>
                           )
                         })}
@@ -812,7 +793,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                   <div key={color} className="w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
                 ))}
                 <span className="text-[10px] text-muted ml-1">More</span>
-                <div className="w-3 h-3 rounded-sm opacity-40 ml-3" style={{ backgroundColor: '#4DA63B' }} />
+                <div className="relative w-3 h-3 rounded-sm ml-3" style={CLOSED_CELL_BORDER}><span className="absolute inset-0 opacity-40" style={{ backgroundColor: '#4DA63B' }} /></div>
                 <span className="text-[10px] text-muted ml-1">Closed</span>
               </div>
               {withoutTime > 0 && (
