@@ -27,6 +27,7 @@ export interface QueriedWindow {
   endDay: string
   days: number
   defaulted: boolean
+  timezone?: string
 }
 
 export function openDaysCaption(days?: number) {
@@ -72,5 +73,6 @@ export function queriedWindowFrom(meta?: RangeMeta): QueriedWindow | null {
     endDay: meta.effectiveEndDay,
     days: meta.effectiveDays,
     defaulted: Boolean(meta.defaultedStartDate),
+    ...(meta.timezone ? { timezone: meta.timezone } : {}),
   }
 }

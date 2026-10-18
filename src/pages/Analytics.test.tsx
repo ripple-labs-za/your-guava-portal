@@ -20,14 +20,26 @@ vi.mock('recharts', async (importOriginal) => {
   return {
     // The real container: how it sizes itself before layout is behaviour under test.
     ResponsiveContainer: actual.ResponsiveContainer,
-    AreaChart: ({ children }: { children: React.ReactNode }) => <svg data-testid="area-chart">{children}</svg>,
+    AreaChart: ({ children }: { children: React.ReactNode }) => (
+      <svg data-testid="area-chart">{children}</svg>
+    ),
     Area: () => <div data-testid="area" />,
-    BarChart: ({ children }: { children: React.ReactNode }) => <div data-testid="bar-chart">{children}</div>,
-    Bar: ({ activeBar }: { activeBar?: unknown }) => <div data-testid="bar" data-active-fill={fillFrom(activeBar)} />,
-    PieChart: ({ children }: { children: React.ReactNode }) => <div data-testid="pie-chart">{children}</div>,
-    Pie: ({ children }: { children: React.ReactNode }) => <div data-testid="pie">{children}</div>,
+    BarChart: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="bar-chart">{children}</div>
+    ),
+    Bar: ({ activeBar }: { activeBar?: unknown }) => (
+      <div data-testid="bar" data-active-fill={fillFrom(activeBar)} />
+    ),
+    PieChart: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="pie-chart">{children}</div>
+    ),
+    Pie: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="pie">{children}</div>
+    ),
     Cell: () => <div />,
-    Tooltip: ({ cursor }: { cursor?: unknown }) => <div data-testid="tooltip" data-cursor-fill={fillFrom(cursor)} />,
+    Tooltip: ({ cursor }: { cursor?: unknown }) => (
+      <div data-testid="tooltip" data-cursor-fill={fillFrom(cursor)} />
+    ),
     XAxis: () => <div />,
     YAxis: () => <div />,
     CartesianGrid: () => <div />,
@@ -58,6 +70,49 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 describe('Analytics', () => {
+  it('keeps server day labels on 18 Oct in a New York browser and names the cafe zone', async () => {
+    const original = Date.prototype.toLocaleDateString
+    const localDate = vi
+      .spyOn(Date.prototype, 'toLocaleDateString')
+      .mockImplementation(function (this: Date, locales, options) {
+        return original.call(this, locales, {
+          ...options,
+          timeZone: 'America/New_York',
+        })
+      })
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/revenue')
+          ? {
+              data: [{ date: '2026-10-18', revenue: 40, transactions: 1 }],
+              summary: {
+                totalRevenue: 40,
+                avgDailyRevenue: 40,
+                bestDay: { date: '2026-10-18', revenue: 40 },
+                worstDay: null,
+                trend: null,
+              },
+              meta: {
+                effectiveStartDay: '2026-10-18',
+                effectiveEndDay: '2026-10-18',
+                effectiveDays: 1,
+                timezone: 'Europe/London',
+              },
+            }
+          : {},
+      })
+    )
+    try {
+      render(<Analytics />)
+      expect(await screen.findAllByText('18 Oct')).toHaveLength(2)
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Showing 18 Oct – 18 Oct · 1 day · Europe/London'
+      )
+      expect(screen.queryByText('17 Oct')).not.toBeInTheDocument()
+    } finally {
+      localDate.mockRestore()
+    }
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -128,7 +183,12 @@ describe('Analytics', () => {
 
     expect(screen.getByText('Total Revenue')).toBeInTheDocument()
     // Verify total revenue is displayed (formatted with locale)
-    expect(screen.getByText((text) => text.includes('11') && text.includes('000') && text.startsWith('R'))).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (text) =>
+          text.includes('11') && text.includes('000') && text.startsWith('R')
+      )
+    ).toBeInTheDocument()
   })
 
   it('shows loading state', () => {
@@ -146,8 +206,20 @@ describe('Analytics', () => {
         return Promise.resolve({
           data: {
             items: [
-              { name: 'Flat White', totalQty: 200, totalRevenue: 8000, avgPerDay: 10, trend: 5.0 },
-              { name: 'Long White', totalQty: 180, totalRevenue: 7200, avgPerDay: 9, trend: -2.0 },
+              {
+                name: 'Flat White',
+                totalQty: 200,
+                totalRevenue: 8000,
+                avgPerDay: 10,
+                trend: 5.0,
+              },
+              {
+                name: 'Long White',
+                totalQty: 180,
+                totalRevenue: 7200,
+                avgPerDay: 9,
+                trend: -2.0,
+              },
             ],
             meta: {
               startDate: null,
@@ -183,8 +255,20 @@ describe('Analytics', () => {
         return Promise.resolve({
           data: {
             items: [
-              { name: 'Flat White', totalQty: 200, totalRevenue: 8000, avgPerDay: 10, trend: 5.0 },
-              { name: 'Long White', totalQty: 180, totalRevenue: 7200, avgPerDay: 9, trend: -2.0 },
+              {
+                name: 'Flat White',
+                totalQty: 200,
+                totalRevenue: 8000,
+                avgPerDay: 10,
+                trend: 5.0,
+              },
+              {
+                name: 'Long White',
+                totalQty: 180,
+                totalRevenue: 7200,
+                avgPerDay: 9,
+                trend: -2.0,
+              },
             ],
             meta: { startDate: null, endDate: null },
           },
@@ -204,8 +288,14 @@ describe('Analytics', () => {
       expect(screen.getByText('Top 10 Items by Quantity')).toBeInTheDocument()
     })
 
-    expect(screen.getByTestId('tooltip')).toHaveAttribute('data-cursor-fill', 'rgba(77, 166, 59, 0.08)')
-    expect(screen.getByTestId('bar')).toHaveAttribute('data-active-fill', '#62B84D')
+    expect(screen.getByTestId('tooltip')).toHaveAttribute(
+      'data-cursor-fill',
+      'rgba(77, 166, 59, 0.08)'
+    )
+    expect(screen.getByTestId('bar')).toHaveAttribute(
+      'data-active-fill',
+      '#62B84D'
+    )
   })
 
   it('shows combos tab with data', async () => {
@@ -253,7 +343,18 @@ describe('Analytics', () => {
       if (url.includes('/cafe/me')) {
         return Promise.resolve({ data: { cafe: { name: 'Test' } } })
       }
-      return Promise.resolve({ data: { data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: 0 } } })
+      return Promise.resolve({
+        data: {
+          data: [],
+          summary: {
+            totalRevenue: 0,
+            avgDailyRevenue: 0,
+            bestDay: null,
+            worstDay: null,
+            trend: 0,
+          },
+        },
+      })
     })
 
     render(<Analytics />)
@@ -271,7 +372,14 @@ describe('Analytics', () => {
   const zeroGrid = () => {
     const heatmap: Array<Record<string, number>> = [] // typed: tsconfig.app.json type-checks test files too (strict)
     for (let day = 0; day <= 6; day++) {
-      for (let hour = 6; hour <= 22; hour++) heatmap.push({ dayOfWeek: day, hour, revenue: 0, transactions: 0, observedDays: 0 })
+      for (let hour = 6; hour <= 22; hour++)
+        heatmap.push({
+          dayOfWeek: day,
+          hour,
+          revenue: 0,
+          transactions: 0,
+          observedDays: 0,
+        })
     }
     return heatmap
   }
@@ -279,43 +387,81 @@ describe('Analytics', () => {
   it('says the sales have dates but no times instead of drawing an empty heatmap', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/heatmap')) {
-        return Promise.resolve({ data: { success: true, heatmap: zeroGrid(),
-          meta: { timeOfDay: { transactionsWithTime: 0, transactionsWithoutTime: 120 } } } })
+        return Promise.resolve({
+          data: {
+            success: true,
+            heatmap: zeroGrid(),
+            meta: {
+              timeOfDay: {
+                transactionsWithTime: 0,
+                transactionsWithoutTime: 120,
+              },
+            },
+          },
+        })
       }
       return Promise.resolve({ data: {} })
     })
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
     expect(await screen.findByText(/dates but no times/i)).toBeInTheDocument()
-    expect(screen.queryByText(/no trading activity in this window/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/no trading activity in this window/i)
+    ).not.toBeInTheDocument()
   })
 
   it('notes how many sales the heatmap leaves out for having no time', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/heatmap')) {
-        return Promise.resolve({ data: { success: true,
-          heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
-          meta: { timeOfDay: { transactionsWithTime: 30, transactionsWithoutTime: 12 } } } })
+        return Promise.resolve({
+          data: {
+            success: true,
+            heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
+            meta: {
+              timeOfDay: {
+                transactionsWithTime: 30,
+                transactionsWithoutTime: 12,
+              },
+            },
+          },
+        })
       }
       return Promise.resolve({ data: {} })
     })
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
-    expect(await screen.findByText(/12 sales in this window came from exports with dates but no times/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        /12 sales in this window came from exports with dates but no times/i
+      )
+    ).toBeInTheDocument()
   })
 
   it('says "1 sale" when a single sale has no time', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/heatmap')) {
-        return Promise.resolve({ data: { success: true,
-          heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
-          meta: { timeOfDay: { transactionsWithTime: 30, transactionsWithoutTime: 1 } } } })
+        return Promise.resolve({
+          data: {
+            success: true,
+            heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
+            meta: {
+              timeOfDay: {
+                transactionsWithTime: 30,
+                transactionsWithoutTime: 1,
+              },
+            },
+          },
+        })
       }
       return Promise.resolve({ data: {} })
     })
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
-    expect(await screen.findByText(/^1 sale in this window came from an export with dates but no times, so it is not/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        /^1 sale in this window came from an export with dates but no times, so it is not/i
+      )
+    ).toBeInTheDocument()
   })
 
   it('shows tipping rate as percentage (no double-multiply)', async () => {
@@ -327,8 +473,8 @@ describe('Analytics', () => {
               avgTransactionValue: 85,
               avgItemsPerTransaction: 2.1,
               cashVsCardRatio: { cash: 30, card: 70 },
-              tippingRate: 23.5,   // backend already returns percentage form
-              avgTip: 4.50,
+              tippingRate: 23.5, // backend already returns percentage form
+              avgTip: 4.5,
             },
             meta: { startDate: null, endDate: null },
           },
@@ -358,11 +504,28 @@ describe('Analytics', () => {
         return Promise.resolve({
           data: {
             items: [
-              { name: 'Flat White', totalQty: 400, totalRevenue: 8000, avgPerDay: 10, trend: -1.0 },
-              { name: 'Long White', totalQty: 380, totalRevenue: 7200, avgPerDay: 9, trend: -2.0 },
+              {
+                name: 'Flat White',
+                totalQty: 400,
+                totalRevenue: 8000,
+                avgPerDay: 10,
+                trend: -1.0,
+              },
+              {
+                name: 'Long White',
+                totalQty: 380,
+                totalRevenue: 7200,
+                avgPerDay: 9,
+                trend: -2.0,
+              },
             ],
             // Backend sign-filters, so an empty array means nothing is rising.
-            meta: { startDate: null, endDate: null, risingItems: [], decliningItems: [] },
+            meta: {
+              startDate: null,
+              endDate: null,
+              risingItems: [],
+              decliningItems: [],
+            },
           },
         })
       }
@@ -387,11 +550,35 @@ describe('Analytics', () => {
         return Promise.resolve({
           data: {
             items: [
-              { name: 'Flat White', totalQty: 22, totalRevenue: 880, avgPerDay: 0.7, trend: 4 },
-              { name: 'Croissant', totalQty: 9, totalRevenue: 270, avgPerDay: 0.3, trend: -2 },
+              {
+                name: 'Flat White',
+                totalQty: 22,
+                totalRevenue: 880,
+                avgPerDay: 0.7,
+                trend: 4,
+              },
+              {
+                name: 'Croissant',
+                totalQty: 9,
+                totalRevenue: 270,
+                avgPerDay: 0.3,
+                trend: -2,
+              },
             ],
-            meta: { startDate: null, endDate: null, risingItems: [], decliningItems: [], newItems: [],
-              moverFloor: { minAvgPerDay: 2, windowDays: 7, minQty: 14, eligibleCount: 0, busiestQty: 9 } },
+            meta: {
+              startDate: null,
+              endDate: null,
+              risingItems: [],
+              decliningItems: [],
+              newItems: [],
+              moverFloor: {
+                minAvgPerDay: 2,
+                windowDays: 7,
+                minQty: 14,
+                eligibleCount: 0,
+                busiestQty: 9,
+              },
+            },
           },
         })
       }
@@ -413,8 +600,19 @@ describe('Analytics', () => {
       if (url.includes('/analytics/items')) {
         return Promise.resolve({
           data: {
-            items: [{ name: 'Flat White', totalQty: 400, totalRevenue: 8000, avgPerDay: 10, trend: 5 }],
-            meta: { risingItems: [{ name: 'Flat White', trend: 5 }], decliningItems: [] },
+            items: [
+              {
+                name: 'Flat White',
+                totalQty: 400,
+                totalRevenue: 8000,
+                avgPerDay: 10,
+                trend: 5,
+              },
+            ],
+            meta: {
+              risingItems: [{ name: 'Flat White', trend: 5 }],
+              decliningItems: [],
+            },
           },
         })
       }
@@ -434,7 +632,15 @@ describe('Analytics', () => {
       if (url.includes('/analytics/items')) {
         return Promise.resolve({
           data: {
-            items: [{ name: 'Flat White', totalQty: 400, totalRevenue: 8000, avgPerDay: 10, trend: 5 }],
+            items: [
+              {
+                name: 'Flat White',
+                totalQty: 400,
+                totalRevenue: 8000,
+                avgPerDay: 10,
+                trend: 5,
+              },
+            ],
             meta: {},
           },
         })
@@ -445,7 +651,9 @@ describe('Analytics', () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /items/i }))
 
-    expect(await screen.findByRole('columnheader', { name: /7d vs prior 7d/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('columnheader', { name: /7d vs prior 7d/i })
+    ).toBeInTheDocument()
   })
 
   it('says the heatmap window has no trade rather than drawing an all-zero grid', async () => {
@@ -455,7 +663,13 @@ describe('Analytics', () => {
         const heatmap = []
         for (let day = 0; day <= 6; day++) {
           for (let hour = 6; hour <= 22; hour++) {
-            heatmap.push({ dayOfWeek: day, hour, revenue: 0, transactions: 0, observedDays: 0 })
+            heatmap.push({
+              dayOfWeek: day,
+              hour,
+              revenue: 0,
+              transactions: 0,
+              observedDays: 0,
+            })
           }
         }
         return Promise.resolve({ data: { success: true, heatmap } })
@@ -466,7 +680,9 @@ describe('Analytics', () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
-    expect(await screen.findByText(/no trading activity in this window/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/no trading activity in this window/i)
+    ).toBeInTheDocument()
     expect(screen.queryByTitle(/Mon 08:00/)).not.toBeInTheDocument()
   })
 
@@ -474,7 +690,10 @@ describe('Analytics', () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/heatmap')) {
         return Promise.resolve({
-          data: { success: true, heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }] },
+          data: {
+            success: true,
+            heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3 }],
+          },
         })
       }
       return Promise.resolve({ data: {} })
@@ -486,7 +705,9 @@ describe('Analytics', () => {
     const cell = await screen.findByRole('button', { name: /monday 08:00/i })
     expect(cell).toHaveAccessibleName(/R100/)
     expect(screen.getByRole('rowheader', { name: 'Mon' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: '08:00' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: '08:00' })
+    ).toBeInTheDocument()
   })
 
   it('does not report a fabricated payment split when the import has no payment methods', async () => {
@@ -510,7 +731,9 @@ describe('Analytics', () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /customers/i }))
 
-    expect(await screen.findByText(/does not include payment methods/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/does not include payment methods/i)
+    ).toBeInTheDocument()
     expect(screen.queryByText('Card: 0.0%')).not.toBeInTheDocument()
     expect(screen.queryByText('Cash: 0.0%')).not.toBeInTheDocument()
   })
@@ -536,7 +759,9 @@ describe('Analytics', () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /customers/i }))
 
-    expect(await screen.findByText(/no customer data for this period/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/no customer data for this period/i)
+    ).toBeInTheDocument()
     expect(screen.queryByText('Tipping Rate')).not.toBeInTheDocument()
   })
 
@@ -578,8 +803,12 @@ describe('Analytics', () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
-    expect(await screen.findByText(/failed to load heatmap data/i)).toBeInTheDocument()
-    expect(screen.getByRole('group', { name: /date range/i })).toBeInTheDocument()
+    expect(
+      await screen.findByText(/failed to load heatmap data/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: /date range/i })
+    ).toBeInTheDocument()
 
     const before = attempts
     await userEvent.click(screen.getByRole('button', { name: /retry/i }))
@@ -592,12 +821,18 @@ describe('Analytics', () => {
 
     const revenue = screen.getByRole('tab', { name: 'Revenue' })
     expect(revenue).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: 'Items' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tab', { name: 'Items' })).toHaveAttribute(
+      'aria-selected',
+      'false'
+    )
     expect(screen.getByRole('tablist')).toBeInTheDocument()
 
     revenue.focus()
     await userEvent.keyboard('{ArrowRight}')
-    expect(screen.getByRole('tab', { name: 'Items' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Items' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
   })
 
   it('announces which range is applied', async () => {
@@ -607,33 +842,47 @@ describe('Analytics', () => {
     const group = screen.getByRole('group', { name: /date range/i })
     const thirty = within(group).getByRole('button', { name: /last 30 days/i })
     expect(thirty).toHaveAttribute('aria-pressed', 'true')
-    expect(within(group).getByRole('button', { name: /last 7 days/i })).toHaveAttribute('aria-pressed', 'false')
+    expect(
+      within(group).getByRole('button', { name: /last 7 days/i })
+    ).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('carries one range across tabs instead of silently resetting it', async () => {
     mockGet.mockImplementation(() => Promise.resolve({ data: {} }))
     render(<Analytics />)
 
-    await userEvent.click(within(screen.getByRole('group', { name: /date range/i })).getByRole('button', { name: /last 7 days/i }))
+    await userEvent.click(
+      within(screen.getByRole('group', { name: /date range/i })).getByRole(
+        'button',
+        { name: /last 7 days/i }
+      )
+    )
     await userEvent.click(screen.getByRole('tab', { name: /items/i }))
     await userEvent.click(screen.getByRole('tab', { name: /revenue/i }))
 
     await waitFor(() => {
       expect(
-        within(screen.getByRole('group', { name: /date range/i })).getByRole('button', { name: /last 7 days/i })
+        within(screen.getByRole('group', { name: /date range/i })).getByRole(
+          'button',
+          { name: /last 7 days/i }
+        )
       ).toHaveAttribute('aria-pressed', 'true')
     })
   })
 
-it('asks the server for the last N cafe days instead of computing dates in the browser', async () => {
-  mockGet.mockImplementation(() => new Promise(() => {}))
-  render(<Analytics />)
+  it('asks the server for the last N cafe days instead of computing dates in the browser', async () => {
+    mockGet.mockImplementation(() => new Promise(() => {}))
+    render(<Analytics />)
 
-  await waitFor(() => expect(mockGet).toHaveBeenCalled())
-  const revenueUrl = String(mockGet.mock.calls.find((call) => String(call[0]).includes('/analytics/revenue'))?.[0])
-  expect(revenueUrl).toContain('days=30')
-  expect(revenueUrl).not.toMatch(/startDate|endDate/)
-})
+    await waitFor(() => expect(mockGet).toHaveBeenCalled())
+    const revenueUrl = String(
+      mockGet.mock.calls.find((call) =>
+        String(call[0]).includes('/analytics/revenue')
+      )?.[0]
+    )
+    expect(revenueUrl).toContain('days=30')
+    expect(revenueUrl).not.toMatch(/startDate|endDate/)
+  })
 
   it('gives screen readers the revenue numbers the chart draws', async () => {
     const summary = {
@@ -664,7 +913,9 @@ it('asks the server for the last N cafe days instead of computing dates in the b
     expect(
       within(table).getByText((text) => text.replace(/\s/g, '') === 'R6000')
     ).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /daily revenue/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: /daily revenue/i })
+    ).toBeInTheDocument()
   })
 
   it('renders the revenue chart on first paint without a width(-1) size warning', async () => {
@@ -684,7 +935,12 @@ it('asks the server for the last N cafe days instead of computing dates in the b
         { date: '2026-03-02', revenue: 6000, transactions: 60 },
       ],
       summary,
-      meta: { startDate: '2026-03-01', endDate: '2026-03-02', period: 'daily', summary },
+      meta: {
+        startDate: '2026-03-01',
+        endDate: '2026-03-02',
+        period: 'daily',
+        summary,
+      },
     }
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) {
@@ -696,224 +952,351 @@ it('asks the server for the last N cafe days instead of computing dates in the b
     render(<Analytics />)
 
     expect(await screen.findByTestId('area-chart')).toBeInTheDocument()
-    const sizeWarnings = warn.mock.calls.filter((call) => String(call[0]).includes('width(-1)'))
+    const sizeWarnings = warn.mock.calls.filter((call) =>
+      String(call[0]).includes('width(-1)')
+    )
     expect(sizeWarnings).toEqual([])
     warn.mockRestore()
   })
-it('shows the trend against the windows the server compared, not the client clock', async () => {
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/analytics/revenue')) {
+  it('shows the trend against the windows the server compared, not the client clock', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/revenue')) {
+        return Promise.resolve({
+          data: {
+            data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
+            summary: {
+              totalRevenue: 145000,
+              avgDailyRevenue: 5000,
+              bestDay: { date: '2026-08-03', revenue: 5000 },
+              worstDay: { date: '2026-08-03', revenue: 5000 },
+              trend: 0,
+            },
+            meta: {
+              effectiveStartDay: '2026-07-06',
+              effectiveEndDay: '2026-08-04',
+              effectiveDays: 30,
+              defaultedStartDate: false,
+              effectiveWindow: {
+                startDate: '2026-07-06',
+                endDate: '2026-08-03',
+                days: 29,
+                endReason: 'today_incomplete',
+              },
+              comparisonWindow: {
+                startDate: '2026-06-07',
+                endDate: '2026-07-05',
+                days: 29,
+              },
+              trendReason: null,
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+
+    expect(await screen.findByText('+0.0%')).toBeInTheDocument()
+    expect(
+      screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul · today left out')
+    ).toBeInTheDocument()
+  })
+
+  it('shows no trend, and says why, when the server cannot compare honestly', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/revenue')) {
+        return Promise.resolve({
+          data: {
+            data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
+            summary: {
+              totalRevenue: 50000,
+              avgDailyRevenue: 5000,
+              bestDay: null,
+              worstDay: null,
+              trend: null,
+            },
+            meta: {
+              trendReason: 'insufficient_history',
+              effectiveWindow: null,
+              comparisonWindow: null,
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+
+    expect(
+      await screen.findByText(/not enough history before this range/i)
+    ).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.queryByText('+0.0%')).not.toBeInTheDocument()
+  })
+
+  it('states the window the server queried, in cafe-local days, on whichever tab is open', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/revenue')) {
+        return Promise.resolve({
+          data: {
+            data: [],
+            summary: {
+              totalRevenue: 0,
+              avgDailyRevenue: 0,
+              bestDay: null,
+              worstDay: null,
+              trend: null,
+            },
+            meta: {
+              effectiveStartDay: '2026-07-06',
+              effectiveEndDay: '2026-08-04',
+              effectiveDays: 30,
+              trendReason: 'no_data_in_window',
+            },
+          },
+        })
+      }
+      if (url.includes('/analytics/items')) {
+        return Promise.resolve({
+          data: {
+            items: [],
+            meta: {
+              effectiveStartDay: '2026-07-29',
+              effectiveEndDay: '2026-08-04',
+              effectiveDays: 7,
+              risingItems: [],
+              decliningItems: [],
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    expect(
+      await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Revenue' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Last 30 days' }))
+    expect(
+      screen.getByText('Showing 6 Jul – 4 Aug · 30 days')
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    expect(
+      await screen.findByText('Showing 29 Jul – 4 Aug · 7 days')
+    ).toBeInTheDocument()
+  })
+
+  it('keeps a legacy server trend when window metadata is absent', async () => {
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/revenue')
+          ? {
+              data: [],
+              summary: {
+                totalRevenue: 0,
+                avgDailyRevenue: 0,
+                bestDay: null,
+                worstDay: null,
+                trend: 5.2,
+              },
+            }
+          : {},
+      })
+    )
+    render(<Analytics />)
+    expect(await screen.findByText('+5.2%')).toBeInTheDocument()
+    expect(screen.queryByText(/^Showing /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/ vs /)).not.toBeInTheDocument()
+  })
+
+  it('keeps the refund explanation visible when a range has refunds and no sales', async () => {
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/customers')
+          ? {
+              insights: {
+                transactions: 0,
+                avgTransactionValue: 0,
+                avgItemsPerTransaction: 0,
+                cashVsCardRatio: null,
+                tippingRate: 0,
+                avgTip: 0,
+                refunds: { count: 1, value: 50 },
+              },
+            }
+          : {},
+      })
+    )
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
+    expect(
+      await screen.findByText(/1 refund .*not counted as a sale/)
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('No customer data for this period')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('No sales in this range, so there is nothing to split')
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('—')).toHaveLength(4)
+    expect(screen.queryByText('0.0%')).not.toBeInTheDocument()
+  })
+
+  it('keeps a persistent status container and clears a stale window when the next tab has no metadata', async () => {
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/revenue')
+          ? {
+              data: [],
+              summary: {
+                totalRevenue: 0,
+                avgDailyRevenue: 0,
+                bestDay: null,
+                worstDay: null,
+                trend: null,
+              },
+              meta: {
+                effectiveStartDay: '2026-07-06',
+                effectiveEndDay: '2026-08-04',
+                effectiveDays: 30,
+              },
+            }
+          : { items: [] },
+      })
+    )
+    render(<Analytics />)
+    const status = screen.getByRole('status')
+    expect(
+      await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Trend unavailable')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    await screen.findAllByText('No item data available')
+    expect(screen.getByRole('status')).toBe(status)
+    expect(status).toBeEmptyDOMElement()
+  })
+
+  it('clears the previous window when a new range fetch fails', async () => {
+    let calls = 0
+    mockGet.mockImplementation((url: string) => {
+      if (!url.includes('/analytics/revenue'))
+        return Promise.resolve({ data: {} })
+      calls += 1
+      if (calls > 1) return Promise.reject(new Error('offline'))
       return Promise.resolve({
         data: {
-          data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
+          data: [],
           summary: {
-            totalRevenue: 145000,
-            avgDailyRevenue: 5000,
-            bestDay: { date: '2026-08-03', revenue: 5000 },
-            worstDay: { date: '2026-08-03', revenue: 5000 },
-            trend: 0,
+            totalRevenue: 0,
+            avgDailyRevenue: 0,
+            bestDay: null,
+            worstDay: null,
+            trend: null,
           },
           meta: {
             effectiveStartDay: '2026-07-06',
             effectiveEndDay: '2026-08-04',
             effectiveDays: 30,
-            defaultedStartDate: false,
-            effectiveWindow: { startDate: '2026-07-06', endDate: '2026-08-03', days: 29, endReason: 'today_incomplete' },
-            comparisonWindow: { startDate: '2026-06-07', endDate: '2026-07-05', days: 29 },
-            trendReason: null,
           },
         },
       })
-    }
-    return Promise.resolve({ data: {} })
+    })
+    render(<Analytics />)
+    await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
+    await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
+    await screen.findByText('Failed to load revenue data')
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
-  render(<Analytics />)
-
-  expect(await screen.findByText('+0.0%')).toBeInTheDocument()
-  expect(screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul · today left out')).toBeInTheDocument()
-})
-
-it('shows no trend, and says why, when the server cannot compare honestly', async () => {
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/analytics/revenue')) {
-      return Promise.resolve({
-        data: {
-          data: [{ date: '2026-08-03', revenue: 5000, transactions: 10 }],
-          summary: { totalRevenue: 50000, avgDailyRevenue: 5000, bestDay: null, worstDay: null, trend: null },
-          meta: { trendReason: 'insufficient_history', effectiveWindow: null, comparisonWindow: null },
-        },
-      })
-    }
-    return Promise.resolve({ data: {} })
-  })
-
-  render(<Analytics />)
-
-  expect(await screen.findByText(/not enough history before this range/i)).toBeInTheDocument()
-  expect(screen.getByText('—')).toBeInTheDocument()
-  expect(screen.queryByText('+0.0%')).not.toBeInTheDocument()
-})
-
-it('states the window the server queried, in cafe-local days, on whichever tab is open', async () => {
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/analytics/revenue')) {
-      return Promise.resolve({
-        data: {
-          data: [],
-          summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
-          meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30, trendReason: 'no_data_in_window' },
-        },
-      })
-    }
-    if (url.includes('/analytics/items')) {
-      return Promise.resolve({
-        data: {
-          items: [],
-          meta: { effectiveStartDay: '2026-07-29', effectiveEndDay: '2026-08-04', effectiveDays: 7, risingItems: [], decliningItems: [] },
-        },
-      })
-    }
-    return Promise.resolve({ data: {} })
-  })
-
-  render(<Analytics />)
-  expect(await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('tab', { name: 'Revenue' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Last 30 days' }))
-  expect(screen.getByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
-
-  await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
-  expect(await screen.findByText('Showing 29 Jul – 4 Aug · 7 days')).toBeInTheDocument()
-})
-
-it('keeps a legacy server trend when window metadata is absent', async () => {
-  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/revenue') ? {
-    data: [],
-    summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: 5.2 },
-  } : {} }))
-  render(<Analytics />)
-  expect(await screen.findByText('+5.2%')).toBeInTheDocument()
-  expect(screen.queryByText(/^Showing /)).not.toBeInTheDocument()
-  expect(screen.queryByText(/ vs /)).not.toBeInTheDocument()
-})
-
-it('keeps the refund explanation visible when a range has refunds and no sales', async () => {
-  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/customers') ? {
-    insights: {
-      transactions: 0, avgTransactionValue: 0, avgItemsPerTransaction: 0, cashVsCardRatio: null,
-      tippingRate: 0, avgTip: 0, refunds: { count: 1, value: 50 },
-    },
-  } : {} }))
-  render(<Analytics />)
-  await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
-  expect(await screen.findByText(/1 refund .*not counted as a sale/)).toBeInTheDocument()
-  expect(screen.queryByText('No customer data for this period')).not.toBeInTheDocument()
-  expect(screen.getByText('No sales in this range, so there is nothing to split')).toBeInTheDocument()
-  expect(screen.getAllByText('—')).toHaveLength(4)
-  expect(screen.queryByText('0.0%')).not.toBeInTheDocument()
-})
-
-it('keeps a persistent status container and clears a stale window when the next tab has no metadata', async () => {
-  mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/revenue') ? {
-    data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
-    meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30 },
-  } : { items: [] } }))
-  render(<Analytics />)
-  const status = screen.getByRole('status')
-  expect(await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')).toBeInTheDocument()
-  expect(screen.getByLabelText('Trend unavailable')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
-  await screen.findAllByText('No item data available')
-  expect(screen.getByRole('status')).toBe(status)
-  expect(status).toBeEmptyDOMElement()
-})
-
-it('clears the previous window when a new range fetch fails', async () => {
-  let calls = 0
-  mockGet.mockImplementation((url: string) => {
-    if (!url.includes('/analytics/revenue')) return Promise.resolve({ data: {} })
-    calls += 1
-    if (calls > 1) return Promise.reject(new Error('offline'))
-    return Promise.resolve({ data: {
-      data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
-      meta: { effectiveStartDay: '2026-07-06', effectiveEndDay: '2026-08-04', effectiveDays: 30 },
-    } })
-  })
-  render(<Analytics />)
-  await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
-  await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
-  await screen.findByText('Failed to load revenue data')
-  expect(screen.getByRole('status')).toBeEmptyDOMElement()
-})
-
-it('splits payments into card, cash and other, and says what was left out', async () => {
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/analytics/customers')) {
-      return Promise.resolve({
-        data: {
-          insights: {
-            transactions: 8,
-            avgTransactionValue: 62.5,
-            avgItemsPerTransaction: 1.4,
-            cashVsCardRatio: { cash: 28.6, card: 42.9, other: 28.6 },
-            paymentMethodCoverage: { known: 7, unknown: 1 },
-            refunds: { count: 1, value: 50 },
-            tippingRate: 25,
-            avgTip: 15,
+  it('splits payments into card, cash and other, and says what was left out', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/customers')) {
+        return Promise.resolve({
+          data: {
+            insights: {
+              transactions: 8,
+              avgTransactionValue: 62.5,
+              avgItemsPerTransaction: 1.4,
+              cashVsCardRatio: { cash: 28.6, card: 42.9, other: 28.6 },
+              paymentMethodCoverage: { known: 7, unknown: 1 },
+              refunds: { count: 1, value: 50 },
+              tippingRate: 25,
+              avgTip: 15,
+            },
           },
-        },
-      })
-    }
-    return Promise.resolve({ data: {} })
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /customers/i }))
+
+    expect(await screen.findByText('Other: 28.6%')).toBeInTheDocument()
+    expect(screen.getByText('Card: 42.9%')).toBeInTheDocument()
+    expect(screen.getByText('Cash: 28.6%')).toBeInTheDocument()
+    expect(
+      screen.getByText(/1 sale has no payment method/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/1 refund \(R50,00\) not counted as a sale/i)
+    ).toBeInTheDocument()
   })
 
-  render(<Analytics />)
-  await userEvent.click(screen.getByRole('tab', { name: /customers/i }))
-
-  expect(await screen.findByText('Other: 28.6%')).toBeInTheDocument()
-  expect(screen.getByText('Card: 42.9%')).toBeInTheDocument()
-  expect(screen.getByText('Cash: 28.6%')).toBeInTheDocument()
-  expect(screen.getByText(/1 sale has no payment method/i)).toBeInTheDocument()
-  expect(screen.getByText(/1 refund \(R50,00\) not counted as a sale/i)).toBeInTheDocument()
-})
-
-it('says the daily average is per open day', async () => {
-  mockGet.mockImplementation((url: string) => {
-    if (url.includes('/analytics/revenue')) {
-      return Promise.resolve({
-        data: {
-          data: [{ date: '2026-03-02', revenue: 160, transactions: 2 }],
-          summary: {
-            totalRevenue: 450,
-            avgDailyRevenue: 64.29,
-            openDays: 7,
-            bestDay: { date: '2026-03-02', revenue: 160 },
-            worstDay: { date: '2026-03-04', revenue: 0 },
-            trend: null,
+  it('says the daily average is per open day', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/revenue')) {
+        return Promise.resolve({
+          data: {
+            data: [{ date: '2026-03-02', revenue: 160, transactions: 2 }],
+            summary: {
+              totalRevenue: 450,
+              avgDailyRevenue: 64.29,
+              openDays: 7,
+              bestDay: { date: '2026-03-02', revenue: 160 },
+              worstDay: { date: '2026-03-04', revenue: 0 },
+              trend: null,
+            },
           },
-        },
-      })
-    }
-    return Promise.resolve({ data: {} })
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+
+    expect(await screen.findByText('across 7 open days')).toBeInTheDocument()
   })
-
-  render(<Analytics />)
-
-  expect(await screen.findByText('across 7 open days')).toBeInTheDocument()
-})
 
   it('does not invent optional analytics facts for an older customer response', async () => {
-    mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/customers') ? {
-      insights: { avgTransactionValue: 50, avgItemsPerTransaction: 1, tippingRate: 0, avgTip: 0,
-        cashVsCardRatio: { card: 75, cash: 25 } },
-    } : {} }))
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/customers')
+          ? {
+              insights: {
+                avgTransactionValue: 50,
+                avgItemsPerTransaction: 1,
+                tippingRate: 0,
+                avgTip: 0,
+                cashVsCardRatio: { card: 75, cash: 25 },
+              },
+            }
+          : {},
+      })
+    )
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
     expect(await screen.findByText('Card: 75.0%')).toBeInTheDocument()
     expect(screen.queryByText(/^Other:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/open days|refund/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /payment method split/i })).not.toHaveAccessibleName(/other/i)
+    expect(
+      screen.getByRole('img', { name: /payment method split/i })
+    ).not.toHaveAccessibleName(/other/i)
   })
 
   it('lists new items as new and shows the movers the server ranked', async () => {
@@ -922,14 +1305,34 @@ it('says the daily average is per open day', async () => {
         return Promise.resolve({
           data: {
             items: [
-              { name: 'Latte', totalQty: 92, totalRevenue: 2760, avgPerDay: 6.6, trend: 30, isNew: false },
-              { name: 'Iced Matcha', totalQty: 20, totalRevenue: 900, avgPerDay: 1.4, trend: null, isNew: true },
+              {
+                name: 'Latte',
+                totalQty: 92,
+                totalRevenue: 2760,
+                avgPerDay: 6.6,
+                trend: 30,
+                isNew: false,
+              },
+              {
+                name: 'Iced Matcha',
+                totalQty: 20,
+                totalRevenue: 900,
+                avgPerDay: 1.4,
+                trend: null,
+                isNew: true,
+              },
             ],
             meta: {
               risingItems: [{ name: 'Oat Latte', trend: 45 }],
               decliningItems: [],
               newItems: [{ name: 'Iced Matcha', currentQty: 20 }],
-              moverFloor: { minAvgPerDay: 2, windowDays: 7, minQty: 14, eligibleCount: 2, busiestQty: 52 },
+              moverFloor: {
+                minAvgPerDay: 2,
+                windowDays: 7,
+                minQty: 14,
+                eligibleCount: 2,
+                busiestQty: 52,
+              },
             },
           },
         })
@@ -946,8 +1349,12 @@ it('says the daily average is per open day', async () => {
     expect(screen.getByText('New in the last 7 days')).toBeInTheDocument()
     expect(screen.getByText('20 sold · new')).toBeInTheDocument()
     expect(screen.queryByText('+100.0%')).not.toBeInTheDocument()
-    expect(within(screen.getByRole('table')).getByText('New')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Avg per open day' })).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('table')).getByText('New')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('columnheader', { name: 'Avg per open day' })
+    ).toBeInTheDocument()
   })
 
   it('dims hours the cafe is closed and says so', async () => {
@@ -957,9 +1364,27 @@ it('says the daily average is per open day', async () => {
           data: {
             success: true,
             heatmap: [
-              { dayOfWeek: 1, hour: 8, revenue: 100, transactions: 3, isOpen: true },
-              { dayOfWeek: 0, hour: 8, revenue: 0, transactions: 0, isOpen: false },
-              { dayOfWeek: 0, hour: 10, revenue: 40, transactions: 1, isOpen: false },
+              {
+                dayOfWeek: 1,
+                hour: 8,
+                revenue: 100,
+                transactions: 3,
+                isOpen: true,
+              },
+              {
+                dayOfWeek: 0,
+                hour: 8,
+                revenue: 0,
+                transactions: 0,
+                isOpen: false,
+              },
+              {
+                dayOfWeek: 0,
+                hour: 10,
+                revenue: 40,
+                transactions: 1,
+                isOpen: false,
+              },
             ],
           },
         })
@@ -970,11 +1395,21 @@ it('says the daily average is per open day', async () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
-    const closed = await screen.findByRole('button', { name: /sunday 08:00, closed/i })
-    expect(closed).toHaveAttribute('title', 'Sun 08:00 - Closed: outside your trading hours')
+    const closed = await screen.findByRole('button', {
+      name: /sunday 08:00, closed/i,
+    })
+    expect(closed).toHaveAttribute(
+      'title',
+      'Sun 08:00 - Closed: outside your trading hours'
+    )
     expect(closed).toHaveAttribute('data-closed', 'true')
     expect(closed.querySelector('[data-closed-fill]')).not.toBeNull()
-    expect(screen.getByRole('button', { name: /sunday 10:00, closed/i })).toHaveAttribute('title', 'Sun 10:00 - Closed: outside your trading hours; sales recorded while closed')
+    expect(
+      screen.getByRole('button', { name: /sunday 10:00, closed/i })
+    ).toHaveAttribute(
+      'title',
+      'Sun 10:00 - Closed: outside your trading hours; sales recorded while closed'
+    )
     const open = screen.getByRole('button', { name: /monday 08:00/i })
     expect(open).not.toHaveAttribute('data-closed')
     expect(open.getAttribute('aria-label')).not.toMatch(/closed/i)
@@ -987,7 +1422,13 @@ it('says the daily average is per open day', async () => {
           data: {
             success: true,
             data: [{ pair: ['Flat White', 'Muffin'], count: 10 }],
-            meta: { truncated: true, basketsConsidered: 10, basketsClipped: 2, maxBaskets: 10, maxItemsPerBasket: 20 },
+            meta: {
+              truncated: true,
+              basketsConsidered: 10,
+              basketsClipped: 2,
+              maxBaskets: 10,
+              maxItemsPerBasket: 20,
+            },
           },
         })
       }
@@ -997,8 +1438,14 @@ it('says the daily average is per open day', async () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: 'Combos' }))
 
-    expect(await screen.findByText(/based on the most recent 10 baskets with two or more items in this range/i)).toBeInTheDocument()
-    expect(screen.getByText(/2 baskets were cut to 20 items/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        /based on the most recent 10 baskets with two or more items in this range/i
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/2 baskets were cut to 20 items/i)
+    ).toBeInTheDocument()
   })
 
   it("shows the server's reason when Performance is rate limited, and keeps Retry", async () => {
@@ -1007,7 +1454,12 @@ it('says the daily average is per open day', async () => {
         return Promise.reject({
           response: {
             status: 429,
-            data: { success: false, code: 'ANALYTICS_RATE_LIMITED', message: 'Too many Performance requests. Wait a minute and try again.' },
+            data: {
+              success: false,
+              code: 'ANALYTICS_RATE_LIMITED',
+              message:
+                'Too many Performance requests. Wait a minute and try again.',
+            },
           },
         })
       }
@@ -1017,29 +1469,55 @@ it('says the daily average is per open day', async () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
-    expect(await screen.findByText('Too many Performance requests. Wait a minute and try again.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'Too many Performance requests. Wait a minute and try again.'
+      )
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 
   it('explains a codeless IP limit and disables immediate Retry', async () => {
-    mockGet.mockImplementation((url: string) => url.includes('/analytics/heatmap')
-      ? Promise.reject({ response: { status: 429, data: 'Too many requests' } })
-      : Promise.resolve({ data: {} }))
+    mockGet.mockImplementation((url: string) =>
+      url.includes('/analytics/heatmap')
+        ? Promise.reject({
+            response: { status: 429, data: 'Too many requests' },
+          })
+        : Promise.resolve({ data: {} })
+    )
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
-    expect(await screen.findByText('Too many requests right now. Wait a minute, then press Retry.')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'Too many requests right now. Wait a minute, then press Retry.'
+      )
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeDisabled()
   })
 
   it('keeps an older item with no trend readable as an accessible dash', async () => {
-    mockGet.mockImplementation((url: string) => Promise.resolve({ data: url.includes('/analytics/items') ? {
-      items: [{ name: 'Legacy Latte', totalQty: 2, totalRevenue: 80, avgPerDay: 1 }],
-    } : {} }))
+    mockGet.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes('/analytics/items')
+          ? {
+              items: [
+                {
+                  name: 'Legacy Latte',
+                  totalQty: 2,
+                  totalRevenue: 80,
+                  avgPerDay: 1,
+                },
+              ],
+            }
+          : {},
+      })
+    )
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
     const row = await screen.findByRole('row', { name: /Legacy Latte/ })
-    expect(within(row).getByText('No sales in the earlier week')).toBeInTheDocument()
+    expect(
+      within(row).getByText('No sales in the earlier week')
+    ).toBeInTheDocument()
     expect(screen.queryByText(/undefined|NaN/)).not.toBeInTheDocument()
   })
-
 })

@@ -30,7 +30,10 @@ vi.mock('@/lib/api', () => {
   }
 })
 
-function renderWithAuth(ui: ReactNode, { role = 'owner' }: { role?: 'owner' | 'manager' } = {}) {
+function renderWithAuth(
+  ui: ReactNode,
+  { role = 'owner' }: { role?: 'owner' | 'manager' } = {}
+) {
   const user = {
     id: 'user123',
     email: 'test@yourguava.com',
@@ -61,62 +64,166 @@ function renderWithAuth(ui: ReactNode, { role = 'owner' }: { role?: 'owner' | 'm
 }
 
 describe('Settings', () => {
-const cafeWithTimezone = (timezoneEditable: boolean) => (url: string) => {
-  if (url.includes('/cafe/me')) {
-    return Promise.resolve({
-      data: {
-        success: true,
-        cafe: { name: 'Cafe X', location: { city: 'London' }, timezone: 'Africa/Johannesburg', timezoneEditable },
+  const cafeWithTimezone = (timezoneEditable: boolean) => (url: string) => {
+    if (url.includes('/cafe/me')) {
+      return Promise.resolve({
+        data: {
+          success: true,
+          cafe: {
+            name: 'Cafe X',
+            location: { city: 'London' },
+            timezone: 'Africa/Johannesburg',
+            timezoneEditable,
+          },
+        },
+      })
+    }
+    return Promise.resolve({ data: {} })
+  }
+
+  it('lets the owner choose a timezone before the first import', async () => {
+    mockGet.mockImplementation(cafeWithTimezone(true))
+    mockPut.mockResolvedValueOnce({ data: { success: true } })
+    renderWithAuth(<Settings />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    )
+    const select = (await screen.findByLabelText(
+      /^Timezone$/i
+    )) as HTMLSelectElement
+    expect(select.value).toBe('Africa/Johannesburg')
+    fireEvent.change(select, { target: { value: 'Europe/London' } })
+    fireEvent.click(screen.getByText('Save Cafe Details'))
+
+    await waitFor(() => {
+      expect(mockPut).toHaveBeenCalledWith(
+        '/cafe/me',
+        expect.objectContaining({ timezone: 'Europe/London' })
+      )
+    })
+  })
+
+  it('says the timezone is fixed once sales exist, and does not send it', async () => {
+    mockGet.mockImplementation(cafeWithTimezone(false))
+    mockPut.mockResolvedValueOnce({ data: { success: true } })
+    renderWithAuth(<Settings />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    )
+    expect(
+      await screen.findByText(/fixed once sales are imported/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Timezone$/i)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^Cafe Name$/i), {
+      target: { value: 'Cafe Y' },
+    })
+    fireEvent.click(screen.getByText('Save Cafe Details'))
+
+    await waitFor(() => expect(mockPut).toHaveBeenCalled())
+    expect(mockPut.mock.calls[0][1]).not.toHaveProperty('timezone')
+  })
+
+  it('explains an unavailable timezone without contradicting the picker', async () => {
+    mockGet.mockImplementation(cafeWithTimezone(true))
+    mockPut.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          success: false,
+          code: 'INVALID_TIMEZONE',
+          message:
+            'Choose a timezone from the list, such as Africa/Johannesburg.',
+        },
       },
     })
-  }
-  return Promise.resolve({ data: {} })
-}
+    renderWithAuth(<Settings />)
 
-it('lets the owner choose a timezone before the first import', async () => {
-  mockGet.mockImplementation(cafeWithTimezone(true))
-  mockPut.mockResolvedValueOnce({ data: { success: true } })
-  renderWithAuth(<Settings />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    )
+    fireEvent.change(await screen.findByLabelText(/^Timezone$/i), {
+      target: { value: 'Europe/London' },
+    })
+    fireEvent.click(screen.getByText('Save Cafe Details'))
 
-  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
-  const select = (await screen.findByLabelText(/^Timezone$/i)) as HTMLSelectElement
-  expect(select.value).toBe('Africa/Johannesburg')
-  fireEvent.change(select, { target: { value: 'Europe/London' } })
-  fireEvent.click(screen.getByText('Save Cafe Details'))
-
-  await waitFor(() => {
-    expect(mockPut).toHaveBeenCalledWith('/cafe/me', expect.objectContaining({ timezone: 'Europe/London' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /this timezone is not available yet.*choose another timezone or contact support/i
+    )
   })
-})
 
-it('says the timezone is fixed once sales exist, and does not send it', async () => {
-  mockGet.mockImplementation(cafeWithTimezone(false))
-  mockPut.mockResolvedValueOnce({ data: { success: true } })
-  renderWithAuth(<Settings />)
-
-  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
-  expect(await screen.findByText(/fixed once sales are imported/i)).toBeInTheDocument()
-  expect(screen.queryByLabelText(/^Timezone$/i)).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText(/^Cafe Name$/i), { target: { value: 'Cafe Y' } })
-  fireEvent.click(screen.getByText('Save Cafe Details'))
-
-  await waitFor(() => expect(mockPut).toHaveBeenCalled())
-  expect(mockPut.mock.calls[0][1]).not.toHaveProperty('timezone')
-})
-
-it('shows the server reason when a timezone is refused', async () => {
-  mockGet.mockImplementation(cafeWithTimezone(true))
-  mockPut.mockRejectedValueOnce({
-    response: { status: 400, data: { success: false, code: 'INVALID_TIMEZONE', message: 'Choose a timezone from the list, such as Africa/Johannesburg.' } },
+  it('recovers from an import locking the timezone while the form was open', async () => {
+    mockGet.mockImplementation(cafeWithTimezone(true))
+    mockPut
+      .mockRejectedValueOnce({
+        response: {
+          status: 409,
+          data: {
+            code: 'TIMEZONE_LOCKED',
+            message: 'Fixed once sales are imported.',
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { success: true } })
+    renderWithAuth(<Settings />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    )
+    fireEvent.change(await screen.findByLabelText(/^Timezone$/i), {
+      target: { value: 'Europe/London' },
+    })
+    fireEvent.click(screen.getByText('Save Cafe Details'))
+    await screen.findByRole('alert')
+    expect(screen.queryByLabelText(/^Timezone$/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Africa/Johannesburg')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^Cafe Name$/i), {
+      target: { value: 'Cafe after import' },
+    })
+    fireEvent.click(screen.getByText('Save Cafe Details'))
+    await waitFor(() => expect(mockPut).toHaveBeenCalledTimes(2))
+    expect(mockPut.mock.calls[1][1]).not.toHaveProperty('timezone')
+    expect(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    ).toBeInTheDocument()
   })
-  renderWithAuth(<Settings />)
 
-  fireEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
-  fireEvent.change(await screen.findByLabelText(/^Timezone$/i), { target: { value: 'Europe/London' } })
-  fireEvent.click(screen.getByText('Save Cafe Details'))
+  it.each([true, false])(
+    'explains timezone editability in the read-only cafe view (%s)',
+    async (editable) => {
+      mockGet.mockImplementation(cafeWithTimezone(editable))
+      renderWithAuth(<Settings />)
+      await screen.findByRole('button', { name: /edit cafe details/i })
+      expect(
+        screen.getByText(
+          editable
+            ? /can be changed until sales are imported/i
+            : /fixed once sales are imported/i
+        )
+      ).toBeInTheDocument()
+    }
+  )
 
-  expect(await screen.findByRole('alert')).toHaveTextContent(/choose a timezone from the list/i)
-})
+  it('describes the limited timezone list when the browser cannot list IANA zones', async () => {
+    const original = Object.getOwnPropertyDescriptor(Intl, 'supportedValuesOf')
+    Object.defineProperty(Intl, 'supportedValuesOf', {
+      configurable: true,
+      value: undefined,
+    })
+    try {
+      mockGet.mockImplementation(cafeWithTimezone(true))
+      renderWithAuth(<Settings />)
+      fireEvent.click(
+        await screen.findByRole('button', { name: /edit cafe details/i })
+      )
+      const picker = await screen.findByLabelText(/^Timezone$/i)
+      expect(picker).toHaveAccessibleDescription(
+        /browser cannot list all timezones/i
+      )
+    } finally {
+      if (original) Object.defineProperty(Intl, 'supportedValuesOf', original)
+    }
+  })
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -129,9 +236,15 @@ it('shows the server reason when a timezone is refused', async () => {
 
     renderWithAuth(<Settings />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/settings are unavailable/i)
-    expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /edit trading hours/i })).toBeDisabled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /settings are unavailable/i
+    )
+    expect(
+      screen.getByRole('button', { name: /edit cafe details/i })
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: /edit trading hours/i })
+    ).toBeDisabled()
     expect(screen.queryByText('My Cafe')).not.toBeInTheDocument()
     expect(mockPut).not.toHaveBeenCalled()
   })
@@ -142,7 +255,10 @@ it('shows the server reason when a timezone is refused', async () => {
         return Promise.resolve({
           data: {
             success: true,
-            cafe: { name: 'Blouberg Coffee', location: { address: '123 Main St', city: 'Cape Town' } },
+            cafe: {
+              name: 'Blouberg Coffee',
+              location: { address: '123 Main St', city: 'Cape Town' },
+            },
           },
         })
       }
@@ -155,15 +271,21 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
     expect(screen.queryByText('My Account')).not.toBeInTheDocument()
-    expect(screen.queryByText('Plans and mock checkout')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Plans and mock checkout')
+    ).not.toBeInTheDocument()
 
     expect(screen.getAllByText('Blouberg Coffee').length).toBeGreaterThan(0)
     expect(screen.getByText('123 Main St')).toBeInTheDocument()
-    expect(screen.queryByDisplayValue('Blouberg Coffee')).not.toBeInTheDocument()
+    expect(
+      screen.queryByDisplayValue('Blouberg Coffee')
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Save Cafe Details')).not.toBeInTheDocument()
   })
 
@@ -173,7 +295,10 @@ it('shows the server reason when a timezone is refused', async () => {
         return Promise.resolve({
           data: {
             success: true,
-            cafe: { name: 'Manager View Cafe', location: { address: '9 Kloof St', city: 'Cape Town' } },
+            cafe: {
+              name: 'Manager View Cafe',
+              location: { address: '9 Kloof St', city: 'Cape Town' },
+            },
           },
         })
       }
@@ -187,8 +312,12 @@ it('shows the server reason when a timezone is refused', async () => {
     expect(screen.getByText('Trading Hours')).toBeInTheDocument()
     expect(screen.getByText('Monday')).toBeInTheDocument()
 
-    expect(screen.queryByRole('button', { name: /edit cafe details/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /edit trading hours/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /edit cafe details/i })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /edit trading hours/i })
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Save Cafe Details')).not.toBeInTheDocument()
     expect(screen.queryByText('Save Trading Hours')).not.toBeInTheDocument()
     expect(mockPut).not.toHaveBeenCalled()
@@ -200,7 +329,10 @@ it('shows the server reason when a timezone is refused', async () => {
         return Promise.resolve({
           data: {
             success: true,
-            cafe: { name: 'Pinned Cafe', location: { address: '', city: 'Cape Town' } },
+            cafe: {
+              name: 'Pinned Cafe',
+              location: { address: '', city: 'Cape Town' },
+            },
           },
         })
       }
@@ -210,14 +342,16 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('navigation', { name: /settings sections/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('navigation', { name: /settings sections/i })
+      ).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('navigation', { name: /settings sections/i }).closest('aside')).toHaveClass(
-      'xl:fixed',
-      'xl:top-20',
-      'xl:w-[220px]'
-    )
+    expect(
+      screen
+        .getByRole('navigation', { name: /settings sections/i })
+        .closest('aside')
+    ).toHaveClass('xl:fixed', 'xl:top-20', 'xl:w-[220px]')
   })
 
   it('renders the expanded address block and timezone in view mode', async () => {
@@ -253,7 +387,9 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
     expect(screen.getByText('12 Beach Road')).toBeInTheDocument()
@@ -273,7 +409,11 @@ it('shows the server reason when a timezone is refused', async () => {
             success: true,
             cafe: {
               name: 'Cafe X',
-              location: { address: '', city: 'Cape Town', country: 'South Africa' },
+              location: {
+                address: '',
+                city: 'Cape Town',
+                country: 'South Africa',
+              },
               timezone: 'Africa/Johannesburg',
             },
           },
@@ -290,7 +430,9 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /edit cafe details/i }))
@@ -304,8 +446,12 @@ it('shows the server reason when a timezone is refused', async () => {
     const province = screen.getByLabelText(/^Province$/i) as HTMLSelectElement
     fireEvent.change(province, { target: { value: 'Western Cape' } })
 
-    fireEvent.change(screen.getByLabelText(/^Latitude$/i), { target: { value: '-33.9249' } })
-    fireEvent.change(screen.getByLabelText(/^Longitude$/i), { target: { value: '18.4241' } })
+    fireEvent.change(screen.getByLabelText(/^Latitude$/i), {
+      target: { value: '-33.9249' },
+    })
+    fireEvent.change(screen.getByLabelText(/^Longitude$/i), {
+      target: { value: '18.4241' },
+    })
 
     fireEvent.click(screen.getByText('Save Cafe Details'))
 
@@ -330,7 +476,10 @@ it('shows the server reason when a timezone is refused', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) {
         return Promise.resolve({
-          data: { success: true, cafe: { name: 'Coordinate Cafe', location: {} } },
+          data: {
+            success: true,
+            cafe: { name: 'Coordinate Cafe', location: {} },
+          },
         })
       }
       return Promise.resolve({ data: {} })
@@ -338,19 +487,25 @@ it('shows the server reason when a timezone is refused', async () => {
 
     renderWithAuth(<Settings />)
 
-    await userEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    )
     const latitude = screen.getByLabelText(/^Latitude$/i)
     const longitude = screen.getByLabelText(/^Longitude$/i)
     await userEvent.type(latitude, '-33.9249')
     await userEvent.click(screen.getByText('Save Cafe Details'))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/latitude and longitude must both be provided/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /latitude and longitude must both be provided/i
+    )
     expect(mockPut).not.toHaveBeenCalled()
 
     await userEvent.type(longitude, '181')
     await userEvent.click(screen.getByText('Save Cafe Details'))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/longitude must be a number between -180 and 180/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /longitude must be a number between -180 and 180/i
+    )
     expect(mockPut).not.toHaveBeenCalled()
   })
 
@@ -370,12 +525,18 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /edit cafe details/i }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /edit cafe details/i })
+    )
 
-    const province = (await screen.findByLabelText(/^Province$/i)) as HTMLSelectElement
+    const province = (await screen.findByLabelText(
+      /^Province$/i
+    )) as HTMLSelectElement
     const optionValues = Array.from(province.options).map((opt) => opt.value)
     for (const expected of [
       'Eastern Cape',
@@ -398,7 +559,10 @@ it('shows the server reason when a timezone is refused', async () => {
         return Promise.resolve({
           data: {
             success: true,
-            cafe: { name: 'Original Cafe', location: { address: '1 Loop St', city: 'Cape Town' } },
+            cafe: {
+              name: 'Original Cafe',
+              location: { address: '1 Loop St', city: 'Cape Town' },
+            },
           },
         })
       }
@@ -411,10 +575,14 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /edit cafe details/i }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /edit cafe details/i })
+    )
 
     const nameInput = await screen.findByDisplayValue('Original Cafe')
     await userEvent.clear(nameInput)
@@ -423,18 +591,28 @@ it('shows the server reason when a timezone is refused', async () => {
     await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
 
     await waitFor(() => {
-      expect(screen.queryByDisplayValue('Throwaway Name')).not.toBeInTheDocument()
+      expect(
+        screen.queryByDisplayValue('Throwaway Name')
+      ).not.toBeInTheDocument()
     })
     expect(mockPut).not.toHaveBeenCalled()
     expect(screen.getAllByText('Original Cafe').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /edit cafe details/i })
+    ).toBeInTheDocument()
   })
 
   it('points factor configuration to the planning workspace', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) {
         return Promise.resolve({
-          data: { success: true, cafe: { name: 'Test Cafe', location: { address: '', city: 'Cape Town' } } },
+          data: {
+            success: true,
+            cafe: {
+              name: 'Test Cafe',
+              location: { address: '', city: 'Cape Town' },
+            },
+          },
         })
       }
       return Promise.resolve({ data: {} })
@@ -442,21 +620,31 @@ it('shows the server reason when a timezone is refused', async () => {
 
     renderWithAuth(<Settings />)
 
-    await userEvent.click(await screen.findByRole('button', { name: /prediction/i }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: /prediction/i })
+    )
 
     await waitFor(() => {
       expect(screen.getByText('Forecast Factors')).toBeInTheDocument()
     })
 
     expect(screen.getByText(/one dedicated workspace/i)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /open forecast factors/i })).toHaveAttribute('href', '/planning/factors')
+    expect(
+      screen.getByRole('link', { name: /open forecast factors/i })
+    ).toHaveAttribute('href', '/planning/factors')
   })
 
   it('handles cafe name update', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) {
         return Promise.resolve({
-          data: { success: true, cafe: { name: 'Old Name', location: { address: '', city: 'Cape Town' } } },
+          data: {
+            success: true,
+            cafe: {
+              name: 'Old Name',
+              location: { address: '', city: 'Cape Town' },
+            },
+          },
         })
       }
       if (url.includes('/events')) {
@@ -470,10 +658,14 @@ it('shows the server reason when a timezone is refused', async () => {
     renderWithAuth(<Settings />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /edit cafe details/i })
+      ).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByRole('button', { name: /edit cafe details/i }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /edit cafe details/i })
+    )
 
     const nameInput = await screen.findByDisplayValue('Old Name')
     await userEvent.clear(nameInput)
@@ -482,9 +674,12 @@ it('shows the server reason when a timezone is refused', async () => {
     await userEvent.click(screen.getByText('Save Cafe Details'))
 
     await waitFor(() => {
-      expect(mockPut).toHaveBeenCalledWith('/cafe/me', expect.objectContaining({
-        name: 'New Name',
-      }))
+      expect(mockPut).toHaveBeenCalledWith(
+        '/cafe/me',
+        expect.objectContaining({
+          name: 'New Name',
+        })
+      )
     })
   })
 
@@ -506,7 +701,9 @@ it('shows the server reason when a timezone is refused', async () => {
     beforeEach(() => {
       mockGet.mockImplementation((url: string) => {
         if (url.includes('/cafe/me')) {
-          return Promise.resolve({ data: { success: true, cafe: cafeWithHours } })
+          return Promise.resolve({
+            data: { success: true, cafe: cafeWithHours },
+          })
         }
         if (url.includes('/events')) {
           return Promise.resolve({ data: { events: [] } })
@@ -516,7 +713,9 @@ it('shows the server reason when a timezone is refused', async () => {
     })
 
     const enterEditMode = async () => {
-      const editButton = await screen.findByRole('button', { name: /edit trading hours/i })
+      const editButton = await screen.findByRole('button', {
+        name: /edit trading hours/i,
+      })
       await userEvent.click(editButton)
     }
 
@@ -524,13 +723,19 @@ it('shows the server reason when a timezone is refused', async () => {
       renderWithAuth(<Settings />)
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /edit trading hours/i })).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /edit trading hours/i })
+        ).toBeInTheDocument()
       })
 
       expect(screen.queryByText('Save Trading Hours')).not.toBeInTheDocument()
-      expect(screen.queryByRole('switch', { name: /Monday/i })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('switch', { name: /Monday/i })
+      ).not.toBeInTheDocument()
       // Weekdays render 07:00 – 17:00 (5 days); Sunday renders "Closed".
-      expect(screen.getAllByText(/07:00\s*–\s*17:00/).length).toBeGreaterThanOrEqual(5)
+      expect(
+        screen.getAllByText(/07:00\s*–\s*17:00/).length
+      ).toBeGreaterThanOrEqual(5)
       expect(screen.getAllByText(/Closed/i).length).toBeGreaterThan(0)
     })
 
@@ -541,7 +746,15 @@ it('shows the server reason when a timezone is refused', async () => {
         expect(screen.getByText('Trading Hours')).toBeInTheDocument()
       })
 
-      for (const day of ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']) {
+      for (const day of [
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+      ]) {
         expect(screen.getByText(day)).toBeInTheDocument()
       }
     })
@@ -550,12 +763,16 @@ it('shows the server reason when a timezone is refused', async () => {
       renderWithAuth(<Settings />)
       await enterEditMode()
 
-      const mondayToggle = await screen.findByRole('switch', { name: /^Monday open$/i })
+      const mondayToggle = await screen.findByRole('switch', {
+        name: /^Monday open$/i,
+      })
       expect(mondayToggle).toHaveAttribute('aria-checked', 'true')
       await userEvent.click(mondayToggle)
 
       await waitFor(() => {
-        expect(screen.getByRole('switch', { name: /^Monday closed$/i })).toHaveAttribute('aria-checked', 'false')
+        expect(
+          screen.getByRole('switch', { name: /^Monday closed$/i })
+        ).toHaveAttribute('aria-checked', 'false')
       })
     })
 
@@ -573,7 +790,9 @@ it('shows the server reason when a timezone is refused', async () => {
           expect.objectContaining({ tradingHours: expect.any(Array) })
         )
       })
-      const call = mockPut.mock.calls.find((c) => c[0] === '/cafe/me' && c[1]?.tradingHours)
+      const call = mockPut.mock.calls.find(
+        (c) => c[0] === '/cafe/me' && c[1]?.tradingHours
+      )
       expect(call?.[1].tradingHours).toHaveLength(7)
     })
 
@@ -581,23 +800,32 @@ it('shows the server reason when a timezone is refused', async () => {
       renderWithAuth(<Settings />)
       await enterEditMode()
 
-      const mondayClose = (await screen.findByLabelText(/Monday closing time/i)) as HTMLInputElement
+      const mondayClose = (await screen.findByLabelText(
+        /Monday closing time/i
+      )) as HTMLInputElement
       await userEvent.clear(mondayClose)
       await userEvent.type(mondayClose, '06:00')
 
       await userEvent.click(screen.getByText('Save Trading Hours'))
 
       await waitFor(() => {
-        expect(screen.getByText(/closing time must be after opening time/i)).toBeInTheDocument()
+        expect(
+          screen.getByText(/closing time must be after opening time/i)
+        ).toBeInTheDocument()
       })
-      expect(mockPut).not.toHaveBeenCalledWith('/cafe/me', expect.objectContaining({ tradingHours: expect.any(Array) }))
+      expect(mockPut).not.toHaveBeenCalledWith(
+        '/cafe/me',
+        expect.objectContaining({ tradingHours: expect.any(Array) })
+      )
     })
 
     it('explains an invalid day at the field, before the user submits', async () => {
       renderWithAuth(<Settings />)
       await enterEditMode()
 
-      const mondayClose = (await screen.findByLabelText(/Monday closing time/i)) as HTMLInputElement
+      const mondayClose = (await screen.findByLabelText(
+        /Monday closing time/i
+      )) as HTMLInputElement
       await userEvent.clear(mondayClose)
       await userEvent.type(mondayClose, '06:00')
 
@@ -605,7 +833,9 @@ it('shows the server reason when a timezone is refused', async () => {
       await waitFor(() => {
         expect(mondayClose).toHaveAttribute('aria-invalid', 'true')
       })
-      expect(screen.getByText(/overnight trading is not supported/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/overnight trading is not supported/i)
+      ).toBeInTheDocument()
       expect(mockPut).not.toHaveBeenCalled()
     })
 
@@ -614,14 +844,18 @@ it('shows the server reason when a timezone is refused', async () => {
 
       renderWithAuth(<Settings />)
 
-      expect(await screen.findByText(/trading hours could not be loaded/i)).toBeInTheDocument()
+      expect(
+        await screen.findByText(/trading hours could not be loaded/i)
+      ).toBeInTheDocument()
     })
 
     it('warns before a reload discards unsaved trading hours', async () => {
       renderWithAuth(<Settings />)
       await enterEditMode()
 
-      const mondayClose = (await screen.findByLabelText(/Monday closing time/i)) as HTMLInputElement
+      const mondayClose = (await screen.findByLabelText(
+        /Monday closing time/i
+      )) as HTMLInputElement
       await userEvent.clear(mondayClose)
       await userEvent.type(mondayClose, '18:00')
 
@@ -638,16 +872,25 @@ it('shows the server reason when a timezone is refused', async () => {
       renderWithAuth(<Settings />)
       await enterEditMode()
 
-      const mondayToggle = await screen.findByRole('switch', { name: /^Monday open$/i })
+      const mondayToggle = await screen.findByRole('switch', {
+        name: /^Monday open$/i,
+      })
       await userEvent.click(mondayToggle)
-      expect(screen.getByRole('switch', { name: /^Monday closed$/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('switch', { name: /^Monday closed$/i })
+      ).toBeInTheDocument()
 
       await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: /edit trading hours/i })).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: /edit trading hours/i })
+        ).toBeInTheDocument()
       })
-      expect(mockPut).not.toHaveBeenCalledWith('/cafe/me', expect.objectContaining({ tradingHours: expect.any(Array) }))
+      expect(mockPut).not.toHaveBeenCalledWith(
+        '/cafe/me',
+        expect.objectContaining({ tradingHours: expect.any(Array) })
+      )
       expect(screen.queryByRole('switch')).not.toBeInTheDocument()
     })
   })
@@ -657,7 +900,13 @@ it('shows the server reason when a timezone is refused', async () => {
       mockGet.mockImplementation((url: string) => {
         if (url.includes('/cafe/me')) {
           return Promise.resolve({
-            data: { success: true, cafe: { name: 'Blouberg Coffee', location: { city: 'Cape Town' } } },
+            data: {
+              success: true,
+              cafe: {
+                name: 'Blouberg Coffee',
+                location: { city: 'Cape Town' },
+              },
+            },
           })
         }
         return Promise.resolve({ data: {} })
@@ -666,7 +915,9 @@ it('shows the server reason when a timezone is refused', async () => {
 
     it('rejects a too-short cafe name in the browser rather than via Mongoose', async () => {
       renderWithAuth(<Settings />)
-      await userEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+      await userEvent.click(
+        await screen.findByRole('button', { name: /edit cafe details/i })
+      )
 
       const nameInput = screen.getByLabelText(/cafe name/i)
       await userEvent.clear(nameInput)
@@ -675,30 +926,44 @@ it('shows the server reason when a timezone is refused', async () => {
 
       // The form is noValidate, so the `required` attribute is inert and an
       // empty name reached the API, coming back as raw Mongoose text.
-      expect(await screen.findByText(/cafe name must be between 2 and 120 characters/i)).toBeInTheDocument()
+      expect(
+        await screen.findByText(
+          /cafe name must be between 2 and 120 characters/i
+        )
+      ).toBeInTheDocument()
       expect(nameInput).toHaveAttribute('aria-invalid', 'true')
       expect(mockPut).not.toHaveBeenCalled()
     })
 
     it('rejects an empty cafe name', async () => {
       renderWithAuth(<Settings />)
-      await userEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+      await userEvent.click(
+        await screen.findByRole('button', { name: /edit cafe details/i })
+      )
 
       await userEvent.clear(screen.getByLabelText(/cafe name/i))
       await userEvent.click(screen.getByText('Save Cafe Details'))
 
-      expect(await screen.findByText(/cafe name must be between 2 and 120 characters/i)).toBeInTheDocument()
+      expect(
+        await screen.findByText(
+          /cafe name must be between 2 and 120 characters/i
+        )
+      ).toBeInTheDocument()
       expect(mockPut).not.toHaveBeenCalled()
     })
 
     it('says plainly that weather needs coordinates rather than calling them optional', async () => {
       renderWithAuth(<Settings />)
-      await userEvent.click(await screen.findByRole('button', { name: /edit cafe details/i }))
+      await userEvent.click(
+        await screen.findByRole('button', { name: /edit cafe details/i })
+      )
 
       // They are the on/off switch for the product's headline capability, not a
       // precision refinement: forecast.service gates the whole weather factor on
       // Number.isFinite(lat) && Number.isFinite(lng).
-      expect(screen.getByText(/weather.*(off|unavailable|not).*until/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/weather.*(off|unavailable|not).*until/i)
+      ).toBeInTheDocument()
     })
   })
   it('opens the cafe editor when sent here to set the location', async () => {
@@ -720,7 +985,9 @@ it('shows the server reason when a timezone is refused', async () => {
 
     renderWithAuth(<Settings />)
 
-    expect(await screen.findByRole('button', { name: /edit cafe details/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /edit cafe details/i })
+    ).toBeInTheDocument()
     expect(screen.queryByLabelText(/latitude/i)).not.toBeInTheDocument()
   })
   describe('trading hours vs the cafe’s own sales', () => {
@@ -735,9 +1002,33 @@ it('shows the server reason when a timezone is refused', async () => {
               heatmap: [
                 // `transactions` is the per-day average; `totalTransactions`
                 // is the count. They differ here so reading the wrong one fails.
-                { dayOfWeek: 0, hour: 9, revenue: 630, transactions: 15, totalRevenue: 5040, totalTransactions: 120, observedDays: 8 },
-                { dayOfWeek: 0, hour: 10, revenue: 420, transactions: 10, totalRevenue: 3360, totalTransactions: 80, observedDays: 8 },
-                { dayOfWeek: 2, hour: 9, revenue: 525, transactions: 12.5, totalRevenue: 4200, totalTransactions: 100, observedDays: 8 },
+                {
+                  dayOfWeek: 0,
+                  hour: 9,
+                  revenue: 630,
+                  transactions: 15,
+                  totalRevenue: 5040,
+                  totalTransactions: 120,
+                  observedDays: 8,
+                },
+                {
+                  dayOfWeek: 0,
+                  hour: 10,
+                  revenue: 420,
+                  transactions: 10,
+                  totalRevenue: 3360,
+                  totalTransactions: 80,
+                  observedDays: 8,
+                },
+                {
+                  dayOfWeek: 2,
+                  hour: 9,
+                  revenue: 525,
+                  transactions: 12.5,
+                  totalRevenue: 4200,
+                  totalTransactions: 100,
+                  observedDays: 8,
+                },
               ],
             },
           })
@@ -750,19 +1041,55 @@ it('shows the server reason when a timezone is refused', async () => {
                 name: 'Blouberg Coffee',
                 location: { address: '123 Main St', city: 'Cape Town' },
                 tradingHours: [
-                  { dayOfWeek: 0, isOpen: false, openTime: '08:00', closeTime: '14:00' },
-                  { dayOfWeek: 1, isOpen: true, openTime: '07:00', closeTime: '17:00' },
-                  { dayOfWeek: 2, isOpen: true, openTime: '07:00', closeTime: '17:00' },
-                  { dayOfWeek: 3, isOpen: true, openTime: '07:00', closeTime: '17:00' },
-                  { dayOfWeek: 4, isOpen: true, openTime: '07:00', closeTime: '17:00' },
-                  { dayOfWeek: 5, isOpen: true, openTime: '07:00', closeTime: '17:00' },
-                  { dayOfWeek: 6, isOpen: true, openTime: '08:00', closeTime: '15:00' },
+                  {
+                    dayOfWeek: 0,
+                    isOpen: false,
+                    openTime: '08:00',
+                    closeTime: '14:00',
+                  },
+                  {
+                    dayOfWeek: 1,
+                    isOpen: true,
+                    openTime: '07:00',
+                    closeTime: '17:00',
+                  },
+                  {
+                    dayOfWeek: 2,
+                    isOpen: true,
+                    openTime: '07:00',
+                    closeTime: '17:00',
+                  },
+                  {
+                    dayOfWeek: 3,
+                    isOpen: true,
+                    openTime: '07:00',
+                    closeTime: '17:00',
+                  },
+                  {
+                    dayOfWeek: 4,
+                    isOpen: true,
+                    openTime: '07:00',
+                    closeTime: '17:00',
+                  },
+                  {
+                    dayOfWeek: 5,
+                    isOpen: true,
+                    openTime: '07:00',
+                    closeTime: '17:00',
+                  },
+                  {
+                    dayOfWeek: 6,
+                    isOpen: true,
+                    openTime: '08:00',
+                    closeTime: '15:00',
+                  },
                 ],
               },
             },
           })
         }
-        if (url.includes('/events')) return Promise.resolve({ data: { events: [] } })
+        if (url.includes('/events'))
+          return Promise.resolve({ data: { events: [] } })
         return Promise.resolve({ data: {} })
       })
     }
@@ -772,16 +1099,25 @@ it('shows the server reason when a timezone is refused', async () => {
       const withSales = mockGet.getMockImplementation()!
       mockGet.mockImplementation((url: string) =>
         url.includes('/cafe/me')
-          ? withSales(url).then((res: { data: { cafe: Record<string, unknown> } }) => ({
-              data: { ...res.data, cafe: { ...res.data.cafe, tradingHoursSaved: false } },
-            }))
+          ? withSales(url).then(
+              (res: { data: { cafe: Record<string, unknown> } }) => ({
+                data: {
+                  ...res.data,
+                  cafe: { ...res.data.cafe, tradingHoursSaved: false },
+                },
+              })
+            )
           : withSales(url)
       )
       renderWithAuth(<Settings />)
       const hint = await screen.findByText(/200 sales/)
-      expect(hint).toHaveTextContent(/not saved yet, so Planning treats this day as open/i)
+      expect(hint).toHaveTextContent(
+        /not saved yet, so Planning treats this day as open/i
+      )
       expect(hint).not.toHaveTextContent(/forecasts zero/i)
-      expect(screen.getByText(/These are suggested hours, not saved yet/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/These are suggested hours, not saved yet/i)
+      ).toBeInTheDocument()
     })
 
     it('says so on the day, without changing anything', async () => {
@@ -802,10 +1138,14 @@ it('shows the server reason when a timezone is refused', async () => {
 
       renderWithAuth(<Settings />)
 
-      fireEvent.click(await screen.findByRole('button', { name: /edit trading hours/i }))
+      fireEvent.click(
+        await screen.findByRole('button', { name: /edit trading hours/i })
+      )
 
       expect(await screen.findByText(/200 sales/)).toBeInTheDocument()
-      expect(screen.getByRole('switch', { name: /sunday closed/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('switch', { name: /sunday closed/i })
+      ).toBeInTheDocument()
     })
 
     it('says nothing about a day the sales agree is closed', async () => {
@@ -814,7 +1154,15 @@ it('shows the server reason when a timezone is refused', async () => {
           return Promise.resolve({
             data: {
               heatmap: [
-                { dayOfWeek: 2, hour: 9, revenue: 525, transactions: 12.5, totalRevenue: 4200, totalTransactions: 100, observedDays: 8 },
+                {
+                  dayOfWeek: 2,
+                  hour: 9,
+                  revenue: 525,
+                  transactions: 12.5,
+                  totalRevenue: 4200,
+                  totalTransactions: 100,
+                  observedDays: 8,
+                },
               ],
             },
           })
@@ -825,43 +1173,64 @@ it('shows the server reason when a timezone is refused', async () => {
               success: true,
               cafe: {
                 name: 'Blouberg Coffee',
-                tradingHours: [{ dayOfWeek: 0, isOpen: false, openTime: '08:00', closeTime: '14:00' }],
+                tradingHours: [
+                  {
+                    dayOfWeek: 0,
+                    isOpen: false,
+                    openTime: '08:00',
+                    closeTime: '14:00',
+                  },
+                ],
               },
             },
           })
         }
-        if (url.includes('/events')) return Promise.resolve({ data: { events: [] } })
+        if (url.includes('/events'))
+          return Promise.resolve({ data: { events: [] } })
         return Promise.resolve({ data: {} })
       })
 
       renderWithAuth(<Settings />)
 
       expect(await screen.findByText('Trading Hours')).toBeInTheDocument()
-      expect(screen.queryByText(/your sales show trading on this day/i)).toBeNull()
+      expect(
+        screen.queryByText(/your sales show trading on this day/i)
+      ).toBeNull()
     })
 
     it('does not accuse a cafe that has no sales history yet', async () => {
       mockGet.mockImplementation((url: string) => {
-        if (url.includes('/analytics/heatmap')) return Promise.reject(new Error('no data'))
+        if (url.includes('/analytics/heatmap'))
+          return Promise.reject(new Error('no data'))
         if (url.includes('/cafe/me')) {
           return Promise.resolve({
             data: {
               success: true,
               cafe: {
                 name: 'Brand New Cafe',
-                tradingHours: [{ dayOfWeek: 0, isOpen: false, openTime: '08:00', closeTime: '14:00' }],
+                tradingHours: [
+                  {
+                    dayOfWeek: 0,
+                    isOpen: false,
+                    openTime: '08:00',
+                    closeTime: '14:00',
+                  },
+                ],
               },
             },
           })
         }
-        if (url.includes('/events')) return Promise.resolve({ data: { events: [] } })
+        if (url.includes('/events'))
+          return Promise.resolve({ data: { events: [] } })
         return Promise.resolve({ data: {} })
       })
 
       renderWithAuth(<Settings />)
 
       expect(await screen.findByText('Trading Hours')).toBeInTheDocument()
-      expect(screen.queryByText(/your sales show trading on this day/i)).toBeNull()
+      expect(
+        screen.queryByText(/your sales show trading on this day/i)
+      ).toBeNull()
     })
   })
 })

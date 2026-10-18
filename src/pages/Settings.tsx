@@ -16,7 +16,8 @@ import {
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { tradingHourHints, weekdaysWithSales } from '@/lib/tradingHoursHints'
-import { timezoneOptions } from '@/lib/timezones'
+import { timezoneEditabilityHint, timezoneSaveFailure } from '@/lib/timezones'
+import { CafeTimezoneField } from '@/components/settings/CafeTimezoneField'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -447,10 +448,12 @@ export default function Settings() {
       setIsEditingCafe(false)
       setTimeout(() => setCafeState('idle'), 3000)
     } catch (err: unknown) {
-      const resp = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-      setCafeError(resp || undefined)
+      const failure = timezoneSaveFailure(err)
+      if (failure.locked) {
+        setCafeTimezone(loaded.cafeTimezone)
+        setLoaded((prev) => prev ? { ...prev, timezoneEditable: false } : prev)
+      }
+      setCafeError(failure.message || undefined)
       setCafeState('error')
     }
   }
@@ -950,32 +953,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {loaded?.timezoneEditable ? (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cafe-timezone">Timezone</Label>
-                    <select
-                      id="cafe-timezone"
-                      value={cafeTimezone}
-                      onChange={(e) => setCafeTimezone(e.target.value)}
-                      className="flex h-9 w-full rounded-lg border border-border bg-[#111111] px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-red focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F0F0F]"
-                    >
-                      {timezoneOptions(cafeTimezone).map((zone) => (
-                        <option key={zone} value={zone}>{zone}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-muted">
-                      Sets where the cafe's day starts and ends for Performance, forecasts and imports. It can be changed until the first sales are imported.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <p className="text-sm font-medium text-text">Timezone</p>
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2 text-sm">
-                      <span className="text-text font-medium tabular-nums">{cafeTimezone || '—'}</span>
-                      <span className="text-muted text-xs text-right">Fixed once sales are imported. Contact support to change it.</span>
-                    </div>
-                  </div>
-                )}
+                <CafeTimezoneField value={cafeTimezone} editable={loaded?.timezoneEditable === true} onChange={setCafeTimezone} />
 
                 <StatusBanner state={cafeState} error={cafeError} />
                 <Separator />
@@ -1021,6 +999,7 @@ export default function Settings() {
                   <ReadOnlyField label="Longitude" value={cafeLongitude} />
                   <ReadOnlyField label="Timezone" value={cafeTimezone} />
                 </div>
+                <p className="text-xs text-muted">{timezoneEditabilityHint(loaded?.timezoneEditable === true)}</p>
 
                 <StatusBanner state={cafeState} error={cafeError} />
               </div>

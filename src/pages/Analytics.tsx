@@ -70,10 +70,6 @@ function numberValue(value: unknown) {
   return typeof value === 'number' ? value : Number(value || 0)
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
-}
-
 type TabId = 'revenue' | 'items' | 'heatmap' | 'customers' | 'combos'
 
 const TABS: { id: TabId; label: string }[] = [
@@ -251,7 +247,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
             <KpiCard
               label="Best Day"
               value={formatZAR(data.bestDay.revenue)}
-              sub={data.bestDay.date ? formatDate(data.bestDay.date) : 'No data yet'}
+              sub={data.bestDay.date ? formatDayKey(data.bestDay.date) : 'No data yet'}
               icon={TrendingUp}
               accent="#FFD166"
             />
@@ -300,7 +296,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                   <XAxis
                     dataKey="date"
                     tick={{ fill: '#888888', fontSize: 11 }}
-                    tickFormatter={(v: string) => formatDate(v)}
+                    tickFormatter={(v: string) => formatDayKey(v)}
                     stroke="#2A2A2A"
                   />
                   <YAxis
@@ -310,7 +306,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                   />
                   <Tooltip
                     contentStyle={{ background: '#1A1A1A', border: '1px solid #2A2A2A', borderRadius: 8, color: '#F0F0F0' }}
-                    labelFormatter={(v: unknown) => formatDate(String(v || ''))}
+                    labelFormatter={(v: unknown) => formatDayKey(String(v || ''))}
                     formatter={(value: unknown) => [formatZAR(numberValue(value)), 'Revenue']}
                   />
                   <Area
@@ -337,7 +333,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
             <ChartDataTable
               caption="Daily revenue"
               columns={['Date', 'Revenue']}
-              rows={data.data.map((point) => [formatDate(point.date), formatZAR(point.revenue)])}
+              rows={data.data.map((point) => [formatDayKey(point.date), formatZAR(point.revenue)])}
             />
           )}
         </CardContent>
@@ -1174,6 +1170,7 @@ export default function Analytics() {
           {queried && (<>
             Showing {formatDayKey(queried.startDay)} – {formatDayKey(queried.endDay)} · {queried.days}{' '}
             {queried.days === 1 ? 'day' : 'days'}
+            {queried.timezone ? ` · ${queried.timezone}` : ''}
             {queried.defaulted ? ' (defaulted)' : ''}
           </>)}
         </p>
