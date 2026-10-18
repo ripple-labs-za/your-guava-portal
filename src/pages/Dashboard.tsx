@@ -45,6 +45,7 @@ import {
   loadSheddingUnavailableReason,
   signalFix,
   weatherUnavailableReason,
+  weatherTempLabel,
 } from '@/lib/forecastSignals'
 
 // Item categorisation
@@ -241,7 +242,7 @@ function WeatherCard({ signals, locationLabel }: { signals: Forecast['signals'];
               </div>
               {weatherAvailable ? (
                 <div>
-                  <span className="text-4xl font-bold text-text">{weather.temp}&deg;</span>
+                  <span className="text-4xl font-bold text-text">{weatherTempLabel(weather)}</span>
                   <p className="text-[#AAB8CC] text-sm">{weather.condition}</p>
                 </div>
               ) : (

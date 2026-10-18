@@ -329,4 +329,27 @@ describe('DayCard', () => {
 
     expect(handleClick).not.toHaveBeenCalled()
   })
+
+  it('names the unsaved-hours assumption on an inferred day card', () => {
+    render(<DayCard forecast={{ ...mockForecast,
+      availability: { status: 'ready', scheduleSource: 'inferred_from_sales' },
+    }} weekAvg={20000} mode="plan" onClick={() => {}} />)
+    expect(screen.getByText('Assumed open: hours not saved')).toBeInTheDocument()
+  })
+
+  it('does not call an explicitly saved day assumed open', () => {
+    render(<DayCard forecast={{ ...mockForecast,
+      availability: { status: 'ready', scheduleSource: 'saved' },
+    }} weekAvg={20000} mode="plan" onClick={() => {}} />)
+    expect(screen.queryByText('Assumed open: hours not saved')).not.toBeInTheDocument()
+  })
+
+  it.each(['plan', 'review'] as const)('shows the daytime high on the %s card', (mode) => {
+    render(<DayCard forecast={{ ...mockForecast,
+      signals: { ...mockForecast.signals, weather: { temp: 20, maxTemp: 29, condition: 'Sunny', humidity: 50 } },
+    }} weekAvg={20000} mode={mode} onClick={() => {}} />)
+    expect(screen.getByText(/High 29°C/)).toBeInTheDocument()
+    expect(screen.queryByText(/20°C/)).not.toBeInTheDocument()
+  })
+
 })

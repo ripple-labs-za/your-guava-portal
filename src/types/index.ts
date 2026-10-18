@@ -189,6 +189,7 @@ export interface Forecast {
   trainingCutoff?: string
   availability?: {
     status: 'ready' | 'insufficient_data' | 'closed'
+    scheduleSource?: 'saved' | 'default' | 'inferred_from_sales'
     reason?: string
     // True only when a *scheduled* closure is contradicted by sales on that
     // weekday. An operator's deliberate closure event is not a contradiction.

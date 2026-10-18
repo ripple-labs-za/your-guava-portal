@@ -794,4 +794,20 @@ describe('Dashboard', () => {
       expect(screen.queryByText('Finish setting up')).toBeNull()
     })
   })
+
+  it('shows the daytime high on Today instead of the overnight mean', async () => {
+    const forecast = { ...mockForecast, signals: { ...mockForecast.signals,
+      weather: { available: true, temp: 20, maxTemp: 29, condition: 'Sunny', humidity: 50 },
+    } }
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/forecasts/today')) return Promise.resolve({ data: { forecast } })
+      if (url.includes('/forecasts/week')) return Promise.resolve({ data: { forecasts: [forecast] } })
+      if (url.includes('/transactions/stats')) return Promise.resolve({ data: { stats: mockStats } })
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: {} })
+    })
+    render(<Dashboard />)
+    expect(await screen.findByText('High 29°C')).toBeInTheDocument()
+  })
+
 })

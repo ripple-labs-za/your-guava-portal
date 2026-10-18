@@ -285,4 +285,30 @@ describe('DayDetailDrawer', () => {
     expect(screen.queryByText('Predicted revenue')).not.toBeInTheDocument()
     expect(screen.queryByText('Why this prediction?')).not.toBeInTheDocument()
   })
+
+  it('explains an active partial closure alongside neutral weather in the real drawer', () => {
+    render(<DayDetailDrawer forecast={makeForecast({ factors: [
+      { key: 'weather', label: 'Weather', active: false, effect: 'no effect' },
+      { key: 'tradingHours', label: 'Trading hours', active: true, adjustmentPct: -50, multiplier: 0.5, effect: '-50%', reason: 'Reduced trading hours, weighted by your hourly sales' },
+    ] })} weekAvg={6000} onClose={() => {}} />)
+    expect(screen.getByText('Trading hours')).toBeInTheDocument()
+    expect(screen.getByText(/weighted by your hourly sales/)).toBeInTheDocument()
+    expect(screen.getByText(/-50%/)).toBeInTheDocument()
+    expect(screen.queryByText(/No factor moved this number/)).not.toBeInTheDocument()
+  })
+
+  it('names the unsaved-hours assumption in the drawer', () => {
+    render(<DayDetailDrawer forecast={makeForecast({
+      availability: { status: 'ready', scheduleSource: 'inferred_from_sales' },
+    })} weekAvg={6000} onClose={() => {}} />)
+    expect(screen.getByText('Assumed open: hours not saved')).toBeInTheDocument()
+  })
+
+  it('does not describe saved hours as an assumption', () => {
+    render(<DayDetailDrawer forecast={makeForecast({
+      availability: { status: 'ready', scheduleSource: 'saved' },
+    })} weekAvg={6000} onClose={() => {}} />)
+    expect(screen.queryByText('Assumed open: hours not saved')).not.toBeInTheDocument()
+  })
+
 })

@@ -15,7 +15,7 @@ import {
   Users,
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
-import { tradingHourHints, weekdaysWithSales } from '@/lib/tradingHoursHints'
+import { tradingHourHints, weekdaysWithSales, tradingHoursSalesHint, UNSAVED_TRADING_HOURS_HINT } from '@/lib/tradingHoursHints'
 import { timezoneEditabilityHint, timezoneSaveFailure } from '@/lib/timezones'
 import { CafeTimezoneField } from '@/components/settings/CafeTimezoneField'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -37,7 +37,6 @@ const CAFE_NAME_MAX = 120
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const
 /** Eight weeks: the same span the forecast engine reasons over by default. */
 const SALES_HINT_DAYS = 56
-const SALES_HINT_WINDOW = 'the last 8 weeks'
 
 /**
  * Overnight trading (17:00–01:00) has no representation in the model: the
@@ -726,12 +725,7 @@ export default function Settings() {
                             said where the switch is. */}
                         {hintByDay.has(entry.dayOfWeek) && (
                           <p className="col-span-2 sm:col-span-4 text-xs text-guava-yellow">
-                            Your sales show trading on this day
-                            {' '}({hintByDay.get(entry.dayOfWeek)!.toLocaleString('en-ZA')} sales in
-                            {' '}{SALES_HINT_WINDOW}).{' '}
-                            {loaded?.tradingHoursSaved !== false
-                              ? 'While it is marked closed, this day forecasts zero.'
-                              : 'Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.'}
+                            {tradingHoursSalesHint(hintByDay.get(entry.dayOfWeek)!, loaded?.tradingHoursSaved !== false)}
                           </p>
                         )}
                         {/* Explained at the row, as it is typed — not saved up
@@ -772,7 +766,7 @@ export default function Settings() {
                     </p>
                   )}
                   {loaded?.tradingHoursSaved === false && (
-                    <p className="px-4 py-3 text-xs text-muted">These are suggested hours, not saved yet. Until you save them, Planning treats any day with sales as open.</p>
+                    <p className="px-4 py-3 text-xs text-muted">{UNSAVED_TRADING_HOURS_HINT}</p>
                   )}
                   {tradingHours.map((entry) => {
                     const dayLabel = DAY_LABELS[entry.dayOfWeek]
@@ -793,12 +787,7 @@ export default function Settings() {
                         </span>
                         {hintByDay.has(entry.dayOfWeek) && (
                           <p className="col-span-full text-xs text-guava-yellow">
-                            Your sales show trading on this day
-                            {' '}({hintByDay.get(entry.dayOfWeek)!.toLocaleString('en-ZA')} sales in
-                            {' '}{SALES_HINT_WINDOW}).{' '}
-                            {loaded?.tradingHoursSaved !== false
-                              ? 'While it is marked closed, this day forecasts zero.'
-                              : 'Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.'}
+                            {tradingHoursSalesHint(hintByDay.get(entry.dayOfWeek)!, loaded?.tradingHoursSaved !== false)}
                           </p>
                         )}
                       </div>

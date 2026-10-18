@@ -667,4 +667,13 @@ describe('Factors', () => {
 
     expect(screen.queryByRole('link', { name: /set cafe location/i })).toBeNull()
   })
+
+  it('shows the daytime high in the Factors weather cell', async () => {
+    weekForecasts = [{ ...readyForecast, signals: { ...readyForecast.signals,
+      weather: { available: true, temp: 20, maxTemp: 29, condition: 'Sunny', humidity: 50 },
+    } }]
+    renderWithAuth(<Factors />)
+    expect(await screen.findByText(/High 29°C/)).toBeInTheDocument()
+  })
+
 })

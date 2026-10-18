@@ -1,4 +1,4 @@
-import { Cloud, Zap, Calendar, Banknote, Megaphone, Sparkles } from 'lucide-react'
+import { Cloud, Zap, Calendar, Banknote, Megaphone, Sparkles, Clock } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Forecast } from '@/types'
 import { classifyForecastFactors, formatPlan } from './factorState'
@@ -9,6 +9,7 @@ const ICONS: Record<string, ReactNode> = {
   holiday: <Calendar className="w-3.5 h-3.5" />,
   payday: <Banknote className="w-3.5 h-3.5" />,
   events: <Megaphone className="w-3.5 h-3.5" />,
+  tradingHours: <Clock className="w-3.5 h-3.5" />,
   learning: <Sparkles className="w-3.5 h-3.5" />,
 }
 

@@ -155,6 +155,9 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
   return (
     <Card onClick={onClick} className="cursor-pointer hover:border-[#444444] transition-colors">
       <CardContent className="p-4 space-y-3">
+        {forecast.availability?.scheduleSource === 'inferred_from_sales' && (
+          <p className="text-xs text-muted">Assumed open: hours not saved</p>
+        )}
         {/* Header row */}
         <div className="flex items-start justify-between">
           <div>

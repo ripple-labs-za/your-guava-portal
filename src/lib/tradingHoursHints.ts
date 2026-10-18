@@ -60,3 +60,14 @@ export function tradingHourHints(
     }))
     .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
 }
+
+export const UNSAVED_TRADING_HOURS_HINT =
+  'These are suggested hours, not saved yet. Until you save them, Planning treats any day with sales as open.'
+
+/** Shared by the view and edit rows so a suggested closure never reads as saved. */
+export function tradingHoursSalesHint(salesCount: number, saved = true): string {
+  const consequence = saved
+    ? 'While it is marked closed, this day forecasts zero.'
+    : 'Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.'
+  return `Your sales show trading on this day (${salesCount.toLocaleString('en-ZA')} sales in the last 8 weeks). ${consequence}`
+}

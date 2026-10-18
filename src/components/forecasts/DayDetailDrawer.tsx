@@ -246,6 +246,9 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
         </div>
 
         <div className="px-5 py-4 space-y-5">
+          {forecast.availability?.scheduleSource === 'inferred_from_sales' && (
+            <p className="text-xs text-muted">Assumed open: hours not saved</p>
+          )}
           {/* Revenue tile */}
           <div className="rounded-lg bg-[#111111] border border-border p-4">
             {isClosed ? (

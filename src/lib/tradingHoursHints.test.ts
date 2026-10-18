@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tradingHourHints, weekdaysWithSales } from './tradingHoursHints'
+import { tradingHourHints, weekdaysWithSales, tradingHoursSalesHint, UNSAVED_TRADING_HOURS_HINT } from './tradingHoursHints'
 import type { HeatmapCell, TradingHoursEntry } from '@/types'
 
 /**
@@ -86,4 +86,16 @@ describe('tradingHourHints', () => {
 
     expect(hints.map((h) => h.dayOfWeek)).toEqual([0, 3])
   })
+
+  describe('saved and unsaved trading-hours copy', () => {
+    it('explains an owner-saved closure and an inferred open day differently', () => {
+      expect(tradingHoursSalesHint(200, true)).toBe('Your sales show trading on this day (200 sales in the last 8 weeks). While it is marked closed, this day forecasts zero.')
+      expect(tradingHoursSalesHint(200, false)).toBe('Your sales show trading on this day (200 sales in the last 8 weeks). Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.')
+      expect(tradingHoursSalesHint(200)).toBe(tradingHoursSalesHint(200, true))
+    })
+    it('keeps suggested hours visibly described as unsaved', () => {
+      expect(UNSAVED_TRADING_HOURS_HINT).toBe('These are suggested hours, not saved yet. Until you save them, Planning treats any day with sales as open.')
+    })
+  })
+
 })

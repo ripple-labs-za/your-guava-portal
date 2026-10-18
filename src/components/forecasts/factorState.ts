@@ -14,7 +14,7 @@ import type { Forecast, ForecastFactorSettings } from '@/types'
  */
 export type FactorState = 'active' | 'locked' | 'off' | 'neutral'
 
-export const FORECAST_FACTOR_ORDER = ['weather', 'loadShedding', 'holiday', 'payday', 'events', 'learning']
+export const FORECAST_FACTOR_ORDER = ['weather', 'loadShedding', 'holiday', 'payday', 'events', 'tradingHours', 'learning']
 
 const FACTOR_SECTIONS: Record<string, keyof ForecastFactorSettings> = {
   weather: 'weather',

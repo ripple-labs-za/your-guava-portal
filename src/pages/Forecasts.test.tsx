@@ -519,4 +519,15 @@ describe('Forecasts', () => {
     expect(screen.getByText(/2 available/)).toBeInTheDocument()
     expect(screen.getByText(/0 available/)).toBeInTheDocument()
   })
+
+  it('prefers the latest sale over an older same-weekday transaction in its stale warning', async () => {
+    mockWeek([{ ...readyDay('date-precedence', '2099-03-28', 12000), trainingData: {
+      transactionCount: 10, weeksWithSales: 3, staleDays: 45,
+      latestSaleDate: '2026-02-12T08:00:00Z', lastTransactionDate: '2025-01-01T08:00:00Z',
+    } }])
+    render(<Forecasts />)
+    expect(await screen.findByText(/ending as early as 12 Feb 2026/)).toBeInTheDocument()
+    expect(screen.queryByText(/ending as early as .*2025/)).not.toBeInTheDocument()
+  })
+
 })
