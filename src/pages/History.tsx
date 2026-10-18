@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import api, { isSessionRejection } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { ForecastHistoryResponse, ForecastHistoryRow } from '@/types'
+import type { ForecastHistoryResponse, ForecastHistoryRow, ForecastHistoryAccuracySummary } from '@/types'
 import { parseDateOnly } from '@/lib/date'
 import {
   isLoadSheddingAvailable,
@@ -62,6 +62,11 @@ function formatPercent(value: number | null | undefined, showSign = false) {
   if (value == null || Number.isNaN(value)) return '-'
   const sign = showSign && value > 0 ? '+' : ''
   return `${sign}${value.toFixed(1)}%`
+}
+
+function excludedNote(summary?: ForecastHistoryAccuracySummary) {
+  const n = summary?.excludedRowCount ?? 0
+  return n > 0 ? ` · ${n} building-history day${n === 1 ? '' : 's'} not counted` : ''
 }
 
 function weatherLabel(row: ForecastHistoryRow) {
@@ -293,16 +298,16 @@ export default function History() {
                   <StatPanel
                     label="Live forecast accuracy"
                     value={formatPercent(meta.liveAccuracy?.avgDailyRevenueAccuracy)}
-                    detail={meta.liveAccuracy?.rowCount
+                    detail={`${meta.liveAccuracy?.rowCount
                       ? `Typical day across ${meta.liveAccuracy.rowCount} live day${meta.liveAccuracy.rowCount === 1 ? '' : 's'} · ${formatPercent(meta.liveAccuracy.overallRevenueAccuracy)} on period totals`
-                      : 'No completed live forecasts in this period'}
+                      : 'No completed live forecasts in this period'}${excludedNote(meta.liveAccuracy)}`}
                   />
                   <StatPanel
                     label="Backtest accuracy"
                     value={formatPercent(meta.backtestAccuracy?.avgDailyRevenueAccuracy)}
-                    detail={meta.backtestAccuracy?.rowCount
+                    detail={`${meta.backtestAccuracy?.rowCount
                       ? `Typical day across ${meta.backtestAccuracy.rowCount} retrospective day${meta.backtestAccuracy.rowCount === 1 ? '' : 's'} · ${formatPercent(meta.backtestAccuracy.overallRevenueAccuracy)} on period totals`
-                      : 'No retrospective backtests in this period'}
+                      : 'No retrospective backtests in this period'}${excludedNote(meta.backtestAccuracy)}`}
                   />
                 </>
               ) : (
@@ -321,6 +326,7 @@ export default function History() {
               />
             </div>
 
+            {meta.backtestAccuracy?.note && <p className="text-xs text-muted">{meta.backtestAccuracy.note}</p>}
             <ModelLearningPanel sources={history} />
 
             <div className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -416,6 +422,12 @@ export default function History() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-muted">
                             {formatPercent(row.revenueAccuracy)}
+                            {row.countsTowardAccuracy === false && (
+                              <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted"
+                                title="This day was still building history, so it is not in the accuracy figures.">
+                                Not counted
+                              </span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 text-right text-muted">
                             {row.transactionCount}

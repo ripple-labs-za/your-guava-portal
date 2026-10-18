@@ -27,6 +27,8 @@ interface Props {
    * trust it. See DECISIONS D-004.
    */
   basis?: 'live' | 'backtest' | 'none' | null
+  itemAccuracy?: number | null
+  basisNote?: string | null
 }
 
 export function WeekHeader({
@@ -35,6 +37,8 @@ export function WeekHeader({
   accuracy,
   matchedDays = null,
   basis = null,
+  itemAccuracy = null,
+  basisNote = null,
 }: Props) {
   const accuracyColor = accuracyTextClass(accuracy)
 
@@ -118,6 +122,8 @@ export function WeekHeader({
                 )}
               </p>
               {sampleNote && <p className="text-muted text-xs mt-1">{sampleNote}</p>}
+              {itemAccuracy != null && <p className="text-muted text-xs mt-1">Per item: {Math.round(itemAccuracy)}%</p>}
+              {basis === 'backtest' && basisNote && <p className="text-muted text-xs mt-1">{basisNote}</p>}
             </div>
           </div>
         </CardContent>

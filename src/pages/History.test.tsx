@@ -145,6 +145,24 @@ function renderHistory() {
 }
 
 describe('History page', () => {
+  it('marks a building-history day as not counted and says how many were left out', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        ...historyPayload,
+        history: [{ ...historyPayload.history[0], countsTowardAccuracy: false, availabilityStatus: 'insufficient_data' }],
+        meta: {
+          ...historyPayload.meta,
+          liveAccuracy: { ...historyPayload.meta.liveAccuracy, rowCount: 0, excludedRowCount: 1 },
+          backtestAccuracy: { ...historyPayload.meta.backtestAccuracy, rowCount: 2, note: 'Backtests are scored with observed weather.' },
+        },
+      },
+    })
+    renderHistory()
+    expect(await screen.findByText('Not counted')).toBeInTheDocument()
+    expect(screen.getByText(/1 building-history day not counted/)).toBeInTheDocument()
+    expect(screen.getByText('Backtests are scored with observed weather.')).toBeInTheDocument()
+  })
+
   beforeEach(() => {
     mockGet.mockReset()
     mockGet.mockResolvedValue({ data: historyPayload })

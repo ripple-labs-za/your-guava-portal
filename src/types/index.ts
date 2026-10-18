@@ -248,6 +248,10 @@ export interface ForecastHistoryRow {
   variance: number
   variancePct: number | null
   revenueAccuracy: number | null
+  availabilityStatus?: 'ready' | 'insufficient_data' | 'closed'
+  countsTowardAccuracy?: boolean
+  volumeAccuracy?: number | null
+  /** Item-level accuracy, 100 minus WAPE. */
   itemAccuracy: number | null
   transactionCount: number
   weather: Forecast['signals']['weather'] | null
@@ -275,6 +279,9 @@ export interface ForecastHistoryRow {
 
 export interface ForecastHistoryAccuracySummary {
   rowCount: number
+  excludedRowCount?: number
+  avgItemAccuracy?: number | null
+  note?: string | null
   overallRevenueAccuracy: number | null
   avgDailyRevenueAccuracy: number | null
   totalPredictedRevenue: number

@@ -3,6 +3,18 @@ import { render, screen } from '@testing-library/react'
 import { WeekHeader } from './WeekHeader'
 
 describe('WeekHeader', () => {
+  it('shows item-level accuracy beside the headline', () => {
+    render(<WeekHeader weekTotal={1000} peakDay={null} accuracy={91} matchedDays={12} itemAccuracy={61.6} />)
+    expect(screen.getByText('91%')).toBeInTheDocument()
+    expect(screen.getByText('Per item: 62%')).toBeInTheDocument()
+  })
+
+  it('renders the server backtest caveat verbatim', () => {
+    const note = "Backtests are scored with the weather that actually happened and today's menu prices, so they read better than live forecasts will."
+    render(<WeekHeader weekTotal={1000} peakDay={null} accuracy={78} matchedDays={10} basis="backtest" basisNote={note} />)
+    expect(screen.getByText(note)).toBeInTheDocument()
+  })
+
   it('withholds the verdict until enough days have been matched', () => {
     render(<WeekHeader weekTotal={42100} peakDay={null} accuracy={88} matchedDays={1} />)
 
