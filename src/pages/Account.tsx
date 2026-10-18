@@ -39,7 +39,7 @@ type NoticeState = { type: NoticeTone; message: string; action?: NoticeAction } 
  * as "payment was not completed, no billing changes were made". The rational
  * response to that message is to pay again.
  */
-type PaymentSessionStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled'
+type PaymentSessionStatus = 'pending' | 'processing' | 'paid' | 'failed' | 'cancelled' | 'needs_attention' | 'reversed'
 /**
  * Not a PaymentSession.status. The checkout and credit endpoints substitute it
  * on their 202 response while the gateway session is still being created
@@ -74,6 +74,17 @@ type PaymentOutcome = { tone: NoticeTone; message: string; terminal: boolean }
  * without deciding what the customer is told is a compile error here.
  */
 const PAYMENT_OUTCOMES: Record<PaymentSessionStatus, PaymentOutcome> = {
+  needs_attention: {
+    tone: 'info',
+    message:
+      'Your payment reached us but needs a manual check before billing updates. Do not pay again; keep this page’s payment reference for your records.',
+    terminal: true,
+  },
+  reversed: {
+    tone: 'info',
+    message: 'This payment was refunded or reversed. Unspent pack credits are withdrawn; plan access is reviewed manually. No further charge was made.',
+    terminal: true,
+  },
   paid: {
     tone: 'success',
     message: 'Card payment confirmed. Billing has been updated.',
@@ -565,8 +576,9 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
             await hydrateAccount().catch(() => undefined)
             if (cancelled) return
           }
-          showNotice(outcome.tone, outcome.message)
-          clearPaymentParams({ billingResolved: status === 'paid' })
+          const keepReference = status === 'needs_attention' || status === 'reversed'
+          showNotice(outcome.tone, keepReference ? `${outcome.message} Reference: ${reference}.` : outcome.message, { persist: keepReference })
+          if (!keepReference) clearPaymentParams({ billingResolved: status === 'paid' })
           return
         }
 

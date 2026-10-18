@@ -311,6 +311,25 @@ describe('Account', () => {
     expect(notice.closest('[role="alert"]')).toBeNull()
   })
 
+  it('tells the owner a held payment needs a manual check, without inviting a second payment', async () => {
+    mockPaymentStatus('needs_attention')
+    renderWithAuth(<Account />)
+
+    const notice = await screen.findByText(/needs a manual check/i)
+    expect(notice).toHaveTextContent(/do not pay again/i)
+    expect(notice).toHaveTextContent(/reference: pay-1/i)
+    expect(window.location.search).toContain('reference=pay-1')
+    expect(notice.closest('[role="alert"]')).toBeNull()
+    expect(screen.queryByText(/no billing changes were made/i)).not.toBeInTheDocument()
+  })
+
+  it('reports a reversed payment as refunded or reversed', async () => {
+    mockPaymentStatus('reversed')
+    renderWithAuth(<Account />)
+
+    expect(await screen.findByText(/refunded or reversed/i)).toBeInTheDocument()
+  })
+
   it('keeps the reference in the URL while a payment is still settling', async () => {
     mockPaymentStatus('processing', 'pay-settling')
 
