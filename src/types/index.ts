@@ -305,6 +305,7 @@ export interface ForecastHistoryAccuracySummary {
 }
 
 export interface ForecastHistoryMeta {
+  rangeClamped?: boolean
   days: number
   startDate: string
   endDate: string
@@ -318,6 +319,8 @@ export interface ForecastHistoryMeta {
     pendingDays: number
     batchSize: number
     resumable?: boolean
+    creditsPerDay?: number
+    creditsUsed?: number
     nextRequest?: string | null
   }
   overallRevenueAccuracy: number | null

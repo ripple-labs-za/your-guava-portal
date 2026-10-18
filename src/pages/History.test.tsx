@@ -395,4 +395,44 @@ describe('History page', () => {
       })
     )
   })
+  const pendingWithCost = {
+    ...historyPayload,
+    meta: {
+      ...historyPayload.meta,
+      totalTradingDays: 30,
+      pendingDays: 16,
+      backfill: { status: 'pending', pendingDays: 16, batchSize: 14, creditsPerDay: 1 },
+    },
+  }
+
+  it('states the credit cost of a batch from the server', async () => {
+    mockGet.mockResolvedValue({ data: pendingWithCost })
+    renderHistory()
+    expect(await screen.findByText(/uses up to 14 Guava Credits/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Free — building history/i)).not.toBeInTheDocument()
+  })
+
+  it('explains a batch refused for lack of credits, without reloading', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 402, data: { message: 'Guava credit limit reached for this billing period' } } })
+    renderHistory()
+
+    await user.click(await screen.findByRole('button', { name: /build next 14/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Not enough Guava Credits/i)
+    expect(mockGet).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks the owner to wait when batches come too fast', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValueOnce({ data: pendingWithCost })
+    mockGet.mockRejectedValueOnce({ response: { status: 429, data: { code: 'FORECAST_RATE_LIMITED', message: 'Forecasts are being rebuilt too often.' } } })
+    renderHistory()
+
+    await user.click(await screen.findByRole('button', { name: /build next 14/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/wait a few minutes/i)
+  })
+
 })

@@ -215,6 +215,15 @@ export default function History() {
           : 'No further days could be built from the sales data available.'
       )
     } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 402) {
+        setBackfillError('Not enough Guava Credits to build this batch. Top up in Settings › Account, then carry on.')
+        return
+      }
+      if (status === 429) {
+        setBackfillError('History is being built too quickly. Wait a few minutes, then carry on.')
+        return
+      }
       // The server writes each day as it goes, with no transaction and no
       // rollback, so "existing history is unchanged" was a claim the client
       // could not make and was most likely false.
@@ -228,6 +237,9 @@ export default function History() {
       setBuildingHistory(false)
     }
   }
+
+  const creditsPerDay = meta?.backfill?.creditsPerDay ?? 0
+  const batchSize = meta?.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE
 
   const varianceTone = useMemo(() => {
     if (!meta || meta.variance === 0) return 'neutral'
@@ -486,11 +498,10 @@ export default function History() {
                   {' '}{meta.totalTradingDays === 1 ? 'day' : 'days'}.
                   Building a batch creates retrospective estimates marked as backtests; they are not original live predictions.
                 </p>
-                {/* Every other compute-ish action in the portal states its
-                    credit cost, so silence here read as a bill of unknown size.
-                    The backfill path does no metering at all. */}
                 <p className="mt-1 text-sm text-muted">
-                  Free — building history uses no Guava Credits. A batch of{' '}
+                  {creditsPerDay > 0
+                    ? `Uses up to ${batchSize * creditsPerDay} Guava Credits (${creditsPerDay} per day built).`
+                    : 'Free — building history uses no Guava Credits.'} A batch of{' '}
                   {meta.backfill?.batchSize || HISTORY_BACKFILL_BATCH_SIZE} days can take up to a minute.
                 </p>
               </div>
