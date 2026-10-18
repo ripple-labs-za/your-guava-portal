@@ -985,4 +985,44 @@ it('says the daily average is per open day', async () => {
     expect(open.getAttribute('aria-label')).not.toMatch(/closed/i)
   })
 
+  it('says when combos are a sample of the most recent baskets', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/combos')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [{ pair: ['Flat White', 'Muffin'], count: 10 }],
+            meta: { truncated: true, basketsConsidered: 10, maxBaskets: 10, maxItemsPerBasket: 20 },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Combos' }))
+
+    expect(await screen.findByText(/based on the most recent 10 baskets in this range/i)).toBeInTheDocument()
+  })
+
+  it("shows the server's reason when Performance is rate limited, and keeps Retry", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/heatmap')) {
+        return Promise.reject({
+          response: {
+            status: 429,
+            data: { success: false, code: 'ANALYTICS_RATE_LIMITED', message: 'Too many Performance requests. Wait a minute and try again.' },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+
+    expect(await screen.findByText('Too many Performance requests. Wait a minute and try again.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
 })

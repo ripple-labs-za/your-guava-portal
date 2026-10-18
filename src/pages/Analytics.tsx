@@ -205,6 +205,18 @@ function PeriodSelector({ period, onChange }: { period: PeriodId; onChange: (p: 
 // Every tab used to dead-end on its own error: no retry, and the range selector
 // unmounted with it, so the one thing that might have helped — asking for a
 // smaller window — was gone too.
+const ANALYTICS_SERVER_MESSAGE_CODES = new Set([
+  'ANALYTICS_RATE_LIMITED', 'ANALYTICS_REFRESH_RATE_LIMITED', 'ANALYTICS_QUERY_TIMEOUT',
+  'ANALYTICS_RANGE_TOO_LONG', 'ANALYTICS_INVALID_DAYS',
+])
+
+function analyticsErrorMessage(error: unknown, fallback: string): string {
+  const data = (error as { response?: { data?: { code?: string; message?: string; details?: { code?: string } } } } | null)
+    ?.response?.data
+  const code = data?.code ?? data?.details?.code
+  return code && ANALYTICS_SERVER_MESSAGE_CODES.has(code) && data?.message ? data.message : fallback
+}
+
 function TabError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
@@ -247,7 +259,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
           data: res.data || [],
         })
       })
-      .catch(() => { if (!controller.signal.aborted) setError('Failed to load revenue data') })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load revenue data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -436,7 +448,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
         setNewItems(data.meta?.newItems || [])
         setMoverFloor(data.meta?.moverFloor ?? null)
       })
-      .catch(() => { if (!controller.signal.aborted) setError('Failed to load item data') })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load item data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -671,7 +683,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
         setCells(data.heatmap || data.data || [])
         setWithoutTime(data.meta?.timeOfDay?.transactionsWithoutTime ?? 0)
       })
-      .catch(() => { if (!controller.signal.aborted) setError('Failed to load heatmap data') })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load heatmap data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -862,7 +874,7 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
         onWindow(queriedWindowFrom(res.meta))
         setData(res.insights ?? res.data ?? null)
       })
-      .catch(() => { if (!controller.signal.aborted) setError('Failed to load customer insights') })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load customer insights')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -1021,6 +1033,7 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
 function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [combos, setCombos] = useState<ComboItem[]>([])
+  const [sample, setSample] = useState<{ baskets: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -1030,13 +1043,14 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
     setError('')
     const { startDate, endDate } = getDateRange(period)
     api
-      .get<{ data: ComboItem[]; meta?: RangeMeta }>(`/analytics/combos?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
+      .get<{ data: ComboItem[]; meta?: RangeMeta & { truncated?: boolean; basketsConsidered?: number } }>(`/analytics/combos?startDate=${startDate}&endDate=${endDate}`, { signal: controller.signal })
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))
         setCombos(res.data || [])
+        setSample(res.meta?.truncated ? { baskets: res.meta.basketsConsidered ?? 0 } : null)
       })
-      .catch(() => { if (!controller.signal.aborted) setError('Failed to load combo data') })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load combo data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -1051,6 +1065,11 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
           <p className="text-muted text-xs mt-1">
             Use these to design bundle deals or stock paired items together.
           </p>
+          {sample && !loading && (
+            <p className='text-muted text-xs mt-1'>
+              Based on the most recent {sample.baskets.toLocaleString('en-ZA')} baskets in this range, to keep this view fast.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
