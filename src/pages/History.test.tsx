@@ -145,6 +145,14 @@ function renderHistory() {
 }
 
 describe('History page', () => {
+  it('lets keyboard users focus the horizontally scrolling daily history', async () => {
+    renderHistory()
+    const region = await screen.findByRole('region', { name: 'Daily prediction history' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    region.focus()
+    expect(region).toHaveFocus()
+  })
+
   it('marks a building-history day as not counted and says how many were left out', async () => {
     mockGet.mockResolvedValue({
       data: {

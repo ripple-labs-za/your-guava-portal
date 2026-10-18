@@ -346,7 +346,8 @@ export default function History() {
                   />
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-red focus-visible:ring-inset"
+                role="region" aria-label="Daily prediction history" tabIndex={0}>
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-border bg-[#151515] text-left text-xs uppercase tracking-wide text-[#9E9E9E]">
                     <tr>
