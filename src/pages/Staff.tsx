@@ -71,6 +71,45 @@ function parseRate(value: string): number | null {
 const RATE_REQUIRED_MESSAGE =
   'Enter an hourly rate. Leaving it blank would save this staff member at R0 an hour.'
 
+const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5]
+const WEEK_ORDER = [
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+  { value: 0, label: 'Sun' },
+] as const
+const NO_WORK_DAYS_MESSAGE = 'Tick at least one working day. Leave is counted on the days this person works.'
+
+// Leave is charged on these days only, so a weekend worker's Saturday is a
+// real leave day and a weekday worker's is not (BE-08-T03).
+function WorkDaysField({ idPrefix, value, onChange }: { idPrefix: string; value: number[]; onChange: (next: number[]) => void }) {
+  function toggle(day: number) {
+    onChange(value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b))
+  }
+  return (
+    <fieldset className="col-span-full">
+      <legend className="text-xs text-muted mb-1">Working days</legend>
+      <div className="flex flex-wrap gap-3">
+        {WEEK_ORDER.map((day) => (
+          <label key={day.value} htmlFor={`${idPrefix}-day-${day.value}`} className="flex items-center gap-1.5 text-xs text-text">
+            <input
+              id={`${idPrefix}-day-${day.value}`}
+              type="checkbox"
+              checked={value.includes(day.value)}
+              onChange={() => toggle(day.value)}
+              className="h-3.5 w-3.5 accent-guava-green"
+            />
+            {day.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
 // ── Confirmation ─────────────────────────────────────────────────────────────
 
 interface ConfirmRequest {
@@ -161,6 +200,7 @@ function AddStaffForm({ onSubmit, onCancel }: AddStaffFormProps) {
   const [role, setRole] = useState<StaffMember['role']>('barista')
   const [hourlyRate, setHourlyRate] = useState('')
   const [startDate, setStartDate] = useState(toLocalDateOnly(new Date()))
+  const [workDays, setWorkDays] = useState<number[]>(DEFAULT_WORK_DAYS)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -170,6 +210,10 @@ function AddStaffForm({ onSubmit, onCancel }: AddStaffFormProps) {
     const rate = parseRate(hourlyRate)
     if (rate === null) {
       setFormError(RATE_REQUIRED_MESSAGE)
+      return
+    }
+    if (workDays.length === 0) {
+      setFormError(NO_WORK_DAYS_MESSAGE)
       return
     }
     setFormError(null)
@@ -182,6 +226,7 @@ function AddStaffForm({ onSubmit, onCancel }: AddStaffFormProps) {
         role,
         hourlyRate: rate,
         startDate,
+        workDays,
       })
     } catch (error: unknown) {
       setFormError(requestErrorMessage(error, 'Could not add the staff member. Please try again.'))
@@ -246,6 +291,7 @@ function AddStaffForm({ onSubmit, onCancel }: AddStaffFormProps) {
             <Label htmlFor="staff-start-date" className="text-xs text-muted">Start Date</Label>
             <Input id="staff-start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
+          <WorkDaysField idPrefix="staff-add" value={workDays} onChange={setWorkDays} />
           {formError && (
             <div
               role="alert"
@@ -287,6 +333,7 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
     return rate === null ? '' : String(rate)
   })
   const [startDate, setStartDate] = useState(staff.startDate?.slice(0, 10) ?? '')
+  const [workDays, setWorkDays] = useState<number[]>(staff.workDays?.length ? staff.workDays : DEFAULT_WORK_DAYS)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -296,6 +343,10 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
     const rate = parseRate(hourlyRate)
     if (rate === null) {
       setFormError(RATE_REQUIRED_MESSAGE)
+      return
+    }
+    if (workDays.length === 0) {
+      setFormError(NO_WORK_DAYS_MESSAGE)
       return
     }
     setFormError(null)
@@ -312,6 +363,7 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
         role,
         hourlyRate: rate,
         ...(startDate ? { startDate } : {}),
+        workDays,
       })
     } catch (error: unknown) {
       setFormError(requestErrorMessage(error, 'Could not save the changes. Please try again.'))
@@ -374,6 +426,7 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
             onChange={(e) => setStartDate(e.target.value)}
           />
         </div>
+        <WorkDaysField idPrefix={`staff-${staff._id}`} value={workDays} onChange={setWorkDays} />
       </div>
       {formError && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-900/40 bg-red-900/20 px-3 py-2">

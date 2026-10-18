@@ -596,6 +596,8 @@ export interface StaffMember {
   hourlyRate: number
   startDate: string
   isActive: boolean
+  /** Days worked, 0 Sunday … 6 Saturday; leave is charged on these only (BE-08-T03). */
+  workDays?: number[]
 }
 
 export interface Shift {

@@ -66,16 +66,28 @@ function pluraliseDays(days: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`
 }
 
-// The backend charges weekdays only (countWeekdays in leave.controller), so a
-// Friday-to-Monday request an owner reads as four days is billed as two.
-function countWeekdays(startDate: string, endDate: string): number {
+const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5]
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
+
+function workPattern(staff?: StaffMember): number[] {
+  return staff?.workDays?.length ? staff.workDays : DEFAULT_WORK_DAYS
+}
+
+function describePattern(days: number[]): string {
+  return WEEK_ORDER.filter((d) => days.includes(d)).map((d) => DAY_LABELS[d]).join(', ')
+}
+
+// The backend charges the person's working days (Staff.workDays) and leaves out
+// South African public holidays. The preview knows the pattern but not the
+// holidays, so it is an upper bound and says so.
+function countWorkingDays(startDate: string, endDate: string, workDays: number[]): number {
   const start = parseDateOnly(startDate)
   const end = parseDateOnly(endDate)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0
   let count = 0
   for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-    const day = cursor.getDay()
-    if (day !== 0 && day !== 6) count += 1
+    if (workDays.includes(cursor.getDay())) count += 1
   }
   return count
 }
@@ -186,7 +198,10 @@ function SubmitLeaveForm({ staffList, onSubmit, onCancel }: SubmitLeaveFormProps
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const weekdays = startDate && endDate ? countWeekdays(startDate, endDate) : null
+  const selected = staffList.find((s) => s._id === staffId)
+  const pattern = workPattern(selected)
+  const personName = selected?.name ?? 'this person'
+  const workingDays = startDate && endDate ? countWorkingDays(startDate, endDate, pattern) : null
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -198,8 +213,8 @@ function SubmitLeaveForm({ staffList, onSubmit, onCancel }: SubmitLeaveFormProps
       setFormError('The end date is before the start date. Pick an end date on or after the start date.')
       return
     }
-    if (weekdays === 0) {
-      setFormError('That period contains no weekdays. Leave is counted in weekdays only.')
+    if (workingDays === 0) {
+      setFormError(`That period has none of ${personName}'s working days (${describePattern(pattern)}). Pick dates ${personName} normally works.`)
       return
     }
     setFormError(null)
@@ -277,12 +292,12 @@ function SubmitLeaveForm({ staffList, onSubmit, onCancel }: SubmitLeaveFormProps
           {/* The day count was previously only revealed after the request was
               created, so an owner could not tell whether it would fit inside the
               remaining balance until it was too late to change it. */}
-          {weekdays !== null && weekdays > 0 && (
+          {workingDays !== null && workingDays > 0 && (
             <div className="sm:col-span-2 lg:col-span-3 -mt-1">
               <p className="text-xs text-muted">
                 This request counts as{' '}
-                <span className="text-text font-medium">{weekdays} weekdays</span>. Weekends are not
-                deducted from the balance.
+                <span className="text-text font-medium">{workingDays} working {workingDays === 1 ? 'day' : 'days'}</span> for {personName}.
+                Public holidays are not charged, so the recorded count can be lower.
               </p>
             </div>
           )}

@@ -603,7 +603,7 @@ describe('Leave failure feedback', () => {
     fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-04-12' } })
     await userEvent.click(screen.getByRole('button', { name: /submit request/i }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/no weekdays/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/none of Sarah's working days/i)
     expect(mockPost).not.toHaveBeenCalled()
   })
 
@@ -622,7 +622,7 @@ describe('Leave failure feedback', () => {
     fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-04-10' } })
     fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-04-13' } })
 
-    expect(await screen.findByText(/2 weekdays/i)).toBeInTheDocument()
+    expect(await screen.findByText(/2 working days/i)).toBeInTheDocument()
   })
 })
 
@@ -746,5 +746,72 @@ describe('Leave cancellation', () => {
     mockSingleApprovedRequest()
     renderWithAuth(<Leave />)
     expect(await screen.findByText('Cancelled')).toBeInTheDocument()
+  })
+})
+
+describe('Leave on the working pattern', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockPost.mockResolvedValue({ data: {} })
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/leave/calendar')) {
+        return Promise.resolve({ data: { calendar: [{ date: '2026-10-03', staff: [{ name: 'Thabo', type: 'annual' }] }] } })
+      }
+      if (url.includes('/leave')) return Promise.resolve({ data: { requests: [] } })
+      if (url.includes('/staff')) {
+        return Promise.resolve({
+          data: {
+            staff: [
+              { _id: 'staff2', name: 'Thabo', role: 'barista', hourlyRate: 45, startDate: '2025-01-01', isActive: true, workDays: [5, 6, 0] },
+            ],
+          },
+        })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: {} })
+    })
+  })
+
+  it("counts a weekend worker's Saturday and Sunday and submits them", async () => {
+    renderWithAuth(<Leave />)
+    await waitFor(() => expect(screen.getByText('Request Leave')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Request Leave'))
+    await screen.findByText('Submit Leave Request')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /staff/i }), 'staff2')
+    // 2026-10-03 is a Saturday, 2026-10-04 the Sunday after it.
+    fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2026-10-03' } })
+    fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2026-10-04' } })
+    expect(await screen.findByText(/2 working days/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /submit request/i }))
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(
+        '/leave',
+        expect.objectContaining({ staffId: 'staff2', startDate: '2026-10-03', endDate: '2026-10-04' })
+      )
+    )
+  })
+
+  // Guard, not a red test: the grid already renders any date the API returns.
+  // The defect was the backend dropping weekends; this keeps the grid honest.
+  it('shows leave that falls on a Saturday of the month on screen', async () => {
+    const today = new Date()
+    const first = new Date(today.getFullYear(), today.getMonth(), 1, 12)
+    const saturday = new Date(today.getFullYear(), today.getMonth(), 1 + ((6 - first.getDay() + 7) % 7), 12)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const key = `${saturday.getFullYear()}-${pad(saturday.getMonth() + 1)}-${pad(saturday.getDate())}`
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/leave/calendar')) {
+        return Promise.resolve({ data: { calendar: [{ date: key, staff: [{ name: 'Thabo', type: 'annual' }] }] } })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: { requests: [], staff: [] } })
+    })
+
+    renderWithAuth(<Leave />)
+
+    expect(await screen.findByText('Thabo')).toBeInTheDocument()
   })
 })

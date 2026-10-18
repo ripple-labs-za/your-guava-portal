@@ -549,3 +549,58 @@ describe('Staff leave cycles', () => {
     expect(screen.queryByRole('button', { name: /adjust leave/i })).not.toBeInTheDocument()
   })
 })
+
+describe('Staff working days', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    mockPost.mockResolvedValue({ data: {} })
+    mockPut.mockResolvedValue({ data: {} })
+  })
+
+  it('sends the working days the owner ticks when adding staff', async () => {
+    mockStaffList([])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('No staff yet')).toBeInTheDocument())
+    await userEvent.click(screen.getAllByRole('button', { name: /add staff/i })[0])
+
+    await userEvent.type(screen.getByLabelText(/^name/i), 'Thandi')
+    await userEvent.type(screen.getByLabelText(/hourly rate/i), '60')
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu']) {
+      await userEvent.click(screen.getByRole('checkbox', { name: day }))
+    }
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Sat' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Sun' }))
+    await userEvent.click(submitAddStaff())
+
+    await waitFor(() => expect(mockPost).toHaveBeenCalled())
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ workDays: [0, 5, 6] })
+  })
+
+  it('refuses a staff member with no working days', async () => {
+    mockStaffList([])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('No staff yet')).toBeInTheDocument())
+    await userEvent.click(screen.getAllByRole('button', { name: /add staff/i })[0])
+
+    await userEvent.type(screen.getByLabelText(/^name/i), 'Thandi')
+    await userEvent.type(screen.getByLabelText(/hourly rate/i), '60')
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']) {
+      await userEvent.click(screen.getByRole('checkbox', { name: day }))
+    }
+    await userEvent.click(submitAddStaff())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/at least one working day/i)
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('shows the saved pattern in the edit form', async () => {
+    mockStaffList([{ ...mockStaffMember, workDays: [5, 6, 0] }])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /edit sarah/i }))
+
+    expect(screen.getByRole('checkbox', { name: 'Sat' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Mon' })).not.toBeChecked()
+  })
+})
