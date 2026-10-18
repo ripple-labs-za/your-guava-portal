@@ -3,11 +3,16 @@ import { isSessionRejection } from './api'
 export const CHAT_CREDIT_COST = 3
 export const DEFAULT_RATE_LIMIT_SECONDS = 60
 
+const retryAfterSecondsValue = (raw: unknown): number | undefined => {
+  const seconds = Number(raw)
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined
+}
+
 export function savedChatFailureNotice(error: unknown): string | null {
   const response = (error as { response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string } } })?.response
   if (response?.status !== 429 || response.data?.code !== 'CHAT_RATE_LIMITED') return null
-  const seconds = Number(response.headers?.['retry-after'])
-  const wait = Number.isFinite(seconds) && seconds > 0 ? `${Math.ceil(seconds)} seconds` : 'up to a minute'
+  const seconds = retryAfterSecondsValue(response.headers?.['retry-after'])
+  const wait = seconds !== undefined ? `${seconds} seconds` : 'up to a minute'
   return `Saved chats are being changed too quickly. Wait ${wait}, then try again.`
 }
 export type ChatFailureKind =
@@ -70,8 +75,7 @@ function failureKindForStatus(status: number, code?: string): ChatFailureKind | 
 
 function retryAfterSecondsFrom(response: Response) {
   const raw = typeof response.headers?.get === 'function' ? response.headers.get('retry-after') : null
-  const seconds = Number(raw)
-  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : undefined
+  return retryAfterSecondsValue(raw)
 }
 
 export async function chatRequestErrorFrom(response: Response) {
@@ -118,7 +122,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered, chargeInferred: true }
 
   const response = (error as {
-    response?: { status?: number; data?: { code?: string; message?: string; details?: { code?: string; available?: number; required?: number; retryable?: boolean } } }
+    response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string; message?: string; details?: { code?: string; available?: number; required?: number; retryable?: boolean } } }
   })?.response
   const status = response?.status
   const code = response?.data?.code ?? response?.data?.details?.code
@@ -142,6 +146,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
       charged: delivered,
       chargeInferred: true,
       serverMessage: serverMessageFrom(response?.data?.message),
+      retryAfterSeconds: retryAfterSecondsValue(response?.headers?.['retry-after']),
       available: response?.data?.details?.available,
       required: response?.data?.details?.required,
     }

@@ -56,6 +56,13 @@ describe('charge recovery copy', () => {
     expect(savedChatFailureNotice({ response: { status: 429, data: { code: 'CHAT_RATE_LIMITED' }, headers: { 'retry-after': '17' } } }))
       .toMatch(/17 seconds/)
   })
+  it('carries the saved-chat Retry-After into the failure used by the bubble and composer', () => {
+    const failure = chatFailureFrom({ response: {
+      status: 429, data: { code: 'CHAT_RATE_LIMITED' }, headers: { 'retry-after': '17' },
+    } }, false)
+    expect(failure).toMatchObject({ kind: 'rate-limited', retryAfterSeconds: 17, charged: false })
+    expect(chatFailureCopy(failure).detail).toMatch(/wait 17 seconds/i)
+  })
   it.each([401, 402, 403, 429, 503])('preserves delivered charge on status %s', (status) => {
     const failure = chatFailureFrom({ response: { status } }, false, true)
     expect(failure.charged).toBe(true)

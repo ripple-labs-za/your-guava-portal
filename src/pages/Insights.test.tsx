@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render as rtlRender, screen, waitFor, within, fireEvent } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router'
 import { AuthContext } from '@/contexts/AuthContext'
@@ -320,6 +320,29 @@ describe('Insights', () => {
     await screen.findByText(/saved chats.*17 seconds/i)
     expect(vi.mocked(fetch)).not.toHaveBeenCalled()
     expect(localStorage.getItem(CHAT_LIST_STORAGE_KEY) || '').not.toContain('local-')
+  })
+  it('uses the saved-chat Retry-After in the notice and bubble and unlocks after 17 seconds', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    try {
+      mockBaseRequests()
+      mockPost.mockRejectedValue({ response: { status: 429, data: { code: 'CHAT_RATE_LIMITED' }, headers: { 'retry-after': '17' } } })
+      render(<Insights />)
+      await askQuestion('Wait for this saved chat')
+
+      await screen.findByText(/saved chats.*17 seconds/i)
+      expect(within(answerBubble()).getByText(/wait 17 seconds/i)).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByRole('button', { name: /rate limited.*17 seconds/i })).toBeDisabled())
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(16_000) })
+      expect(screen.getByRole('button', { name: /rate limited.*1 seconds/i })).toBeDisabled()
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+      const input = screen.getByRole('textbox', { name: /ask a question about your cafe data/i })
+      await userEvent.type(input, 'Try after the wait')
+      expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('keeps the same idempotency key when a charged fallback returns 401 and the free replay is requested', async () => {
     mockBaseRequests()
