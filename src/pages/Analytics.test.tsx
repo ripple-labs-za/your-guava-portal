@@ -987,7 +987,7 @@ it('says the daily average is per open day', async () => {
           data: {
             success: true,
             data: [{ pair: ['Flat White', 'Muffin'], count: 10 }],
-            meta: { truncated: true, basketsConsidered: 10, maxBaskets: 10, maxItemsPerBasket: 20 },
+            meta: { truncated: true, basketsConsidered: 10, basketsClipped: 2, maxBaskets: 10, maxItemsPerBasket: 20 },
           },
         })
       }
@@ -997,7 +997,8 @@ it('says the daily average is per open day', async () => {
     render(<Analytics />)
     await userEvent.click(screen.getByRole('tab', { name: 'Combos' }))
 
-    expect(await screen.findByText(/based on the most recent 10 baskets in this range/i)).toBeInTheDocument()
+    expect(await screen.findByText(/based on the most recent 10 baskets with two or more items in this range/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 baskets were cut to 20 items/i)).toBeInTheDocument()
   })
 
   it("shows the server's reason when Performance is rate limited, and keeps Retry", async () => {
@@ -1018,6 +1019,16 @@ it('says the daily average is per open day', async () => {
 
     expect(await screen.findByText('Too many Performance requests. Wait a minute and try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('explains a codeless IP limit and disables immediate Retry', async () => {
+    mockGet.mockImplementation((url: string) => url.includes('/analytics/heatmap')
+      ? Promise.reject({ response: { status: 429, data: 'Too many requests' } })
+      : Promise.resolve({ data: {} }))
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
+    expect(await screen.findByText('Too many requests right now. Wait a minute, then press Retry.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeDisabled()
   })
 
   it('keeps an older item with no trend readable as an accessible dash', async () => {

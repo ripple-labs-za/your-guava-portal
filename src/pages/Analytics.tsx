@@ -1,5 +1,6 @@
 import { MOVERS_CAPTION, moverThresholdNote, belowFloorNote, ItemTrend, closedCellLabels, CLOSED_CELL_BORDER, type MoverItem, type NewItem, type MoverFloor } from '@/lib/analyticsMovers'
 import { analyticsCustomersFrom } from '@/lib/analyticsCustomers'
+import { analyticsFailure, comboSampleCaption, useAnalyticsRetryDelay, type AnalyticsFailure, type ComboSampleMeta } from '@/lib/analyticsErrors'
 import { openDaysCaption, formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
@@ -180,23 +181,12 @@ function PeriodSelector({ period, onChange }: { period: PeriodId; onChange: (p: 
 // Every tab used to dead-end on its own error: no retry, and the range selector
 // unmounted with it, so the one thing that might have helped — asking for a
 // smaller window — was gone too.
-const ANALYTICS_SERVER_MESSAGE_CODES = new Set([
-  'ANALYTICS_RATE_LIMITED', 'ANALYTICS_REFRESH_RATE_LIMITED', 'ANALYTICS_QUERY_TIMEOUT',
-  'ANALYTICS_RANGE_TOO_LONG', 'ANALYTICS_INVALID_DAYS',
-])
-
-function analyticsErrorMessage(error: unknown, fallback: string): string {
-  const data = (error as { response?: { data?: { code?: string; message?: string; details?: { code?: string } } } } | null)
-    ?.response?.data
-  const code = data?.code ?? data?.details?.code
-  return code && ANALYTICS_SERVER_MESSAGE_CODES.has(code) && data?.message ? data.message : fallback
-}
-
-function TabError({ message, onRetry }: { message: string; onRetry: () => void }) {
+function TabError({ error, onRetry }: { error: AnalyticsFailure; onRetry: () => void }) {
+  const disabled = useAnalyticsRetryDelay(error.retryDelayMs)
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
-      <p className="text-muted text-sm">{message}</p>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
+      <p className="text-muted text-sm">{error.message}</p>
+      <Button variant="outline" size="sm" className="mt-4" disabled={disabled} onClick={onRetry}>
         Retry
       </Button>
     </div>
@@ -210,12 +200,12 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<RevenueAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<AnalyticsFailure | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError('')
+    setError(null)
     api
       .get<RevenueResponse>(`/analytics/revenue?period=daily&${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
@@ -233,12 +223,12 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
           data: res.data || [],
         })
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load revenue data')) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load revenue data', period)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
 
-  if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+  if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
   return (
     <div className="space-y-6">
@@ -401,12 +391,12 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
   const [newItems, setNewItems] = useState<NewItem[]>([])
   const [moverFloor, setMoverFloor] = useState<MoverFloor | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<AnalyticsFailure | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError('')
+    setError(null)
     api
       .get<{ items: ItemPerformance[]; meta?: RangeMeta & { risingItems?: MoverItem[]; decliningItems?: MoverItem[]; newItems?: NewItem[]; moverFloor?: MoverFloor } }>(
         `/analytics/items?${windowQuery(period)}`,
@@ -421,7 +411,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
         setNewItems(data.meta?.newItems || [])
         setMoverFloor(data.meta?.moverFloor ?? null)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load item data')) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load item data', period)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -438,7 +428,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
   const decliningNames = new Set(declining.map((i) => i.name))
   const newNames = new Set(newItems.map((i) => i.name))
 
-  if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+  if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
   return (
     <div className="space-y-6">
@@ -625,7 +615,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
   const [reloadKey, setReloadKey] = useState(0)
   const [cells, setCells] = useState<HeatmapCell[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<AnalyticsFailure | null>(null)
   const [hoveredCell, setHoveredCell] = useState<HeatmapCell | null>(null)
   // Sales from exports with dates but no times: the server leaves them out of every cell and says how many.
   const [withoutTime, setWithoutTime] = useState(0)
@@ -633,7 +623,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError('')
+    setError(null)
     api
       .get<{ heatmap: HeatmapCell[]; data?: HeatmapCell[]; meta?: RangeMeta & HeatmapMeta }>(`/analytics/heatmap?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data }) => {
@@ -642,7 +632,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
         setCells(data.heatmap || data.data || [])
         setWithoutTime(data.meta?.timeOfDay?.transactionsWithoutTime ?? 0)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load heatmap data')) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load heatmap data', period)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -675,7 +665,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
     return '#4DA63B'
   }
 
-  if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+  if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
   return (
     <div className="space-y-6">
@@ -818,12 +808,12 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<CustomerInsights | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<AnalyticsFailure | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError('')
+    setError(null)
     api
       .get<{ insights: CustomerInsights; data?: CustomerInsights; meta?: RangeMeta }>(`/analytics/customers?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
@@ -831,12 +821,12 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
         onWindow(queriedWindowFrom(res.meta))
         setData(res.insights ?? res.data ?? null)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load customer insights')) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load customer insights', period)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
 
-  if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+  if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
   // The backend answers an unmeasured range with a full object of zeros, so
   // "R0 average transaction, 0% tipping" read as a measurement of a period that
@@ -990,28 +980,28 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
 function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [reloadKey, setReloadKey] = useState(0)
   const [combos, setCombos] = useState<ComboItem[]>([])
-  const [sample, setSample] = useState<{ baskets: number } | null>(null)
+  const [sample, setSample] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<AnalyticsFailure | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError('')
+    setError(null)
     api
-      .get<{ data: ComboItem[]; meta?: RangeMeta & { truncated?: boolean; basketsConsidered?: number } }>(`/analytics/combos?${windowQuery(period)}`, { signal: controller.signal })
+      .get<{ data: ComboItem[]; meta?: RangeMeta & ComboSampleMeta }>(`/analytics/combos?${windowQuery(period)}`, { signal: controller.signal })
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))
         setCombos(res.data || [])
-        setSample(res.meta?.truncated ? { baskets: res.meta.basketsConsidered ?? 0 } : null)
+        setSample(comboSampleCaption(res.meta))
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsErrorMessage(err, 'Failed to load combo data')) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load combo data', period)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
 
-  if (error) return <TabError message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+  if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
   return (
     <div className="space-y-6">
@@ -1023,7 +1013,7 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
           </p>
           {sample && !loading && (
             <p className='text-muted text-xs mt-1'>
-              Based on the most recent {sample.baskets.toLocaleString('en-ZA')} baskets in this range, to keep this view fast.
+              {sample}
             </p>
           )}
         </CardHeader>
