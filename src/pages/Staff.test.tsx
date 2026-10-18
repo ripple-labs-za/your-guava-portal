@@ -274,6 +274,17 @@ describe('Staff deactivation', () => {
     mockPut.mockResolvedValue({ data: {} })
   })
 
+  it('says that future shifts are cancelled and pending leave withdrawn', async () => {
+    mockStaffList()
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /deactivate sarah/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(/scheduled shifts from today on are cancelled/i)
+    expect(dialog).toHaveTextContent(/pending leave requests are withdrawn/i)
+  })
+
   // GET /staff filters to isActive: true, so a deactivated person vanishes on
   // the next load -- out of the roster dropdown, the leave form and the sidebar
   // -- and there is no reactivate control anywhere in the portal.

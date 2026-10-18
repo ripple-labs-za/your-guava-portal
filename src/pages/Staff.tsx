@@ -611,7 +611,7 @@ export default function Staff() {
     setActionError(null)
     setConfirmRequest({
       title: `Deactivate ${staff.name}?`,
-      body: `${staff.name} will be removed from this page, from the roster and its staff list, and from the leave request form. Their past shifts and leave records are kept, but the portal has no way to bring them back — that needs a support request.`,
+      body: `${staff.name} will be removed from this page, from the roster and its staff list, and from the leave request form. Their scheduled shifts from today on are cancelled and their pending leave requests are withdrawn. Past shifts and approved leave are kept, but the portal has no way to bring them back — that needs a support request.`,
       confirmLabel: 'Deactivate',
       onConfirm: async () => {
         try {

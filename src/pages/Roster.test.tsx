@@ -482,3 +482,93 @@ it('limits shift notes to 500 characters', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /^Add Shift on Mon/i }))
   expect(screen.getByLabelText(/notes/i)).toHaveAttribute('maxlength', '500')
 })
+
+describe('Roster shift rules (BE-08-T04)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('marks a shift that ends the next day', async () => {
+    const monday = getCurrentMonday()
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/shifts?')) {
+        return Promise.resolve({
+          data: {
+            shifts: [
+              {
+                _id: 'sh1',
+                staffId: { _id: 'staff1', name: 'Sarah' },
+                cafeId: 'cafe1',
+                date: `${monday}T00:00:00.000Z`,
+                startTime: '22:00',
+                endTime: '02:00',
+                hoursWorked: 4,
+                endsNextDay: true,
+                type: 'regular',
+                status: 'scheduled',
+              },
+            ],
+          },
+        })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: { staff: [], summaries: [] } })
+    })
+
+    render(<Roster />)
+
+    expect(await screen.findByText(/22:00 — 02:00 \(next day\)/)).toBeInTheDocument()
+  })
+
+  it('says why a shift on approved leave was refused, and keeps the form open', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/staff')) {
+        return Promise.resolve({
+          data: { staff: [{ _id: 'staff1', name: 'Sarah', role: 'barista', hourlyRate: 45, startDate: '2025-01-01', isActive: true }] },
+        })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: { shifts: [], summaries: [] } })
+    })
+    mockPost.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          code: 'SHIFT_ON_LEAVE',
+          message: 'This staff member is on approved annual leave from 2026-10-05 to 2026-10-09. Cancel that leave first, or roster someone else.',
+        },
+      },
+    })
+
+    render(<Roster />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Add Shift on Mon/i }))
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /^Staff$/i }), 'staff1')
+    await userEvent.click(screen.getByRole('button', { name: /^Add Shift$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/approved annual leave/i)
+    expect(screen.getByRole('combobox', { name: /^Staff$/i })).toHaveValue('staff1')
+  })
+
+  it('trusts the summary about the 45-hour weekly limit', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/shifts?')) return Promise.resolve({ data: { shifts: [] } })
+      if (url.includes('/staff')) {
+        return Promise.resolve({
+          data: { staff: [{ _id: 'staff1', name: 'Sarah', role: 'barista', hourlyRate: 45, startDate: '2025-01-01', isActive: true }] },
+        })
+      }
+      if (url.includes('/shifts/summary')) {
+        return Promise.resolve({
+          data: { summaries: [{ staffId: 'staff1', staffName: 'Sarah', totalHours: 44, regularHours: 43, overtimeHours: 1, estimatedPay: 0, overThreshold: true }] },
+        })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<Roster />)
+
+    expect(await screen.findByText('OT')).toBeInTheDocument()
+  })
+})

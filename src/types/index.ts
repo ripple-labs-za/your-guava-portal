@@ -608,6 +608,10 @@ export interface Shift {
   startTime: string
   endTime: string
   hoursWorked: number
+  /** The end time is on the next calendar day (22:00 to 02:00). BE-08-T04. */
+  endsNextDay?: boolean
+  regularHours?: number
+  overtimeHours?: number
   type: 'regular' | 'overtime'
   status: 'scheduled' | 'completed' | 'cancelled'
   notes?: string
@@ -620,6 +624,8 @@ export interface ShiftSummary {
   regularHours: number
   overtimeHours: number
   estimatedPay: number
+  /** Some calendar week in the range went over the 45-hour BCEA limit. */
+  overThreshold?: boolean
 }
 
 export interface LeaveRequest {

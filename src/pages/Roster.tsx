@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toLocalDateOnly } from '@/lib/date'
+import { requestErrorMessage } from '@/components/staff/staffText'
 import type { Shift, StaffMember, ShiftSummary } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,13 +75,19 @@ function AddShiftForm({ date, staffList, onSubmit, onCancel }: AddShiftFormProps
   const [endTime, setEndTime] = useState('16:00')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!staffId) return
+    setFormError(null)
     setSubmitting(true)
     try {
       await onSubmit({ staffId, date, startTime, endTime, notes })
+    } catch (error: unknown) {
+      // D-009: the server words the refusal (overlap, approved leave, times);
+      // show it verbatim and keep what the manager typed.
+      setFormError(requestErrorMessage(error, 'Could not add the shift. Please try again.'))
     } finally {
       setSubmitting(false)
     }
@@ -129,6 +136,11 @@ function AddShiftForm({ date, staffList, onSubmit, onCancel }: AddShiftFormProps
         <Label htmlFor={`shift-notes-${date}`} className="text-xs text-muted">Notes (optional)</Label>
         <Input id={`shift-notes-${date}`} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any notes..." />
       </div>
+      {formError && (
+        <p role="alert" className="text-[10px] leading-4 text-red-400">
+          {formError}
+        </p>
+      )}
       <Button type="submit" size="sm" variant="success" className="w-full" disabled={!staffId || submitting}>
         {submitting ? 'Adding...' : 'Add Shift'}
       </Button>
@@ -153,7 +165,7 @@ function ShiftCard({ shift }: { shift: Shift }) {
       <div className="flex items-center gap-1.5 text-muted">
         <Clock className="w-3 h-3" />
         <span className="text-[10px]">
-          {shift.startTime} — {shift.endTime}
+          {shift.startTime} — {shift.endTime}{shift.endsNextDay ? ' (next day)' : ''}
         </span>
         <span className="text-[10px] text-muted ml-auto">{shift.hoursWorked}h</span>
       </div>
@@ -198,7 +210,8 @@ function StaffSidebar({
             {staffList.filter((s) => s.isActive).map((staff) => {
               const summary = summaryMap.get(staff._id)
               const totalHours = summary?.totalHours ?? 0
-              const isOvertime = totalHours > 45
+              // The server owns the BCEA rule (45 h per calendar week); 45 is only the fallback.
+              const isOvertime = summary?.overThreshold ?? totalHours > 45
               return (
                 <div
                   key={staff._id}
