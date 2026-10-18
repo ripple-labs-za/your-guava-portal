@@ -561,8 +561,10 @@ export default function Staff() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  // `quiet` refreshes in place: the skeleton would unmount the cards, and with
+  // them an open form that still has something to say (the adjust warning).
+  const loadData = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) setLoading(true)
     try {
       const [staffRes, balancesRes] = await Promise.all([
         api.get<{ staff: StaffMember[] }>('/staff').catch(() => null),
@@ -601,7 +603,7 @@ export default function Staff() {
 
   async function handleAdjustLeave(staffId: string, data: LeaveAdjustment) {
     const res = await api.put<{ warning?: string }>(`/leave/balances/${staffId}`, data)
-    await loadData()
+    await loadData({ quiet: true })
     return res?.data?.warning
   }
 
@@ -678,7 +680,7 @@ export default function Staff() {
             The server did not answer. Nobody has been removed — this page just could not fetch
             your roster.
           </p>
-          <Button variant="outline" onClick={loadData}>
+          <Button variant="outline" onClick={() => loadData()}>
             Try again
           </Button>
         </div>

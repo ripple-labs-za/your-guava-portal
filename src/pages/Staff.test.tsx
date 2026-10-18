@@ -565,9 +565,24 @@ describe('Staff leave cycles', () => {
   it('keeps the form open and shows the warning when the new total is below the days taken', async () => {
     const warning =
       '5 days already taken in this cycle exceed the new total of 3, so the balance shows -2 until leave is cancelled or the total is raised.'
-    mockPut.mockResolvedValue({ data: { warning } })
+    // The page reloads the balances after the save. Hold that reload open, as a
+    // real network does, so a loading state that swaps the cards out (and the
+    // form with its warning) actually renders before the data comes back.
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    mockPut.mockImplementation(async () => {
+      mockGet.mockImplementation(async (url: string) => {
+        await held
+        return url.includes('/leave/balances')
+          ? { data: { balances: [CYCLE_BALANCE] } }
+          : { data: { staff: [mockStaffMember] } }
+      })
+      return { data: { warning } }
+    })
     await adjustAnnualTo('3')
+    release()
 
+    await waitFor(() => expect(screen.getByText('10/15 days')).toBeInTheDocument())
     expect(await screen.findByRole('status')).toHaveTextContent(warning)
     await userEvent.click(screen.getByRole('button', { name: /^close$/i }))
     expect(screen.queryByLabelText(/reason for the change/i)).not.toBeInTheDocument()
