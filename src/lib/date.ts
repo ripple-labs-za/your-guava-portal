@@ -38,6 +38,11 @@ export function forecastDateKey(value: { date: string; dateKey?: string }): stri
   return value.dateKey || value.date
 }
 
+/** Annual event rows use their next anniversary; legacy rows retain their day. */
+export function eventDayKey(value: { date: string; dateKey?: string; nextDateKey?: string }): string {
+  return value.nextDateKey || value.dateKey || value.date.slice(0, 10)
+}
+
 export function getLocalMonthBounds(date: Date): { startDate: string; endDate: string } {
   return {
     startDate: toLocalDateOnly(new Date(date.getFullYear(), date.getMonth(), 1, 12)),

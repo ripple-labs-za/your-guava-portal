@@ -356,6 +356,7 @@ export interface LocalEvent {
   name: string
   date: string
   dateKey?: string
+  nextDateKey?: string
   type?: 'event' | 'closure' | 'partial_closure'
   impact: 'low' | 'medium' | 'high'
   impactPct?: number

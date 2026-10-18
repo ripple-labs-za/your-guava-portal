@@ -676,6 +676,37 @@ describe('Factors', () => {
     expect(await screen.findByText(/High 29°C/)).toBeInTheDocument()
   })
 
+  it('keeps annual events upcoming and labels their next date without a Past badge', async () => {
+    const defaultGet = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => url === '/events' ? Promise.resolve({ data: { events: [
+      { _id: 'annual', name: 'Annual fair', date: '2024-12-24', dateKey: '2024-12-24', nextDateKey: '2099-12-24', impact: 'high', recurring: true },
+    ] } }) : defaultGet(url))
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Events' }))
+    expect(screen.getByText('Repeats yearly')).toBeInTheDocument()
+    expect(screen.queryByText('Past')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove event Annual fair' })).toBeEnabled()
+    const tile = screen.getByText('Next event').parentElement as HTMLElement
+    expect(within(tile).getByText('Annual fair')).toBeInTheDocument()
+    expect(screen.getAllByText(/24 Dec/).length).toBeGreaterThan(0)
+  })
+
+  it('distinguishes missing uploads from missing comparable days and counts only measured events', async () => {
+    const defaultGet = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => url === '/events/effects' ? Promise.resolve({ data: {
+      effects: [0, 1].map((actualTransactions) => ({ eventId: String(actualTransactions), name: `Unscored ${actualTransactions}`,
+        date: '2026-04-22', impact: 'high', expectedImpactPct: 35, actualRevenue: actualTransactions * 100,
+        actualTransactions, baselineRevenue: 0, baselineTransactions: 0, baselineDayCount: 0,
+        revenueImpactPct: null, transactionImpactPct: null, vsExpectedPct: null, confidence: 'none' })),
+      summary: { eventsAnalyzed: 2, avgRevenueImpactPct: null, aboveExpected: 0, belowExpected: 0, insufficientData: 2 },
+    } }) : defaultGet(url))
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Events' }))
+    expect(screen.getAllByText('No sales uploaded')).toHaveLength(1)
+    expect(screen.getByText('No comparable days')).toBeInTheDocument()
+    expect(screen.getByText('0 measured')).toBeInTheDocument()
+  })
+
   it('sends an event that repeats every year as recurring', async () => {
     mockPost.mockResolvedValue({ data: { event: { _id: 'e2', name: 'Heritage market', date: '2099-09-24', impact: 'medium', recurring: true } } })
     renderWithAuth(<Factors />)

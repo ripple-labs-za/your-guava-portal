@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import api from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { forecastDateKey, parseDateOnly, toLocalDateOnly } from '@/lib/date'
+import { eventDayKey, forecastDateKey, parseDateOnly, toLocalDateOnly } from '@/lib/date'
 import { isWeatherAvailable, signalFix, weatherUnavailableReason } from '@/lib/forecastSignals'
 import type {
   EventSalesEffect,
@@ -466,12 +466,12 @@ export default function Factors() {
   // checked the date, so it could name an event that already happened — the
   // card an owner reads to decide whether a factor is about to fire.
   const sortedEvents = useMemo(
-    () => [...events].sort((a, b) => (a.dateKey ?? a.date).localeCompare(b.dateKey ?? b.date)),
+    () => [...events].sort((a, b) => eventDayKey(a).localeCompare(eventDayKey(b))),
     [events]
   )
   const todayKey = toLocalDateOnly(new Date())
   const upcomingEvents = useMemo(
-    () => sortedEvents.filter((event) => (event.dateKey ?? event.date.slice(0, 10)) >= todayKey),
+    () => sortedEvents.filter((event) => eventDayKey(event) >= todayKey),
     [sortedEvents, todayKey]
   )
   const nextEvent = upcomingEvents[0]
@@ -574,7 +574,7 @@ export default function Factors() {
         notes: eventNotes || undefined,
         recurring: eventRecurring,
       })
-      setEvents((current) => [...current, data.event].sort((a, b) => (a.dateKey ?? a.date).localeCompare(b.dateKey ?? b.date)))
+      setEvents((current) => [...current, data.event].sort((a, b) => eventDayKey(a).localeCompare(eventDayKey(b))))
       setEventName('')
       setEventDate('')
       setEventImpact('medium')
@@ -1015,10 +1015,7 @@ export default function Factors() {
                           <Input id="factor-event-notes" value={eventNotes} onChange={(event) => setEventNotes(event.target.value)} placeholder="High foot traffic" disabled={!eventsUnlocked} />
                         </div>
                       </div>
-                      <label className="flex items-center gap-2 text-sm text-muted">
-                        <input type="checkbox" checked={eventRecurring} onChange={(event) => setEventRecurring(event.target.checked)} disabled={!eventsUnlocked} />
-                        Repeats every year on this date
-                      </label>
+                      <ToggleRow label="Repeats every year on this date" checked={eventRecurring} onChange={setEventRecurring} disabled={!eventsUnlocked} />
                       <div className="flex justify-end">
                         <Button type="submit" disabled={eventSaving || !eventsUnlocked}>
                           <CalendarPlus className="h-3.5 w-3.5" />
@@ -1039,7 +1036,7 @@ export default function Factors() {
                     ) : (
                       <div className="space-y-2">
                         {sortedEvents.map((event) => {
-                          const isPast = (event.dateKey ?? event.date.slice(0, 10)) < todayKey
+                          const isPast = !event.recurring && eventDayKey(event) < todayKey
                           return (
                             <div
                               key={event._id}
@@ -1052,12 +1049,10 @@ export default function Factors() {
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-sm font-medium text-text">{event.name}</p>
                                   <Badge variant="secondary">{fmtPct(event.impactPct ?? defaultEventPct(event.impact))}</Badge>
-                                  {/* A list headed "Upcoming Events" that
-                                      silently contains past dates is worse
-                                      than one that says which are past. */}
+                                  {event.recurring && <Badge variant="secondary">Repeats yearly</Badge>}
                                   {isPast && <Badge variant="outline">Past</Badge>}
                                 </div>
-                                <p className="mt-1 text-xs text-muted">{fmtDate(event.dateKey ?? event.date)}</p>
+                                <p className="mt-1 text-xs text-muted">{fmtDate(eventDayKey(event))}</p>
                               </div>
                               <Button
                                 variant="ghost"
@@ -1087,7 +1082,7 @@ export default function Factors() {
                         <CardDescription>Actual sales compared with normal same-weekday trading.</CardDescription>
                       </div>
                       {eventEffectSummary && (
-                        <Badge variant="secondary">{eventEffectSummary.eventsAnalyzed} measured</Badge>
+                        <Badge variant="secondary">{eventEffects.filter((effect) => effect.revenueImpactPct != null).length} measured</Badge>
                       )}
                     </div>
                   </CardHeader>
@@ -1133,9 +1128,9 @@ export default function Factors() {
                                 <td className="px-3 py-3">
                                   <span className={cn(
                                     'font-semibold',
-                                    (effect.revenueImpactPct ?? 0) >= 0 ? 'text-guava-green' : 'text-red-400'
+                                    effect.revenueImpactPct == null ? 'text-muted' : effect.revenueImpactPct >= 0 ? 'text-guava-green' : 'text-red-400'
                                   )}>
-                                    {effect.revenueImpactPct == null ? 'No sales uploaded' : fmtPct(effect.revenueImpactPct)}
+                                    {effect.revenueImpactPct == null ? effect.actualTransactions === 0 ? 'No sales uploaded' : 'No comparable days' : fmtPct(effect.revenueImpactPct)}
                                   </span>
                                 </td>
                                 <td className="px-3 py-3 text-muted">{effect.expectedApplied === false && effect.expectedNote
