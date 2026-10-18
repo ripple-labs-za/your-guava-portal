@@ -231,6 +231,22 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('does not re-bill a request the AI service rejected as unfixable', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse('event: error\ndata: ' + JSON.stringify({
+      code: 'AI_PROVIDER_AUTH_FAILED', retryable: false, charged: false, credits: 0,
+      message: "Guava's AI service is not accepting our credentials, so this will not work until we fix it. No credits were charged, and the problem has been logged.",
+    }) + '\n\n'))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'chat-auth', messages: [] }) } })
+      : Promise.resolve({ data: {} }))
+    render(<Insights />)
+    await askQuestion('Anything today?')
+    await screen.findAllByText(/not accepting our credentials/i)
+    expect(chatFallbackCalls()).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /try again \(3 credits\)/i })).not.toBeInTheDocument()
+  })
+
   it('renders the interruption marker stored with a saved partial answer', async () => {
     const saved = chat({ messages: [
       { id: 'question', role: 'user', content: 'What should I stock?' },

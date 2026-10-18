@@ -13,6 +13,7 @@ export type ChatFailureKind =
   | 'interrupted'
   | 'cafe-access'
   | 'invalid-request'
+  | 'provider-rejected'
 
 export interface ChatFailure {
   kind: ChatFailureKind
@@ -21,6 +22,7 @@ export interface ChatFailure {
   retryAfterSeconds?: number
   charged?: boolean | null
   credits?: number
+  serverMessage?: string
 }
 
 export class ChatRequestError extends Error {
@@ -54,7 +56,7 @@ export async function chatRequestErrorFrom(response: Response) {
   let body: {
     code?: string
     message?: string
-    details?: { code?: string; available?: number; required?: number }
+    details?: { code?: string; available?: number; required?: number; retryable?: boolean }
   } | null = null
   if (typeof response.json === 'function') {
     body = await response.json().catch(() => null)
@@ -62,7 +64,8 @@ export async function chatRequestErrorFrom(response: Response) {
 
   return new ChatRequestError(
     {
-      kind: failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
+      kind: body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
+      serverMessage: body?.message,
       available: body?.details?.available,
       required: body?.details?.required,
       retryAfterSeconds: retryAfterSecondsFrom(response),
@@ -75,7 +78,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
   if (error instanceof ChatRequestError) {
     const { failure } = error
-    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request']
+    const refusedBeforeDelivery = ['out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected']
       .includes(failure.kind)
     return {
       ...failure,
@@ -91,10 +94,13 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered }
 
   const response = (error as {
-    response?: { status?: number; data?: { code?: string; details?: { code?: string; available?: number; required?: number } } }
+    response?: { status?: number; data?: { code?: string; message?: string; details?: { code?: string; available?: number; required?: number; retryable?: boolean } } }
   })?.response
   const status = response?.status
   const code = response?.data?.code ?? response?.data?.details?.code
+  if (response?.data?.details?.retryable === false) {
+    return { kind: 'provider-rejected', charged: delivered, serverMessage: response.data.message }
+  }
   if (typeof status === 'number') {
     const kind = failureKindForStatus(status, code)
     if (kind === 'cafe-access' || kind === 'invalid-request') return { kind, charged: delivered }
@@ -133,6 +139,12 @@ export function chatFailureCopy(failure: ChatFailure) {
     }
   }
   switch (failure.kind) {
+    case 'provider-rejected':
+      return {
+        title: 'The AI service could not take this request',
+        detail: failure.serverMessage ?? 'Retrying will not help. Nothing was charged.',
+        action: null,
+      }
     case 'cafe-access':
       return {
         title: 'You no longer have access to this location',

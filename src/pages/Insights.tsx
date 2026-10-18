@@ -1280,6 +1280,7 @@ export default function Insights() {
       message?: string
       code?: string
       charged?: boolean | null
+      retryable?: boolean
       credits?: number
       contextStats?: ChatContextStats | null
       guavaCredits?: GuavaCreditSnapshot
@@ -1305,6 +1306,10 @@ export default function Insights() {
       return { type: 'done' as const, contextStats: data.contextStats || null }
     }
     if (eventName === 'error') {
+      if (data.retryable === false && data.charged === false) {
+        throw new ChatRequestError({ kind: 'provider-rejected', charged: false, serverMessage: data.message },
+          data.message || 'The AI service could not accept this request.')
+      }
       throw new ChatRequestError(
         { kind: data.charged === true ? 'interrupted' : 'transient', charged: typeof data.charged === 'boolean' ? data.charged : null, credits: data.credits },
         data.message || 'The AI stream stopped unexpectedly.'
