@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  weatherTempLabel,
   isLoadSheddingAvailable,
   isWeatherAvailable,
   loadSheddingUnavailableReason,
@@ -7,6 +8,10 @@ import {
 } from './forecastSignals'
 
 describe('forecast signal availability', () => {
+  it('labels the daytime high when the engine sent one', () => {
+    expect(weatherTempLabel({ temp: 20.4, maxTemp: 28.6, condition: 'Sunny' })).toBe('High 29°C')
+    expect(weatherTempLabel({ temp: 20.4, condition: 'Sunny' })).toBe('20°C')
+  })
   it('distinguishes verified weather from an unavailable signal', () => {
     expect(isWeatherAvailable({ available: true, temp: 24, condition: 'Sunny', humidity: 60 })).toBe(true)
     const unavailable = {

@@ -126,6 +126,7 @@ interface LoadedSnapshot {
   cafeTimezone: string
   timezoneEditable: boolean
   tradingHours: TradingHoursEntry[]
+  tradingHoursSaved: boolean
 }
 
 const ZA_PROVINCES = [
@@ -337,6 +338,7 @@ export default function Settings() {
           cafeTimezone: cafe.timezone || '',
           timezoneEditable: cafe.timezoneEditable === true,
           tradingHours: ensureWeek(cafe.tradingHours),
+          tradingHoursSaved: cafe.tradingHoursSaved !== false,
         }
         setLoaded(snapshot)
         applySnapshot(snapshot)
@@ -495,7 +497,7 @@ export default function Settings() {
     }
     try {
       await api.put('/cafe/me', { tradingHours })
-      setLoaded((prev) => (prev ? { ...prev, tradingHours } : prev))
+      setLoaded((prev) => (prev ? { ...prev, tradingHours, tradingHoursSaved: true } : prev))
       setHoursState('success')
       setIsEditingHours(false)
       setTimeout(() => setHoursState('idle'), 3000)
@@ -723,8 +725,10 @@ export default function Settings() {
                           <p className="col-span-2 sm:col-span-4 text-xs text-guava-yellow">
                             Your sales show trading on this day
                             {' '}({hintByDay.get(entry.dayOfWeek)!.toLocaleString('en-ZA')} sales in
-                            {' '}{SALES_HINT_WINDOW}). While it is marked closed, this day
-                            {' '}forecasts zero.
+                            {' '}{SALES_HINT_WINDOW}).{' '}
+                            {loaded?.tradingHoursSaved !== false
+                              ? 'While it is marked closed, this day forecasts zero.'
+                              : 'Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.'}
                           </p>
                         )}
                         {/* Explained at the row, as it is typed — not saved up
@@ -764,6 +768,9 @@ export default function Settings() {
                       Trading hours could not be loaded.
                     </p>
                   )}
+                  {loaded?.tradingHoursSaved === false && (
+                    <p className="px-4 py-3 text-xs text-muted">These are suggested hours, not saved yet. Until you save them, Planning treats any day with sales as open.</p>
+                  )}
                   {tradingHours.map((entry) => {
                     const dayLabel = DAY_LABELS[entry.dayOfWeek]
                     return (
@@ -785,8 +792,10 @@ export default function Settings() {
                           <p className="col-span-full text-xs text-guava-yellow">
                             Your sales show trading on this day
                             {' '}({hintByDay.get(entry.dayOfWeek)!.toLocaleString('en-ZA')} sales in
-                            {' '}{SALES_HINT_WINDOW}). While it is marked closed, this day
-                            {' '}forecasts zero.
+                            {' '}{SALES_HINT_WINDOW}).{' '}
+                            {loaded?.tradingHoursSaved !== false
+                              ? 'While it is marked closed, this day forecasts zero.'
+                              : 'Your hours are not saved yet, so Planning treats this day as open. Save your trading hours to confirm.'}
                           </p>
                         )}
                       </div>

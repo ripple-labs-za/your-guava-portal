@@ -130,6 +130,7 @@ export interface Cafe {
   dataUploaded: boolean
   lastSyncAt?: string
   tradingHours?: TradingHoursEntry[]
+  tradingHoursSaved?: boolean
   timezone?: string
   timezoneEditable?: boolean
 }
@@ -157,6 +158,7 @@ export interface ForecastFactor {
 }
 
 export interface ForecastWeatherSignal {
+  maxTemp?: number | null
   available?: boolean
   temp?: number | null
   condition: string
@@ -215,6 +217,7 @@ export interface Forecast {
     lastTransactionDate?: string
     weeksWithSales: number
     staleDays?: number
+    latestSaleDate?: string
   }
 }
 

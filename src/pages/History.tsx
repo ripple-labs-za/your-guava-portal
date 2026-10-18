@@ -1,3 +1,4 @@
+import { weatherTempLabel } from '@/lib/forecastSignals'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import {
@@ -74,7 +75,7 @@ function weatherLabel(row: ForecastHistoryRow) {
   if (!weather) return '-'
   if (!isWeatherAvailable(weather)) return weatherUnavailableReason(weather)
   const rain = weather.precipMm != null && weather.precipMm > 0 ? `, ${weather.precipMm.toFixed(1)}mm` : ''
-  return `${Math.round(weather.temp)}C, ${weather.condition}${rain}`
+  return `${weatherTempLabel(weather)}, ${weather.condition}${rain}`
 }
 
 function factorLabels(row: ForecastHistoryRow) {

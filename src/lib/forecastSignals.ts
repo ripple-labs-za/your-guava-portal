@@ -1,5 +1,10 @@
 import type { ForecastWeatherSignal } from '@/types'
 
+export function weatherTempLabel(weather: ForecastWeatherSignal): string {
+  if (typeof weather.maxTemp === 'number' && Number.isFinite(weather.maxTemp)) return `High ${Math.round(weather.maxTemp)}°C`
+  return `${Math.round(Number(weather.temp))}°C`
+}
+
 export function isWeatherAvailable(
   weather: ForecastWeatherSignal | null | undefined,
 ): weather is ForecastWeatherSignal & { temp: number; condition: string } {

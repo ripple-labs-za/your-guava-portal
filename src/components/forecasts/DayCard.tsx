@@ -1,3 +1,4 @@
+import { weatherTempLabel } from '@/lib/forecastSignals'
 import { Cloud, Zap, Calendar, Banknote, Megaphone, ChevronRight } from 'lucide-react'
 import { ClosedDayNotice } from './ClosedDayNotice'
 import { Badge } from '@/components/ui/badge'
@@ -326,7 +327,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
             >
               <Cloud className="w-2.5 h-2.5" />
               {weatherAvailable ? (
-                `${signals.weather.temp}°C · ${signals.weather.condition}`
+                `${weatherTempLabel(signals.weather)} · ${signals.weather.condition}`
               ) : (
                 <>
                   Weather unavailable
@@ -400,7 +401,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
             >
               <Cloud className="w-2.5 h-2.5" />
               {weatherAvailable ? (
-                `${signals.weather.temp}°C · ${signals.weather.condition}`
+                `${weatherTempLabel(signals.weather)} · ${signals.weather.condition}`
               ) : (
                 <>
                   Weather unavailable

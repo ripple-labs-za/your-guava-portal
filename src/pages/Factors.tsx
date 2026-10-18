@@ -1,3 +1,4 @@
+import { weatherTempLabel } from '@/lib/forecastSignals'
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { ClosedDayNotice } from '@/components/forecasts/ClosedDayNotice'
 import { Link } from 'react-router'
@@ -825,7 +826,7 @@ export default function Factors() {
                               </td>
                               <td className="px-3 py-3 text-muted">
                                 {isWeatherAvailable(forecast.signals.weather)
-                                  ? `${forecast.signals.weather.temp}C - ${forecast.signals.weather.condition}`
+                                  ? `${weatherTempLabel(forecast.signals.weather)} - ${forecast.signals.weather.condition}`
                                   : weatherUnavailableReason(forecast.signals.weather)}
                               </td>
                               <td className="px-3 py-3">

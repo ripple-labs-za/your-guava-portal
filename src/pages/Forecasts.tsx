@@ -280,7 +280,7 @@ export default function Forecasts() {
     `${plural(awaitingForecasts.length, 'is', 'are')} still building history and ` +
     `${plural(awaitingForecasts.length, 'is', 'are')} not counted.`
   const oldestTrainingDate = futureForecasts
-    .map((forecast) => forecast.trainingData?.lastTransactionDate)
+    .map((forecast) => forecast.trainingData?.latestSaleDate ?? forecast.trainingData?.lastTransactionDate)
     .filter((date): date is string => Boolean(date))
     .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
   const worstStaleDays = futureForecasts

@@ -96,6 +96,16 @@ const mockWeek = (forecasts: unknown[], meta?: Record<string, unknown>) => {
 }
 
 describe('Forecasts', () => {
+  it('warns about stale data from the latest sale, even when the weekday window is empty', async () => {
+    const staleDay = (id: string, date: string) => ({
+      ...readyDay(id, date, 12000),
+      trainingData: { transactionCount: 0, weeksWithSales: 0, staleDays: 45, latestSaleDate: '2026-02-01T08:00:00.000Z' },
+    })
+    mockWeek([staleDay('s1', '2026-03-28'), staleDay('s2', '2026-03-29')])
+    render(<Forecasts />)
+    expect(await screen.findByText('Forecast data is getting stale')).toBeInTheDocument()
+    expect(screen.getByText(/ending as early as .*2026/)).toBeInTheDocument()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()

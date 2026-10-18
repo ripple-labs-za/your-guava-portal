@@ -767,6 +767,23 @@ it('shows the server reason when a timezone is refused', async () => {
       })
     }
 
+    it('says a day with sales is treated as open while the hours are unsaved', async () => {
+      mockWithSundaySales()
+      const withSales = mockGet.getMockImplementation()!
+      mockGet.mockImplementation((url: string) =>
+        url.includes('/cafe/me')
+          ? withSales(url).then((res: { data: { cafe: Record<string, unknown> } }) => ({
+              data: { ...res.data, cafe: { ...res.data.cafe, tradingHoursSaved: false } },
+            }))
+          : withSales(url)
+      )
+      renderWithAuth(<Settings />)
+      const hint = await screen.findByText(/200 sales/)
+      expect(hint).toHaveTextContent(/not saved yet, so Planning treats this day as open/i)
+      expect(hint).not.toHaveTextContent(/forecasts zero/i)
+      expect(screen.getByText(/These are suggested hours, not saved yet/i)).toBeInTheDocument()
+    })
+
     it('says so on the day, without changing anything', async () => {
       mockWithSundaySales()
 
