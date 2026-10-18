@@ -21,10 +21,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
-import { parseDateOnly, toLocalDateOnly } from '@/lib/date'
-import type { StaffMember, LeaveBalanceData, LeaveCycleType } from '@/types'
-
-const CYCLE_TYPES: LeaveCycleType[] = ['annual', 'sick', 'family']
+import { toLocalDateOnly } from '@/lib/date'
+import type { StaffMember, LeaveBalanceData } from '@/types'
+import { AdjustLeaveForm, type LeaveAdjustment } from '@/components/staff/AdjustLeaveForm'
+import { LeaveBar } from '@/components/staff/LeaveBar'
+import { formatDate, requestErrorMessage } from '@/components/staff/staffText'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,15 +38,6 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 const ROLE_OPTIONS = ['barista', 'kitchen', 'front', 'manager', 'other'] as const
-
-function formatDate(dateStr: string) {
-  return parseDateOnly(dateStr).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function requestErrorMessage(error: unknown, fallback: string): string {
-  const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message
-  return typeof message === 'string' && message.trim() ? message : fallback
-}
 
 // The backend's staffDto deletes hourlyRate for anyone who is not an owner, but
 // the shared StaffMember type declares it required — so TypeScript never flagged
@@ -446,136 +438,6 @@ function EditStaffForm({ staff, onSave, onCancel }: EditStaffFormProps) {
   )
 }
 
-// ── Leave Balance Bar ────────────────────────────────────────────────────────
-
-function LeaveBar({
-  label,
-  used,
-  total,
-  color,
-  cycleEnd,
-}: {
-  label: string
-  used: number
-  total: number
-  color: string
-  cycleEnd?: string
-}) {
-  // Not clamped: over-taken leave is a payroll liability, and clamping rendered
-  // it identically to a staff member who had used exactly their allowance.
-  const remaining = total - used
-  const pct = total > 0 ? (Math.max(0, remaining) / total) * 100 : 0
-  const overdrawn = remaining < 0
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted">
-          {label}
-          {cycleEnd && <span className="ml-1.5 text-[10px] text-muted">cycle ends {formatDate(cycleEnd)}</span>}
-        </span>
-        <span
-          className={cn(
-            'text-[10px] tabular-nums',
-            overdrawn ? 'text-guava-red-text font-bold' : 'text-text'
-          )}
-        >
-          {remaining}/{total} days
-        </span>
-      </div>
-      <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-      </div>
-    </div>
-  )
-}
-
-// ── Adjust Leave Form ────────────────────────────────────────────────────────
-
-interface AdjustLeaveFormProps {
-  staff: StaffMember
-  balance: LeaveBalanceData
-  onSave: (staffId: string, data: { type: LeaveCycleType; total: number; reason: string }) => Promise<void>
-  onCancel: () => void
-}
-
-// D-014: the owner corrects a cycle's entitlement by hand (pro-rata, a
-// negotiated extra day). The reason is required because it is the audit record.
-function AdjustLeaveForm({ staff, balance, onSave, onCancel }: AdjustLeaveFormProps) {
-  const [type, setType] = useState<LeaveCycleType>('annual')
-  const [total, setTotal] = useState(String(balance.annual.total))
-  const [reason, setReason] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-  const fieldId = (field: string) => `leave-adjust-${staff._id}-${field}`
-
-  function chooseType(next: LeaveCycleType) {
-    setType(next)
-    setTotal(String(balance[next].total))
-  }
-
-  async function handleSave() {
-    const parsed = Number(total)
-    if (!total.trim() || !Number.isFinite(parsed) || parsed < 0 || parsed > 366 || !Number.isInteger(parsed * 2)) {
-      setFormError('Enter a total from 0 to 366 days, in whole or half days.')
-      return
-    }
-    if (!reason.trim()) {
-      setFormError('Say why the total is changing. The reason is kept with the change.')
-      return
-    }
-    setFormError(null)
-    setSubmitting(true)
-    try {
-      await onSave(staff._id, { type, total: parsed, reason: reason.trim() })
-    } catch (error: unknown) {
-      setFormError(requestErrorMessage(error, 'Could not adjust the leave balance. Please try again.'))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="space-y-3 pt-3 border-t border-border">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label htmlFor={fieldId('type')} className="text-xs text-muted">Leave type to adjust</Label>
-          <select
-            id={fieldId('type')}
-            value={type}
-            onChange={(e) => chooseType(e.target.value as LeaveCycleType)}
-            className="flex h-9 w-full rounded-lg border border-[#333333] bg-[#111111] px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-red"
-          >
-            {CYCLE_TYPES.map((t) => (
-              <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor={fieldId('total')} className="text-xs text-muted">New total for this cycle (days)</Label>
-          <Input id={fieldId('total')} type="number" min="0" max="366" step="0.5" value={total} onChange={(e) => setTotal(e.target.value)} />
-        </div>
-      </div>
-      <div>
-        <Label htmlFor={fieldId('reason')} className="text-xs text-muted">Reason for the change</Label>
-        <Input id={fieldId('reason')} value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />
-      </div>
-      {formError && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-900/40 bg-red-900/20 px-3 py-2">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
-          <p className="text-xs text-red-400">{formError}</p>
-        </div>
-      )}
-      <div className="flex items-center gap-2 justify-end">
-        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-        <Button variant="success" size="sm" onClick={handleSave} disabled={submitting}>
-          {submitting ? 'Saving...' : 'Save adjustment'}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 // ── Staff Card ───────────────────────────────────────────────────────────────
 
 function StaffCard({
@@ -591,7 +453,7 @@ function StaffCard({
   canManage: boolean
   onEdit: (id: string, data: Partial<StaffMember>) => Promise<void>
   onDeactivate: (staff: StaffMember) => void
-  onAdjustLeave: (staffId: string, data: { type: LeaveCycleType; total: number; reason: string }) => Promise<void>
+  onAdjustLeave: (staffId: string, data: LeaveAdjustment) => Promise<string | undefined>
 }) {
   const [editing, setEditing] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
@@ -703,8 +565,9 @@ function StaffCard({
                 staff={staff}
                 balance={balance}
                 onSave={async (id, data) => {
-                  await onAdjustLeave(id, data)
-                  setAdjusting(false)
+                  const warning = await onAdjustLeave(id, data)
+                  if (!warning) setAdjusting(false) // a warning keeps the form open to be read
+                  return warning
                 }}
                 onCancel={() => setAdjusting(false)}
               />
@@ -773,9 +636,10 @@ export default function Staff() {
     await loadData()
   }
 
-  async function handleAdjustLeave(staffId: string, data: { type: LeaveCycleType; total: number; reason: string }) {
-    await api.put(`/leave/balances/${staffId}`, data)
+  async function handleAdjustLeave(staffId: string, data: LeaveAdjustment) {
+    const res = await api.put<{ warning?: string }>(`/leave/balances/${staffId}`, data)
     await loadData()
+    return res?.data?.warning
   }
 
   function askToDeactivate(staff: StaffMember) {

@@ -548,6 +548,52 @@ describe('Staff leave cycles', () => {
     await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /adjust leave/i })).not.toBeInTheDocument()
   })
+
+  async function adjustAnnualTo(total: string) {
+    mockStaffList([mockStaffMember], [CYCLE_BALANCE])
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /adjust leave for sarah/i }))
+    await userEvent.clear(screen.getByLabelText(/new total for this cycle/i))
+    await userEvent.type(screen.getByLabelText(/new total for this cycle/i), total)
+    await userEvent.type(screen.getByLabelText(/reason for the change/i), 'Correction')
+    await userEvent.click(screen.getByRole('button', { name: /^save adjustment$/i }))
+  }
+
+  // BE-08-T02 fix-back: a total below the days already taken is allowed, but the
+  // owner is told what the balance will now show.
+  it('keeps the form open and shows the warning when the new total is below the days taken', async () => {
+    const warning =
+      '5 days already taken in this cycle exceed the new total of 3, so the balance shows -2 until leave is cancelled or the total is raised.'
+    mockPut.mockResolvedValue({ data: { warning } })
+    await adjustAnnualTo('3')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(warning)
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }))
+    expect(screen.queryByLabelText(/reason for the change/i)).not.toBeInTheDocument()
+  })
+
+  it('closes the form after an adjustment that needs no warning', async () => {
+    await adjustAnnualTo('12')
+    await waitFor(() => expect(screen.queryByLabelText(/reason for the change/i)).not.toBeInTheDocument())
+  })
+
+  // Guard: the edit form already shows the server's sentence; this keeps the
+  // start-date lock (409 STAFF_START_DATE_LOCKED) readable to the owner.
+  it("shows the server's reason when a start date is locked", async () => {
+    const message =
+      "Sarah's start date stays 2025-06-01: approved leave is already recorded against the leave cycles that run from it."
+    mockPut.mockRejectedValue({ response: { status: 409, data: { code: 'STAFF_START_DATE_LOCKED', message } } })
+    mockStaffList()
+    renderAs('owner', <Staff />)
+    await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /edit sarah/i }))
+    await userEvent.clear(screen.getByLabelText(/edit start date/i))
+    await userEvent.type(screen.getByLabelText(/edit start date/i), '2025-07-01')
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
 })
 
 describe('Staff working days', () => {
