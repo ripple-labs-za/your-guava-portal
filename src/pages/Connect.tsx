@@ -44,9 +44,22 @@ function friendlyUploadError(message: string): string {
   return message
 }
 
+function serverReference(err: unknown): string | null {
+  if (!err || typeof err !== 'object' || !('response' in err)) return null
+  const response = (err as { response?: { status?: number; data?: { requestId?: unknown } } }).response
+  const requestId = response?.data?.requestId
+  return typeof response?.status === 'number' && response.status >= 500 && typeof requestId === 'string' && requestId
+    ? requestId
+    : null
+}
+
 function uploadFailureMessage(err: unknown): string {
   const serverMessage = extractErrorMsg(err, '')
-  if (serverMessage) return friendlyUploadError(serverMessage)
+  if (serverMessage) {
+    const reference = serverReference(err)
+    const friendly = friendlyUploadError(serverMessage)
+    return reference ? `${friendly} Reference: ${reference}` : friendly
+  }
   if (isSessionRejection(err)) return 'Your sign-in has expired. Sign in again, then upload the file.'
   return 'We could not reach Your Guava to finish this upload. Your existing data is unchanged — check your connection and try again.'
 }

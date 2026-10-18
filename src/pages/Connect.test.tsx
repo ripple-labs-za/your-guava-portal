@@ -664,4 +664,59 @@ describe('Connect slow-import recovery', () => {
       vi.useRealTimers()
     }
   })
+it('shows the server reference when an upload fails on the server', async () => {
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/transactions/upload') {
+      return Promise.reject({
+        response: {
+          status: 500,
+          data: {
+            success: false,
+            message: 'We could not save this file on our server, so nothing was imported. Please try again in a few minutes.',
+            requestId: '3f2c1a9e-5b7d-4c1e-9a0b-1234567890ab',
+          },
+        },
+      })
+    }
+    return Promise.reject(new Error('Unknown URL'))
+  })
+
+  render(<Connect />)
+  await waitFor(() => {
+    expect(screen.getByText(/drop your sales csv/i)).toBeInTheDocument()
+  })
+  const file = new File(['Receipt,Date\n1,2026/06/01'], 'data.csv', { type: 'text/csv' })
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement
+  fireEvent.change(input, { target: { files: [file] } })
+
+  await waitFor(() => {
+    expect(screen.getByText(/could not save this file on our server/i)).toBeInTheDocument()
+  })
+  expect(screen.getByText(/Reference: 3f2c1a9e-5b7d-4c1e-9a0b-1234567890ab/)).toBeInTheDocument()
+})
+
+it('does not add a reference to a refusal the owner can fix', async () => {
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/transactions/upload') {
+      return Promise.reject({
+        response: { status: 400, data: { success: false, message: 'Only CSV and XLSX files are allowed', requestId: 'req-400' } },
+      })
+    }
+    return Promise.reject(new Error('Unknown URL'))
+  })
+
+  render(<Connect />)
+  await waitFor(() => {
+    expect(screen.getByText(/drop your sales csv/i)).toBeInTheDocument()
+  })
+  const file = new File(['a,b\n1,2'], 'data.csv', { type: 'text/csv' })
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement
+  fireEvent.change(input, { target: { files: [file] } })
+
+  await waitFor(() => {
+    expect(screen.getByText(/Only CSV and XLSX files are allowed/)).toBeInTheDocument()
+  })
+  expect(screen.queryByText(/Reference:/)).toBeNull()
+})
+
 })
