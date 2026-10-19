@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import { AuthContext } from '@/contexts/AuthContext'
 import userEvent from '@testing-library/user-event'
@@ -844,6 +844,35 @@ describe('Leave failure states (BE-13-T07)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+  })
+
+  // Behaviour-preservation guard: a cancelled month must not replace a newer
+  // successful calendar with the new failure UI.
+  it('ignores a cancelled month rejection after the next month has loaded', async () => {
+    let rejectOld: (reason: unknown) => void = () => {}
+    let oldSignal: AbortSignal | undefined
+    let calendarCalls = 0
+    mockGet.mockImplementation((url: string, options?: { signal?: AbortSignal }) => {
+      if (url.includes('/leave/calendar')) {
+        calendarCalls += 1
+        if (calendarCalls === 1) {
+          oldSignal = options?.signal
+          return new Promise((_resolve, reject) => { rejectOld = reject })
+        }
+        const date = new URLSearchParams(url.split('?')[1]).get('startDate')!
+        return Promise.resolve({ data: { calendar: [{ date, staff: [{ name: 'Next Month Person', type: 'annual' }] }] } })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: { requests: [], staff: [] } })
+    })
+    renderWithAuth(<Leave />)
+    await waitFor(() => expect(calendarCalls).toBe(1))
+    await userEvent.click(screen.getByRole('button', { name: /next month/i }))
+    expect(await screen.findByText('Next Month Person')).toBeInTheDocument()
+    expect(oldSignal?.aborted).toBe(true)
+    await act(async () => { rejectOld(serverError) })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Next Month Person')).toBeInTheDocument()
   })
 
   it('answers a 500 on the list with Could not load and a retry that recovers', async () => {
