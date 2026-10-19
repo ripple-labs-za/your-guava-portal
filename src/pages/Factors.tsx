@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import api from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
+import { formatZAR } from '@/lib/money'
 import { eventDayKey, forecastDateKey, parseDateOnly, toLocalDateOnly } from '@/lib/date'
 import { isWeatherAvailable, signalFix, weatherUnavailableReason } from '@/lib/forecastSignals'
 import type {
@@ -49,7 +50,7 @@ const fmtPct = (value?: number | null) => {
 
 const fmtZar = (value?: number | null) => {
   if (value == null || Number.isNaN(Number(value))) return '-'
-  return `R${Number(value).toLocaleString('en-ZA', { maximumFractionDigits: 0 })}`
+  return formatZAR(Number(value))
 }
 
 /**
@@ -824,7 +825,7 @@ export default function Factors() {
                                 ) : availability === 'closed' ? (
                                   <Badge variant="secondary">Closed</Badge>
                                 ) : (
-                                  `R${Number(forecast.totalPredictedRevenue || 0).toLocaleString('en-ZA')}`
+                                  formatZAR(Number(forecast.totalPredictedRevenue || 0))
                                 )}
                               </td>
                               <td className="px-3 py-3 text-muted">

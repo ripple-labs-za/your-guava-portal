@@ -93,14 +93,14 @@ describe('WeekTrajectoryChart', () => {
 
   describe('fmtAxisRevenue', () => {
     it('keeps a small cafe legible instead of stacking every tick on R 0k', () => {
-      expect(fmtAxisRevenue(600)).toBe('R 600')
+      expect(fmtAxisRevenue(600)).toBe('R600')
       // en-ZA groups with a non-breaking space, so normalise before comparing.
-      expect(fmtAxisRevenue(2400).replace(/\s/g, ' ')).toBe('R 2 400')
+      expect(fmtAxisRevenue(2400).replace(/\s/g, ' ')).toBe('R2 400')
       expect(fmtAxisRevenue(2400)).not.toContain('k')
     })
 
     it('compacts once the numbers are large enough to warrant it', () => {
-      expect(fmtAxisRevenue(20000)).toBe('R 20k')
+      expect(fmtAxisRevenue(20000)).toBe('R20k') // one shape with every other amount (FB-015)
     })
   })
   describe('closed days', () => {

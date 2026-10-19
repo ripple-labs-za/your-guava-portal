@@ -2,6 +2,7 @@ import { TrendingUp, Star, Target } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import type { Forecast } from '@/types'
 import { forecastDateKey, parseDateOnly } from '@/lib/date'
+import { formatZAR } from '@/lib/money'
 import { ACCURACY_BAND_LABEL, ACCURACY_MIN_SAMPLE, accuracyBand, accuracyTextClass } from './accuracyBand'
 
 function getDayName(dateStr: string): string {
@@ -77,7 +78,7 @@ export function WeekHeader({
             <div>
               <p className="text-muted text-xs mb-1">Weekly predicted revenue</p>
               <p className="text-text text-xl font-semibold">
-                R {weekTotal.toLocaleString('en-ZA')}
+                {formatZAR(weekTotal)}
               </p>
             </div>
           </div>
@@ -97,7 +98,7 @@ export function WeekHeader({
                 <p className="text-text text-xl font-semibold">
                   {getDayName(forecastDateKey(peakDay))}{' '}
                   <span className="text-sm text-muted font-normal">
-                    — R {peakDay.totalPredictedRevenue.toLocaleString('en-ZA')}
+                    — {formatZAR(peakDay.totalPredictedRevenue)}
                   </span>
                 </p>
               ) : (

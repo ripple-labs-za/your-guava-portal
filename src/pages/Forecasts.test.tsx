@@ -334,7 +334,7 @@ describe('Forecasts', () => {
 
     // Ready days survive untouched.
     expect(await screen.findByText('Weekly predicted revenue')).toBeInTheDocument()
-    expect(screen.getByText('R 42 100')).toBeInTheDocument()
+    expect(screen.getByText('R42 100')).toBeInTheDocument()
     // Peak day is the best of the days that actually have a forecast.
     expect(screen.getByText('Peak day')).toBeInTheDocument()
     expect(screen.getAllByText(/22.000/).length).toBeGreaterThan(0)
@@ -355,7 +355,7 @@ describe('Forecasts', () => {
     render(<Forecasts />)
 
     expect(await screen.findByText('Weekly predicted revenue')).toBeInTheDocument()
-    expect(screen.getByText('R 42 100')).toBeInTheDocument()
+    expect(screen.getByText('R42 100')).toBeInTheDocument()
     expect(screen.getByTestId('line-chart')).toBeInTheDocument()
     expect(screen.queryByText('Building history')).not.toBeInTheDocument()
     expect(screen.queryByText(/still building history/i)).not.toBeInTheDocument()

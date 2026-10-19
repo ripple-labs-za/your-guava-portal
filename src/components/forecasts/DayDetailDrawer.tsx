@@ -6,6 +6,7 @@ import { forecastBasisSentence } from './forecastBasis'
 import type { Forecast, ForecastItem } from '@/types'
 import { forecastDateKey, parseDateOnly } from '@/lib/date'
 import { isOccasionalSeller, OCCASIONAL_SELLER_MAX_QTY } from '@/lib/forecastItems'
+import { formatZAR } from '@/lib/money'
 
 function getDayLabel(dateStr: string): string {
   const today = new Date()
@@ -265,13 +266,13 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
                   <div>
                     <p className="text-muted text-xs mb-1">Predicted revenue</p>
                     <p className="text-muted text-2xl font-bold">
-                      R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                      {formatZAR(totalPredictedRevenue)}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-muted text-xs mb-1">Actual revenue</p>
                     <p className="text-text text-2xl font-bold">
-                      R {actualRevenue.toLocaleString('en-ZA')}
+                      {formatZAR(actualRevenue)}
                     </p>
                   </div>
                 </div>
@@ -293,7 +294,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
               <>
                 <p className="text-muted text-xs mb-1">Predicted revenue</p>
                 <p className="text-text text-3xl font-bold">
-                  R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                  {formatZAR(totalPredictedRevenue)}
                 </p>
                 <p className="text-muted text-sm mt-2">
                   Awaiting matched sales data for this day.
@@ -303,7 +304,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
               <>
                 <p className="text-muted text-xs mb-1">Predicted revenue</p>
                 <p className="text-text text-3xl font-bold">
-                  R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                  {formatZAR(totalPredictedRevenue)}
                 </p>
                 <p className="text-muted text-sm mt-2">
                   Actual item counts are available, but actual revenue was not stored for this day.
@@ -313,7 +314,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
               <>
                 <p className="text-muted text-xs mb-1">Predicted revenue</p>
                 <p className="text-text text-3xl font-bold">
-                  R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                  {formatZAR(totalPredictedRevenue)}
                 </p>
                 {weekAvg > 0 && (
                   <p className={`text-sm mt-1 ${deltaColor}`}>

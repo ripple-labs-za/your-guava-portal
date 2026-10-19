@@ -7,6 +7,7 @@ import type { Forecast } from '@/types'
 import { forecastDateKey, parseDateOnly } from '@/lib/date'
 import { isOccasionalSeller, OCCASIONAL_SELLER_MAX_QTY } from '@/lib/forecastItems'
 import { accuracyTextClass } from './accuracyBand'
+import { formatZAR } from '@/lib/money'
 import {
   isLoadSheddingAvailable,
   isWeatherAvailable,
@@ -168,10 +169,10 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
             {mode === 'review' && hasActuals && actualRevenue != null ? (
               <>
                 <p className="text-text font-bold text-lg leading-tight">
-                  R {actualRevenue.toLocaleString('en-ZA')}
+                  {formatZAR(actualRevenue)}
                 </p>
                 <p className="text-xs text-muted">
-                  pred R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                  pred {formatZAR(totalPredictedRevenue)}
                 </p>
               </>
             ) : mode === 'review' && !hasActuals ? (
@@ -180,12 +181,12 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                   Awaiting sales data
                 </p>
                 <p className="text-xs text-muted">
-                  pred R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                  pred {formatZAR(totalPredictedRevenue)}
                 </p>
               </>
             ) : (
               <p className="text-text font-bold text-lg leading-tight">
-                R {totalPredictedRevenue.toLocaleString('en-ZA')}
+                {formatZAR(totalPredictedRevenue)}
               </p>
             )}
             {mode === 'plan' && !isNeutral && (

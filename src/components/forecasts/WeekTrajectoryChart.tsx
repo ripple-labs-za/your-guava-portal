@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import type { Forecast } from '@/types'
 import { addLocalDays, forecastDateKey, parseDateOnly, toLocalDateOnly } from '@/lib/date'
+import { formatZAR, formatZARCompact } from '@/lib/money'
 
 const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -25,20 +26,13 @@ function shortDayLabel(dateStr: string): string {
   return `${SHORT_DAYS[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString('en-ZA', { month: 'short' })}`
 }
 
-function fmtRevenue(value: number) {
-  return `R ${value.toLocaleString('en-ZA')}`
-}
-
 /**
  * A small cafe turning R600-R900 a day got an axis whose every tick read
  * "R 0k" or "R 1k". Only compact below-the-thousand once there is a thousand
- * worth of range to compact.
+ * worth of range to compact (from R10 000; the shared money format, FB-015).
  */
-const AXIS_COMPACT_FROM = 10000
-
 export function fmtAxisRevenue(value: number): string {
-  if (Math.abs(value) >= AXIS_COMPACT_FROM) return `R ${(value / 1000).toFixed(0)}k`
-  return `R ${Math.round(value).toLocaleString('en-ZA')}`
+  return formatZARCompact(value)
 }
 
 /** Belt on the date walk below, so a bad payload cannot spin the loop. */
@@ -108,7 +102,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
             style={{ backgroundColor: p.color }}
           />
           <span className="text-muted">{p.name}:</span>
-          <span className="text-text font-semibold">{fmtRevenue(p.value)}</span>
+          <span className="text-text font-semibold">{formatZAR(p.value)}</span>
         </div>
       ))}
     </div>

@@ -36,6 +36,7 @@ import type { Forecast, ForecastItem, TransactionStats } from '@/types'
 import { cn } from '@/lib/utils'
 import { forecastDateKey, parseDateOnly } from '@/lib/date'
 import { isOccasionalSeller } from '@/lib/forecastItems'
+import { formatZAR } from '@/lib/money'
 import { accuracyBadgeVariant } from '@/components/forecasts/accuracyBand'
 import { classifyForecastFactors, formatPlan } from '@/components/forecasts/factorState'
 import { forecastBasisSentence } from '@/components/forecasts/forecastBasis'
@@ -125,10 +126,6 @@ function getItemIcon(name: string) {
   if (n.includes('250g') || n.includes('750g')) return ShoppingBag
   if (categoriseItem(name) === 'coffee') return Coffee
   return UtensilsCrossed
-}
-
-function formatZAR(amount: number) {
-  return `R${amount.toLocaleString('en-ZA', { maximumFractionDigits: 0 })}`
 }
 
 function formatDate(date: Date) {

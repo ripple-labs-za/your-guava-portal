@@ -24,6 +24,16 @@ describe('DayCard', () => {
     expect(handleClick).toHaveBeenCalledOnce()
   })
 
+  // FB-015 (UAT-05-S02): the card printed "R 5 168,78" beside Today's "R5 169" for the same day.
+  it('prints the day revenue in the product money format, whole rands', () => {
+    const forecast = { ...mockForecast, _id: 'f-fmt', date: '2026-03-30', totalPredictedRevenue: 5168.78 }
+
+    render(<DayCard forecast={forecast} weekAvg={5000} mode="plan" onClick={() => {}} />)
+
+    expect(screen.getByText('R5 169')).toBeInTheDocument()
+    expect(screen.queryByText(/168,78/)).not.toBeInTheDocument()
+  })
+
   it('shows weather chip', () => {
     render(
       <DayCard
