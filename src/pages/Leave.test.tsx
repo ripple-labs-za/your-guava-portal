@@ -580,7 +580,7 @@ describe('Leave failure feedback', () => {
 
     renderWithAuth(<Leave />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load leave requests/i)
     expect(screen.queryByText('No leave requests')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
@@ -835,4 +835,71 @@ it('limits the leave reason to 500 characters', async () => {
   await waitFor(() => expect(screen.getByText('Request Leave')).toBeInTheDocument())
   await userEvent.click(screen.getByText('Request Leave'))
   expect(await screen.findByLabelText(/reason/i)).toHaveAttribute('maxlength', '500')
+})
+
+describe('Leave failure states (BE-13-T07)', () => {
+  const serverError = { response: { status: 500, data: { success: false, message: 'Internal Server Error' } } }
+  const isList = (url: string) => url === '/leave' || url.startsWith('/leave?')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('answers a 500 on the list with Could not load and a retry that recovers', async () => {
+    let failing = true
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/leave/calendar')) return Promise.resolve({ data: { calendar: [] } })
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/staff')) return Promise.resolve({ data: { staff: [] } })
+      if (isList(url)) return failing ? Promise.reject(serverError) : Promise.resolve({ data: { requests: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    renderWithAuth(<Leave />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/could not load leave requests/i)
+    expect(alert).toHaveTextContent('(500)')
+    expect(screen.queryByText('No leave requests')).not.toBeInTheDocument()
+
+    failing = false
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+    expect(await screen.findByText('No leave requests')).toBeInTheDocument()
+  })
+
+  it('says the calendar failed instead of drawing an empty month, and retries it', async () => {
+    let calendarCalls = 0
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/leave/calendar')) {
+        calendarCalls += 1
+        return calendarCalls === 1 ? Promise.reject(serverError) : Promise.resolve({ data: { calendar: [] } })
+      }
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/staff')) return Promise.resolve({ data: { staff: [] } })
+      if (isList(url)) return Promise.resolve({ data: { requests: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    renderWithAuth(<Leave />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/could not load the leave calendar/i)
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => expect(calendarCalls).toBe(2))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+
+  it('says staff could not load when the owner opens the request form', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/leave/calendar')) return Promise.resolve({ data: { calendar: [] } })
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/staff')) return Promise.reject(serverError)
+      if (isList(url)) return Promise.resolve({ data: { requests: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    renderWithAuth(<Leave />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /request leave/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load staff/i)
+    expect(screen.queryByRole('button', { name: /submit request/i })).not.toBeInTheDocument()
+  })
 })

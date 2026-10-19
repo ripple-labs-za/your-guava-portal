@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { BrowserRouter } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { AuthContext } from '@/contexts/AuthContext'
@@ -358,7 +358,7 @@ describe('Staff failure feedback', () => {
 
     renderAs('owner', <Staff />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load staff/i)
     expect(screen.queryByText('No staff yet')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
@@ -703,5 +703,49 @@ describe('Staff field limits', () => {
     expect(screen.getByLabelText(/edit name/i)).toHaveAttribute('maxlength', '100')
     expect(screen.getByLabelText(/edit email/i)).toHaveAttribute('maxlength', '254')
     expect(screen.getByLabelText(/edit phone/i)).toHaveAttribute('maxlength', '30')
+  })
+})
+
+describe('Staff failure states (BE-13-T07)', () => {
+  const serverError = { response: { status: 500, data: { success: false, message: 'Internal Server Error' } } }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('answers a 500 with Could not load staff and a retry, never No staff yet', async () => {
+    let failing = true
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/leave/balances')) return Promise.resolve({ data: { balances: [] } })
+      if (url.includes('/staff')) return failing ? Promise.reject(serverError) : Promise.resolve({ data: { staff: [mockStaffMember] } })
+      return Promise.resolve({ data: {} })
+    })
+    renderAs('owner', <Staff />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/could not load staff/i)
+    expect(alert).toHaveTextContent('(500)')
+    expect(screen.queryByText('No staff yet')).not.toBeInTheDocument()
+
+    failing = false
+    await userEvent.click(within(alert).getByRole('button', { name: /try again/i }))
+    expect(await screen.findByText('Sarah')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the staff list but says the leave balances could not be loaded', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/leave/balances')) return Promise.reject(serverError)
+      if (url.includes('/staff')) return Promise.resolve({ data: { staff: [mockStaffMember] } })
+      return Promise.resolve({ data: {} })
+    })
+    renderAs('owner', <Staff />)
+
+    expect(await screen.findByText('Sarah')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load leave balances/i)
+    expect(screen.queryByText('Annual')).not.toBeInTheDocument()
   })
 })

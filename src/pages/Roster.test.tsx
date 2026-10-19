@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
+import { fireEvent, render, screen, waitFor, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import Roster from './Roster'
 
@@ -450,7 +450,8 @@ describe.skip('Roster shift removal', () => {
 // landed, and are kept as the specification for that work rather than deleted.
 // Roster today has no shift-removal control, does not surface the backend's
 // 409 SHIFT_OVERLAP rejection, and renders a load failure as an empty week.
-describe.skip('Roster load failures', () => {
+// Active since BE-13-T07, which implements it (WS-11-T03).
+describe('Roster load failures', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -466,7 +467,7 @@ describe.skip('Roster load failures', () => {
 
     render(<Roster />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load this week's shifts/i)
     expect(screen.queryByText('No shifts')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
   })
@@ -570,5 +571,69 @@ describe('Roster shift rules (BE-08-T04)', () => {
     render(<Roster />)
 
     expect(await screen.findByText('OT')).toBeInTheDocument()
+  })
+})
+
+describe('Roster failure states (BE-13-T07)', () => {
+  const serverError = { response: { status: 500, data: { success: false, message: 'Internal Server Error' } } }
+  const mondayShift = () => ({
+    _id: 'shift1', staffId: { _id: 'staff1', name: 'Sarah' }, cafeId: 'cafe1', date: getCurrentMonday(),
+    startTime: '08:00', endTime: '16:00', hoursWorked: 8, type: 'regular', status: 'scheduled',
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('answers a 500 on the week with Could not load and a retry that recovers', async () => {
+    let failing = true
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/shifts/summary')) return Promise.resolve({ data: { summaries: [] } })
+      if (url.includes('/shifts?')) return failing ? Promise.reject(serverError) : Promise.resolve({ data: { shifts: [mondayShift()] } })
+      if (url.includes('/staff')) return Promise.resolve({ data: { staff: [SARAH] } })
+      return Promise.resolve({ data: {} })
+    })
+    render(<Roster />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/could not load this week's shifts/i)
+    expect(alert).toHaveTextContent('(500)')
+    expect(screen.queryByText('No shifts')).not.toBeInTheDocument()
+
+    failing = false
+    await userEvent.click(within(alert).getByRole('button', { name: /try again/i }))
+    expect(await screen.findByText('08:00 — 16:00')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the week but says staff and hours failed, instead of No staff found', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/shifts/summary')) return Promise.resolve({ data: { summaries: [] } })
+      if (url.includes('/shifts?')) return Promise.resolve({ data: { shifts: [mondayShift()] } })
+      if (url.includes('/staff')) return Promise.reject(serverError)
+      return Promise.resolve({ data: {} })
+    })
+    render(<Roster />)
+
+    expect(await screen.findByText('08:00 — 16:00')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load staff and hours/i)
+    expect(screen.queryByText('No staff found')).not.toBeInTheDocument()
+  })
+
+  it('never shows zero hours when the summary failed', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      if (url.includes('/shifts/summary')) return Promise.reject(serverError)
+      if (url.includes('/shifts?')) return Promise.resolve({ data: { shifts: [mondayShift()] } })
+      if (url.includes('/staff')) return Promise.resolve({ data: { staff: [SARAH] } })
+      return Promise.resolve({ data: {} })
+    })
+    render(<Roster />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load staff and hours/i)
+    expect(screen.queryByText('0.0h')).not.toBeInTheDocument()
   })
 })
