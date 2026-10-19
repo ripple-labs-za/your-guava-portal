@@ -17,6 +17,14 @@ describe('formatZAR', () => {
   it('keeps the sign of a negative amount in front of the R', () => {
     expect(plain(formatZAR(-1250.4))).toBe('-R1 250')
   })
+
+  // FB-015 review: a missing amount is not zero takings, so null must not read "R0", nor NaN "RNaN".
+  it('prints a dash for a missing or non-finite amount', () => {
+    for (const missing of [NaN, undefined, null, Infinity, -Infinity]) {
+      expect(formatZAR(missing)).toBe('—')
+      expect(formatZARCompact(missing)).toBe('—')
+    }
+  })
 })
 
 describe('formatZARCompact', () => {

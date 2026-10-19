@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { formatZARCompact } from '@/lib/money'
 import type {
   RevenueAnalytics,
   RevenueData,
@@ -331,7 +332,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
                   />
                   <YAxis
                     tick={{ fill: '#888888', fontSize: 11 }}
-                    tickFormatter={(v: number) => `R${(v / 1000).toFixed(0)}k`}
+                    tickFormatter={(v: number) => formatZARCompact(v)}
                     stroke="#2A2A2A"
                   />
                   <Tooltip
