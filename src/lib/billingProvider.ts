@@ -18,10 +18,10 @@ export function gatewayCopy(provider: unknown): string {
 const PROVIDER_LABEL = { paystack: 'Paystack', onegate: 'OneGate', mock: 'mock billing' }
 
 /** "Visa ending 4242 · Paystack": the card on file, capitalised, with the provider that took it when the API names one (BE-13-T03). */
-export function cardOnFileLabel(method: { brand: string; last4: string; provider?: string }): string {
+export function cardOnFileLabel(method: { brand?: string; last4?: string; provider?: string }): string {
   const brand = method.brand ? method.brand.charAt(0).toUpperCase() + method.brand.slice(1) : 'Card'
   const provider = typeof method.provider === 'string' && Object.prototype.hasOwnProperty.call(PROVIDER_LABEL, method.provider)
     ? PROVIDER_LABEL[method.provider as keyof typeof PROVIDER_LABEL]
     : null
-  return `${brand} ending ${method.last4}${provider ? ` · ${provider}` : ''}`
+  return `${brand} ${method.last4 ? `ending ${method.last4}` : 'on file'}${provider ? ` · ${provider}` : ''}`
 }

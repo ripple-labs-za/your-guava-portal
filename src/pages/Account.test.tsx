@@ -636,7 +636,10 @@ describe('Account', () => {
     const button = await screen.findByRole('button', { name: /500 credits/i })
     await userEvent.click(button)
     await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
-    expect(await screen.findByText(/could not start card checkout/i)).toBeInTheDocument()
+    // No response, so whether a charge happened is unknown: never "nothing was charged" (BE-13-T03).
+    const notice = await screen.findByText(/could not start card checkout/i)
+    expect(notice).toHaveTextContent(/nothing came back from the server/i)
+    expect(notice).not.toHaveTextContent(/nothing was charged/i)
 
     await userEvent.click(await screen.findByRole('button', { name: /500 credits/i }))
     await userEvent.click(await screen.findByRole('button', { name: /confirm and pay|confirm purchase/i }))
@@ -1088,7 +1091,9 @@ it('labels the billing badge from what access allows, not from the stored status
     billingAccess: { allowed: false, status: 'past_due', reason: 'billing_period_expired', periodEnd: '2026-09-01T00:00:00.000Z', readOnly: false, graceEndsAt: null },
   })
   renderWithAuth(<Account />)
-  expect(await screen.findByText('Payment required')).toBeInTheDocument()
+  const badge = await screen.findByText('Payment required')
+  expect(badge).toHaveClass('text-red-400')
+  expect(badge).not.toHaveClass('text-guava-green')
   expect(screen.queryByText(/^active$/i)).not.toBeInTheDocument()
 })
 
