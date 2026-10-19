@@ -1437,7 +1437,6 @@ export default function Insights() {
             chat._id === chatId
               ? {
                   ...chat,
-                  title: titleFromMessages(chatMessages),
                   messages: chatMessages
                     .filter((message) => message.id !== 'welcome')
                     .map((message) => ({ ...message, pending: false })),
@@ -1452,7 +1451,7 @@ export default function Insights() {
     }
 
     const payload = {
-      title: titleFromMessages(chatMessages),
+      // Titles are chosen on creation or rename; saving another turn must preserve them.
       messages: messagesForApi(chatMessages).slice(-80),
       contextStats: stats || undefined,
     }

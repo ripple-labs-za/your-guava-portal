@@ -231,6 +231,34 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it.each(['chat-custom-title', 'local-custom-title'])(
+    'keeps the chosen title after renaming and continuing %s', async (id) => {
+      let stored = chat({ _id: id, title: 'Original title' })
+      storeActiveChat(stored)
+      mockBaseRequests(id.startsWith('local-') ? [] : [stored])
+      mockPatch.mockImplementation((_url: string, payload: Partial<ReturnType<typeof chat>>) => {
+        stored = { ...stored, ...payload }
+        return Promise.resolve({ data: { chat: stored } })
+      })
+      vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Another useful answer.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+      render(<Insights />)
+      await userEvent.click(await screen.findByRole('button', { name: 'Rename chat "Original title"' }))
+      const dialog = screen.getByRole('dialog', { name: 'Rename chat' })
+      const input = within(dialog).getByRole('textbox')
+      await userEvent.clear(input)
+      await userEvent.type(input, 'My chosen title')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+      await screen.findByRole('button', { name: 'Rename chat "My chosen title"' })
+      await askQuestion('A different follow-up question')
+      await screen.findByText('Another useful answer.')
+      if (!id.startsWith('local-')) {
+        await waitFor(() => expect(mockPatch.mock.calls.some(([, body]) => body.messages)).toBe(true))
+        expect(stored.title).toBe('My chosen title')
+      }
+      expect(screen.getByRole('button', { name: 'Rename chat "My chosen title"' })).toBeInTheDocument()
+    }
+  )
+
   it('sends only the trailing user-anchored window for a long chat', async () => {
     const saved = chat({ messages: Array.from({ length: 14 }, (_, index) => ({
       id: `long-${index}`, role: index % 2 === 0 ? 'user' : 'assistant', content: `Message ${index}`,
