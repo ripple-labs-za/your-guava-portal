@@ -23,6 +23,23 @@ describe('API error copy', () => {
   })
 })
 
+describe('the codes BE-13-T02 round 2 registered', () => {
+  const titleOf = (status: number, code: string) => describeApiError(readApiError(axiosError(status, { code }))).title
+
+  it.each(['MAP_TO_SELF', 'MAP_TO_INACTIVE_TARGET', 'ITEM_NAME_TAKEN', 'UPLOAD_PARSE_TIMEOUT', 'UPLOAD_PARSE_RESOURCE_LIMIT'])('%s has its own copy', (code) => {
+    expect(API_ERROR_COPY[code]).toBeDefined()
+  })
+
+  it('tells a parse that ran out of time from one that ran out of memory, and both from a file over the size limit', () => {
+    const titles = ['UPLOAD_PARSE_TIMEOUT', 'UPLOAD_PARSE_RESOURCE_LIMIT', 'UPLOAD_TOO_LARGE'].map((code) => titleOf(413, code))
+    expect(new Set(titles).size).toBe(3)
+  })
+
+  it('keeps the abort signal internal: no copy for UPLOAD_ABORTED', () => {
+    expect(API_ERROR_COPY.UPLOAD_ABORTED).toBeUndefined()
+  })
+})
+
 describe('the codes the sprint names', () => {
   it('BILLING_REQUIRED sends the owner to billing whether the code is top level or in details', () => {
     for (const data of [{ code: 'BILLING_REQUIRED' }, { details: { code: 'BILLING_REQUIRED', reason: 'trial_expired' } }]) {
