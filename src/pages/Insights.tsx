@@ -585,6 +585,13 @@ const ChatComposer = memo(function ChatComposer({
   )
 })
 
+// The panel's notices are mostly routine (renamed, deleted, could not load); the device-only cap warning is not, so it
+// takes the warning tone the price-mismatch pill already uses (menuItemDisplay.tsx), not the brand green of success.
+const NOTICE_TONE_CLASS = {
+  info: 'border-guava-green/25 bg-guava-green/10 text-guava-green',
+  warning: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+} as const
+
 function ChatHistoryPanel({
   chats,
   activeChatId,
@@ -592,6 +599,7 @@ function ChatHistoryPanel({
   isBusy,
   hasMore,
   notice,
+  noticeTone = 'info',
   onNewChat,
   onLoadMore,
   onSelectChat,
@@ -605,6 +613,7 @@ function ChatHistoryPanel({
   isBusy: boolean
   hasMore: boolean
   notice: string | null
+  noticeTone?: keyof typeof NOTICE_TONE_CLASS
   onNewChat: () => void
   onLoadMore: () => void | Promise<void>
   onSelectChat: (chat: InsightChat) => void | Promise<void>
@@ -690,7 +699,7 @@ function ChatHistoryPanel({
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto space-y-3">
         {notice && (
-          <p className="rounded-lg border border-guava-green/25 bg-guava-green/10 px-3 py-2 text-xs text-guava-green">
+          <p className={`rounded-lg border px-3 py-2 text-xs ${NOTICE_TONE_CLASS[noticeTone]}`}>
             {notice}
           </p>
         )}
@@ -1911,7 +1920,7 @@ export default function Insights() {
                       </div>
                     </div>
                     {saveLimitNotice && (
-                      <p role="status" aria-label="Chat storage notice" className="rounded-lg border border-guava-green/25 bg-guava-green/10 px-3 py-2 text-sm text-guava-green">
+                      <p role="status" aria-label="Chat storage notice" className={`rounded-lg border px-3 py-2 text-sm ${NOTICE_TONE_CLASS.warning}`}>
                         {saveLimitNotice}
                       </p>
                     )}
@@ -1940,6 +1949,7 @@ export default function Insights() {
               isBusy={isChatLoading}
               hasMore={hasMoreChats}
               notice={chatNotice || saveLimitNotice}
+              noticeTone={!chatNotice && saveLimitNotice ? 'warning' : 'info'}
               onNewChat={startNewChat}
               onLoadMore={loadMoreChats}
               onSelectChat={openChat}

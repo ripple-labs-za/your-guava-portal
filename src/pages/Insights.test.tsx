@@ -240,6 +240,8 @@ describe('Insights', () => {
     await screen.findByText('Complete paid answer.')
     const notice = await within(screen.getByRole('log', { name: 'Conversation' })).findByRole('status', { name: 'Chat storage notice' })
     expect(notice).toHaveTextContent(/limit of 100 saved chats.*latest 20 messages.*this device only/i)
+    expect(notice).toHaveClass('text-amber-300') // a warning, not the brand green of success
+    expect(screen.getByText(/limit of 100 saved chats/i, { selector: 'p:not([role])' })).toHaveClass('text-amber-300')
     expect(notice).toHaveTextContent(/delete a saved chat.*start a new chat/i)
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
     expect(chatFallbackCalls()).toHaveLength(0)
