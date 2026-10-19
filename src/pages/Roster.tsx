@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LoadFailed, loadFailureReason } from '@/components/ui/load-failed'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toLocalDateOnly } from '@/lib/date'
@@ -182,10 +183,14 @@ function StaffSidebar({
   staffList,
   summaries,
   loading,
+  failure,
+  onRetry,
 }: {
   staffList: StaffMember[]
   summaries: ShiftSummary[]
   loading: boolean
+  failure: string | null
+  onRetry: () => void
 }) {
   const summaryMap = useMemo(() => {
     const map = new Map<string, ShiftSummary>()
@@ -205,6 +210,8 @@ function StaffSidebar({
               <Skeleton key={i} className="h-10 rounded-lg" />
             ))}
           </div>
+        ) : failure ? (
+          <LoadFailed compact what="staff and hours" reason={failure} reassurance="Shifts are unchanged." onRetry={onRetry} />
         ) : staffList.length > 0 ? (
           <div className="space-y-2">
             {staffList.filter((s) => s.isActive).map((staff) => {
@@ -262,6 +269,8 @@ export default function Roster() {
   const [summaries, setSummaries] = useState<ShiftSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [addingDay, setAddingDay] = useState<string | null>(null)
+  const [shiftsFailure, setShiftsFailure] = useState<string | null>(null)
+  const [sidebarFailure, setSidebarFailure] = useState<string | null>(null)
 
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart])
 
@@ -270,16 +279,21 @@ export default function Roster() {
     const startDate = formatDateISO(weekStart)
     const endDate = formatDateISO(weekEnd)
     try {
-      const [shiftsRes, staffRes, summaryRes] = await Promise.all([
-        api.get<{ shifts: Shift[] }>(`/shifts?startDate=${startDate}&endDate=${endDate}`).catch(() => null),
-        api.get<{ staff: StaffMember[] }>('/staff').catch(() => null),
+      const [shiftsResult, staffResult, summaryResult] = await Promise.allSettled([
+        api.get<{ shifts: Shift[] }>(`/shifts?startDate=${startDate}&endDate=${endDate}`),
+        api.get<{ staff: StaffMember[] }>('/staff'),
         api.get<{ summary: ShiftSummary[]; summaries?: ShiftSummary[] }>(
           `/shifts/summary?startDate=${startDate}&endDate=${endDate}`
-        ).catch(() => null),
+        ),
       ])
-      setShifts(shiftsRes?.data?.shifts ?? [])
-      setStaffList(staffRes?.data?.staff ?? [])
-      setSummaries(summaryRes?.data?.summary ?? summaryRes?.data?.summaries ?? [])
+      setShiftsFailure(shiftsResult.status === 'rejected' ? loadFailureReason(shiftsResult.reason) : null)
+      setShifts(shiftsResult.status === 'fulfilled' ? shiftsResult.value.data?.shifts ?? [] : [])
+      const isRejected = (result: PromiseSettledResult<unknown>): result is PromiseRejectedResult => result.status === 'rejected'
+      const sidebarRejection = [staffResult, summaryResult].find(isRejected)
+      setSidebarFailure(sidebarRejection ? loadFailureReason(sidebarRejection.reason) : null)
+      setStaffList(staffResult.status === 'fulfilled' ? staffResult.value.data?.staff ?? [] : [])
+      const summary = summaryResult.status === 'fulfilled' ? summaryResult.value.data : undefined
+      setSummaries(summary?.summary ?? summary?.summaries ?? [])
     } finally {
       setLoading(false)
     }
@@ -331,6 +345,9 @@ export default function Roster() {
         </Button>
       </div>
 
+      {!loading && shiftsFailure ? (
+        <LoadFailed what="this week's shifts" reason={shiftsFailure} reassurance="No shift has been changed." onRetry={loadData} />
+      ) : (
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
         {/* Weekly Grid */}
         <div className="grid grid-cols-7 gap-2">
@@ -401,9 +418,10 @@ export default function Roster() {
 
         {/* Staff Sidebar */}
         <div>
-          <StaffSidebar staffList={staffList} summaries={summaries} loading={loading} />
+          <StaffSidebar staffList={staffList} summaries={summaries} loading={loading} failure={sidebarFailure} onRetry={loadData} />
         </div>
       </div>
+      )}
     </AppLayout>
   )
 }

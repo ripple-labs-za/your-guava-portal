@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LoadFailed, loadFailureReason } from '@/components/ui/load-failed'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -557,7 +558,8 @@ export default function Staff() {
   const [showAddForm, setShowAddForm] = useState(false)
   // A 500, a 403 or a dropped connection all used to render as the onboarding
   // empty state, telling an owner with twelve staff that they have none.
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [staffFailure, setStaffFailure] = useState<string | null>(null)
+  const [balancesFailure, setBalancesFailure] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
 
@@ -566,13 +568,14 @@ export default function Staff() {
   const loadData = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
     if (!quiet) setLoading(true)
     try {
-      const [staffRes, balancesRes] = await Promise.all([
-        api.get<{ staff: StaffMember[] }>('/staff').catch(() => null),
-        api.get<{ balances: LeaveBalanceData[] }>('/leave/balances').catch(() => null),
+      const [staffResult, balancesResult] = await Promise.allSettled([
+        api.get<{ staff: StaffMember[] }>('/staff'),
+        api.get<{ balances: LeaveBalanceData[] }>('/leave/balances'),
       ])
-      setLoadFailed(staffRes === null)
-      setStaffList(staffRes?.data?.staff ?? [])
-      setBalances(balancesRes?.data?.balances ?? [])
+      setStaffFailure(staffResult.status === 'rejected' ? loadFailureReason(staffResult.reason) : null)
+      setStaffList(staffResult.status === 'fulfilled' ? staffResult.value.data?.staff ?? [] : [])
+      setBalancesFailure(balancesResult.status === 'rejected' ? loadFailureReason(balancesResult.reason) : null)
+      setBalances(balancesResult.status === 'fulfilled' ? balancesResult.value.data?.balances ?? [] : [])
     } finally {
       setLoading(false)
     }
@@ -656,6 +659,12 @@ export default function Staff() {
         <AddStaffForm onSubmit={handleAdd} onCancel={() => setShowAddForm(false)} />
       )}
 
+      {!loading && !staffFailure && balancesFailure && (
+        <div className="mb-4 rounded-lg border border-red-900/40 bg-red-900/20 px-3.5">
+          <LoadFailed compact what="leave balances" reason={balancesFailure} reassurance="Staff are shown without their leave days until they load." onRetry={() => loadData()} />
+        </div>
+      )}
+
       {/* Staff Grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -670,20 +679,8 @@ export default function Staff() {
             </Card>
           ))}
         </div>
-      ) : loadFailed ? (
-        <div role="alert" className="flex flex-col items-center justify-center min-h-75 text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-red-900/40 bg-red-900/20">
-            <AlertCircle className="h-7 w-7 text-red-400" />
-          </div>
-          <h2 className="text-text text-lg font-semibold mb-2">Your staff could not be loaded</h2>
-          <p className="text-muted text-sm mb-6 max-w-xs">
-            The server did not answer. Nobody has been removed — this page just could not fetch
-            your roster.
-          </p>
-          <Button variant="outline" onClick={() => loadData()}>
-            Try again
-          </Button>
-        </div>
+      ) : staffFailure ? (
+        <LoadFailed what="staff" reason={staffFailure} reassurance="Nobody has been removed; this page just could not fetch your team." onRetry={() => loadData()} />
       ) : staffList.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {staffList.map((staff) => (

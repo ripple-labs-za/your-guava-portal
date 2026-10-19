@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { LoadFailed, loadFailureReason } from '@/components/ui/load-failed'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
@@ -327,6 +328,8 @@ function SubmitLeaveForm({ staffList, onSubmit, onCancel }: SubmitLeaveFormProps
 function LeaveCalendar() {
   const [currentMonth, setCurrentMonth] = useState(() => new Date())
   const [calendarDays, setCalendarDays] = useState<LeaveCalendarDay[]>([])
+  const [calendarFailure, setCalendarFailure] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const year = currentMonth.getFullYear()
@@ -345,16 +348,22 @@ function LeaveCalendar() {
         { signal: controller.signal }
       )
       .then(({ data }) => {
-        if (!controller.signal.aborted) setCalendarDays(data.calendar || [])
+        if (!controller.signal.aborted) {
+          setCalendarDays(data.calendar || [])
+          setCalendarFailure(null)
+        }
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setCalendarDays([])
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setCalendarDays([])
+          setCalendarFailure(loadFailureReason(error))
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [year, month])
+  }, [year, month, reloadToken])
 
   const calendarMap = useMemo(() => {
     const map = new Map<string, LeaveCalendarDay>()
@@ -396,6 +405,8 @@ function LeaveCalendar() {
       <CardContent>
         {loading ? (
           <Skeleton className="h-75 rounded-lg" />
+        ) : calendarFailure ? (
+          <LoadFailed compact what="the leave calendar" reason={calendarFailure} reassurance="Booked leave is unchanged." onRetry={() => setReloadToken((token) => token + 1)} />
         ) : (
           <>
             {/* Header */}
@@ -486,7 +497,8 @@ export default function Leave() {
   const [showForm, setShowForm] = useState(false)
   // A rejected request used to be indistinguishable from a genuinely empty one:
   // the page told the owner "No leave requests" when the server was unreachable.
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [listFailure, setListFailure] = useState<string | null>(null)
+  const [staffFailure, setStaffFailure] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
 
@@ -494,13 +506,14 @@ export default function Leave() {
     setLoading(true)
     try {
       const statusParam = filter === 'all' ? '' : `?status=${filter}`
-      const [leaveRes, staffRes] = await Promise.all([
-        api.get<{ requests: LeaveRequest[] }>(`/leave${statusParam}`).catch(() => null),
-        api.get<{ staff: StaffMember[] }>('/staff').catch(() => null),
+      const [leaveResult, staffResult] = await Promise.allSettled([
+        api.get<{ requests: LeaveRequest[] }>(`/leave${statusParam}`),
+        api.get<{ staff: StaffMember[] }>('/staff'),
       ])
-      setLoadFailed(leaveRes === null)
-      setRequests(leaveRes?.data?.requests ?? [])
-      setStaffList(staffRes?.data?.staff ?? [])
+      setListFailure(leaveResult.status === 'rejected' ? loadFailureReason(leaveResult.reason) : null)
+      setRequests(leaveResult.status === 'fulfilled' ? leaveResult.value.data?.requests ?? [] : [])
+      setStaffFailure(staffResult.status === 'rejected' ? loadFailureReason(staffResult.reason) : null)
+      setStaffList(staffResult.status === 'fulfilled' ? staffResult.value.data?.staff ?? [] : [])
     } finally {
       setLoading(false)
     }
@@ -609,9 +622,18 @@ export default function Leave() {
       )}
 
       {/* Submit Leave Form */}
-      {showForm && (
+      {showForm && (staffFailure ? (
+        <Card className="mb-4">
+          <CardContent className="pt-5">
+            <LoadFailed compact what="staff" reason={staffFailure} reassurance="A leave request needs the staff list, so none can be made until it loads." onRetry={loadData} />
+            <div className="flex justify-center">
+              <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
         <SubmitLeaveForm staffList={staffList} onSubmit={handleSubmit} onCancel={() => setShowForm(false)} />
-      )}
+      ))}
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
         {/* Leave Requests */}
@@ -646,18 +668,8 @@ export default function Leave() {
                     <Skeleton key={i} className="h-12 rounded-lg" />
                   ))}
                 </div>
-              ) : loadFailed ? (
-                <div role="alert" className="flex flex-col items-center justify-center py-12 text-center">
-                  <AlertCircle className="mb-3 h-8 w-8 text-guava-red-text" />
-                  <p className="text-text text-sm font-medium">Leave requests could not be loaded</p>
-                  <p className="mt-1 max-w-xs text-xs text-muted">
-                    The server did not answer. Your requests are safe — this page just could not
-                    fetch them.
-                  </p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={loadData}>
-                    Try again
-                  </Button>
-                </div>
+              ) : listFailure ? (
+                <LoadFailed what="leave requests" reason={listFailure} reassurance="Your requests are safe; this page just could not fetch them." onRetry={loadData} />
               ) : requests.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
