@@ -1,5 +1,5 @@
 import { weatherTempLabel } from '@/lib/forecastSignals'
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ClosedDayNotice } from '@/components/forecasts/ClosedDayNotice'
 import { Link } from 'react-router'
 import {
@@ -41,6 +41,24 @@ import type {
 
 type Notice = { type: 'success' | 'error'; message: string } | null
 type FactorTab = 'live' | 'rules' | 'events'
+
+const FACTOR_TABS: { key: FactorTab; label: string; Icon: typeof Percent }[] = [
+  { key: 'live', label: 'Live Factors', Icon: SlidersHorizontal },
+  { key: 'rules', label: 'Rules', Icon: Percent },
+  { key: 'events', label: 'Events', Icon: CalendarDays },
+]
+
+/** The tab an arrow, Home or End key moves to from `current`, wrapping at both ends; null for any other key. */
+function nextFactorTab(current: FactorTab, key: string): FactorTab | null {
+  const i = FACTOR_TABS.findIndex((t) => t.key === current)
+  const last = FACTOR_TABS.length - 1
+  const to = key === 'ArrowRight' ? (i === last ? 0 : i + 1)
+    : key === 'ArrowLeft' ? (i === 0 ? last : i - 1)
+    : key === 'Home' ? 0
+    : key === 'End' ? last
+    : null
+  return to == null ? null : FACTOR_TABS[to].key
+}
 
 const fmtPct = (value?: number | null) => {
   if (value == null || Number.isNaN(Number(value))) return '-'
@@ -239,15 +257,17 @@ function FactorRuleCard({
             {icon}
             <CardTitle>{title}</CardTitle>
           </div>
-          {locked && <Badge variant="secondary">{entitlement.requiredPlan}</Badge>}
+          {locked && <Badge variant="secondary">{formatPlanName(entitlement.requiredPlan)}</Badge>}
         </div>
         {entitlement && (
           <CardDescription>
-            {locked ? `Unlock on ${entitlement.requiredPlan}. ` : ''}{entitlement.summary}
+            {locked ? `Unlock on ${formatPlanName(entitlement.requiredPlan)}. ` : ''}{entitlement.summary}
           </CardDescription>
         )}
       </CardHeader>
-      <CardContent className={cn('space-y-3', locked && 'opacity-70')}>{children}</CardContent>
+      {/* Not dimmed as a whole: the disabled controls dim themselves, and the
+          line explaining a lock has to stay readable (FB-014: 3.12:1). */}
+      <CardContent className="space-y-3">{children}</CardContent>
     </Card>
   )
 }
@@ -316,6 +336,13 @@ export default function Factors() {
   // Factor rules are model configuration: the server refuses a manager's PUT (BE-02-T05), so the page says so up front.
   const { isOwner } = useAuth()
   const [tab, setTab] = useState<FactorTab>('live')
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const next = nextFactorTab(tab, event.key)
+    if (!next) return
+    event.preventDefault()
+    setTab(next)
+    document.getElementById(`factor-tab-${next}`)?.focus()
+  }
   const [settings, setSettings] = useState<ForecastFactorSettings | null>(null)
   const [defaults, setDefaults] = useState<ForecastFactorSettings | null>(null)
   const [entitlements, setEntitlements] = useState<ForecastFactorEntitlements | null>(null)
@@ -333,6 +360,7 @@ export default function Factors() {
   const [saving, setSaving] = useState(false)
   const [eventSaving, setEventSaving] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
+  const [confirmingEventId, setConfirmingEventId] = useState<string | null>(null)
   const [weekRequestFailed, setWeekRequestFailed] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
   const [supportingDataWarning, setSupportingDataWarning] = useState('')
@@ -489,6 +517,9 @@ export default function Factors() {
     entitlements?.factors.find((factor) => factor.key === keyOrSection || factor.section === keyOrSection)
 
   const isUnlocked = (keyOrSection: string) => entitlementFor(keyOrSection)?.unlocked ?? true
+  // A rule field is editable only where the save will be accepted: on a plan that unlocks it, by the owner (the API
+  // refuses a manager's PUT with 403, and an editable field with a disabled Save invited exactly that; FB-018).
+  const canEditRule = (keyOrSection: string) => isOwner && isUnlocked(keyOrSection)
   const lockedCount = entitlements?.lockedKeys.length ?? 0
   const unlockedCount = entitlements?.unlockedKeys.length ?? 0
   const planLabel = entitlements?.plan ? entitlements.plan[0].toUpperCase() + entitlements.plan.slice(1) : 'Starter'
@@ -600,6 +631,7 @@ export default function Factors() {
     try {
       await api.delete(`/events/${id}`)
       setEvents((current) => current.filter((event) => event._id !== id))
+      setConfirmingEventId(null)
       showNotice('success', 'Event removed.')
       await load()
     } catch {
@@ -710,20 +742,25 @@ export default function Factors() {
                 <CardTitle>Forecast Factors</CardTitle>
                 <CardDescription>Weather, holidays, payday, load shedding, local events, and stock buffers.</CardDescription>
               </div>
-              {/* Selection was conveyed by button colour alone. */}
-              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Factor views">
-                <Button role="tab" aria-selected={tab === 'live'} variant={tab === 'live' ? 'success' : 'outline'} size="sm" onClick={() => setTab('live')}>
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  Live Factors
-                </Button>
-                <Button role="tab" aria-selected={tab === 'rules'} variant={tab === 'rules' ? 'success' : 'outline'} size="sm" onClick={() => setTab('rules')}>
-                  <Percent className="h-3.5 w-3.5" />
-                  Rules
-                </Button>
-                <Button role="tab" aria-selected={tab === 'events'} variant={tab === 'events' ? 'success' : 'outline'} size="sm" onClick={() => setTab('events')}>
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  Events
-                </Button>
+              {/* Selection was conveyed by button colour alone. The tabs keyboard
+                  pattern (FB-021): one tab in the Tab order, arrows, Home and End
+                  move between them and select as they go. */}
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Factor views" onKeyDown={onTabKeyDown}>
+                {FACTOR_TABS.map(({ key, label, Icon }) => (
+                  <Button
+                    key={key}
+                    id={`factor-tab-${key}`}
+                    role="tab"
+                    aria-selected={tab === key}
+                    tabIndex={tab === key ? 0 : -1}
+                    variant={tab === key ? 'success' : 'outline'}
+                    size="sm"
+                    onClick={() => setTab(key)}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </Button>
+                ))}
               </div>
             </div>
           </CardHeader>
@@ -869,58 +906,58 @@ export default function Factors() {
               <div className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <FactorRuleCard title="Weather" icon={<CloudSun className="h-4 w-4 text-[#4A9ECC]" />} entitlement={entitlementFor('weather')}>
-                    <ToggleRow label="Weather enabled" checked={settings.weather.enabled} disabled={!isUnlocked('weather')} onChange={(value) => updateBoolean('weather', 'enabled', value)} />
+                    <ToggleRow label="Weather enabled" checked={settings.weather.enabled} disabled={!canEditRule('weather')} onChange={(value) => updateBoolean('weather', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <NumberField id="weather-hot" label="Hot day starts at" value={settings.weather.hotTemp} min={-10} max={45} suffix="C" disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'hotTemp', value)} />
-                      <NumberField id="weather-cold" label="Cold day below" value={settings.weather.coldTemp} min={-10} max={45} suffix="C" disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'coldTemp', value)} />
-                      <NumberField id="weather-rain" label="Rain" value={settings.weather.rainPct} disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'rainPct', value)} />
-                      <NumberField id="weather-hot-cold-drinks" label="Hot day cold drinks" value={settings.weather.hotColdDrinkPct} disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'hotColdDrinkPct', value)} />
-                      <NumberField id="weather-hot-coffee" label="Hot day coffee" value={settings.weather.hotCoffeePct} disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'hotCoffeePct', value)} />
-                      <NumberField id="weather-cold-coffee" label="Cold day coffee" value={settings.weather.coldCoffeePct} disabled={!isUnlocked('weather')} onChange={(value) => updateNumber('weather', 'coldCoffeePct', value)} />
+                      <NumberField id="weather-hot" label="Hot day starts at" value={settings.weather.hotTemp} min={-10} max={45} suffix="C" disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'hotTemp', value)} />
+                      <NumberField id="weather-cold" label="Cold day below" value={settings.weather.coldTemp} min={-10} max={45} suffix="C" disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'coldTemp', value)} />
+                      <NumberField id="weather-rain" label="Rain" value={settings.weather.rainPct} disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'rainPct', value)} />
+                      <NumberField id="weather-hot-cold-drinks" label="Hot day cold drinks" value={settings.weather.hotColdDrinkPct} disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'hotColdDrinkPct', value)} />
+                      <NumberField id="weather-hot-coffee" label="Hot day coffee" value={settings.weather.hotCoffeePct} disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'hotCoffeePct', value)} />
+                      <NumberField id="weather-cold-coffee" label="Cold day coffee" value={settings.weather.coldCoffeePct} disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'coldCoffeePct', value)} />
                     </div>
                   </FactorRuleCard>
 
                   <FactorRuleCard title="Calendar" icon={<CalendarDays className="h-4 w-4 text-guava-yellow" />} entitlement={entitlementFor('holiday')}>
-                    <ToggleRow label="Holiday factors enabled" checked={settings.holiday.enabled} disabled={!isUnlocked('holiday')} onChange={(value) => updateBoolean('holiday', 'enabled', value)} />
-                    <ToggleRow label="Payday factor enabled (Growth)" checked={settings.payday.enabled} disabled={!isUnlocked('payday')} onChange={(value) => updateBoolean('payday', 'enabled', value)} />
+                    <ToggleRow label="Holiday factors enabled" checked={settings.holiday.enabled} disabled={!canEditRule('holiday')} onChange={(value) => updateBoolean('holiday', 'enabled', value)} />
+                    <ToggleRow label="Payday factor enabled (Growth)" checked={settings.payday.enabled} disabled={!canEditRule('payday')} onChange={(value) => updateBoolean('payday', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <NumberField id="holiday-public" label="Public holiday" value={settings.holiday.publicPct} disabled={!isUnlocked('holiday')} onChange={(value) => updateNumber('holiday', 'publicPct', value)} />
-                      <NumberField id="holiday-school" label="School holiday" value={settings.holiday.schoolPct} disabled={!isUnlocked('holiday')} onChange={(value) => updateNumber('holiday', 'schoolPct', value)} />
-                      <NumberField id="holiday-combined" label="Public + school holiday" value={settings.holiday.combinedPct} disabled={!isUnlocked('holiday')} onChange={(value) => updateNumber('holiday', 'combinedPct', value)} />
-                      <NumberField id="payday" label="Payday (Growth)" value={settings.payday.pct} disabled={!isUnlocked('payday')} onChange={(value) => updateNumber('payday', 'pct', value)} />
+                      <NumberField id="holiday-public" label="Public holiday" value={settings.holiday.publicPct} disabled={!canEditRule('holiday')} onChange={(value) => updateNumber('holiday', 'publicPct', value)} />
+                      <NumberField id="holiday-school" label="School holiday" value={settings.holiday.schoolPct} disabled={!canEditRule('holiday')} onChange={(value) => updateNumber('holiday', 'schoolPct', value)} />
+                      <NumberField id="holiday-combined" label="Public + school holiday" value={settings.holiday.combinedPct} disabled={!canEditRule('holiday')} onChange={(value) => updateNumber('holiday', 'combinedPct', value)} />
+                      <NumberField id="payday" label="Payday (Growth)" value={settings.payday.pct} disabled={!canEditRule('payday')} onChange={(value) => updateNumber('payday', 'pct', value)} />
                     </div>
                   </FactorRuleCard>
 
                   <FactorRuleCard title="Load Shedding" icon={<Zap className="h-4 w-4 text-amber-300" />} entitlement={entitlementFor('loadShedding')}>
-                    <ToggleRow label="Load shedding enabled" checked={settings.loadShedding.enabled} disabled={!isUnlocked('loadShedding')} onChange={(value) => updateBoolean('loadShedding', 'enabled', value)} />
+                    <ToggleRow label="Load shedding enabled" checked={settings.loadShedding.enabled} disabled={!canEditRule('loadShedding')} onChange={(value) => updateBoolean('loadShedding', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <NumberField id="load-1-2" label="Stage 1-2" value={settings.loadShedding.stage1To2Pct} disabled={!isUnlocked('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage1To2Pct', value)} />
-                      <NumberField id="load-3-4" label="Stage 3-4" value={settings.loadShedding.stage3To4Pct} disabled={!isUnlocked('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage3To4Pct', value)} />
-                      <NumberField id="load-5-plus" label="Stage 5+" value={settings.loadShedding.stage5PlusPct} disabled={!isUnlocked('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage5PlusPct', value)} />
+                      <NumberField id="load-1-2" label="Stage 1-2" value={settings.loadShedding.stage1To2Pct} disabled={!canEditRule('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage1To2Pct', value)} />
+                      <NumberField id="load-3-4" label="Stage 3-4" value={settings.loadShedding.stage3To4Pct} disabled={!canEditRule('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage3To4Pct', value)} />
+                      <NumberField id="load-5-plus" label="Stage 5+" value={settings.loadShedding.stage5PlusPct} disabled={!canEditRule('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage5PlusPct', value)} />
                     </div>
                   </FactorRuleCard>
 
                   <FactorRuleCard title="Events" icon={<Percent className="h-4 w-4 text-[#9B59B6]" />} entitlement={entitlementFor('events')}>
-                    <ToggleRow label="Event factors enabled" checked={settings.events.enabled} disabled={!isUnlocked('events')} onChange={(value) => updateBoolean('events', 'enabled', value)} />
+                    <ToggleRow label="Event factors enabled" checked={settings.events.enabled} disabled={!canEditRule('events')} onChange={(value) => updateBoolean('events', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <NumberField id="event-low" label="Low event" value={settings.events.lowPct} disabled={!isUnlocked('events')} onChange={(value) => updateNumber('events', 'lowPct', value)} />
-                      <NumberField id="event-medium" label="Medium event" value={settings.events.mediumPct} disabled={!isUnlocked('events')} onChange={(value) => updateNumber('events', 'mediumPct', value)} />
-                      <NumberField id="event-high" label="High event" value={settings.events.highPct} disabled={!isUnlocked('events')} onChange={(value) => updateNumber('events', 'highPct', value)} />
+                      <NumberField id="event-low" label="Low event" value={settings.events.lowPct} disabled={!canEditRule('events')} onChange={(value) => updateNumber('events', 'lowPct', value)} />
+                      <NumberField id="event-medium" label="Medium event" value={settings.events.mediumPct} disabled={!canEditRule('events')} onChange={(value) => updateNumber('events', 'mediumPct', value)} />
+                      <NumberField id="event-high" label="High event" value={settings.events.highPct} disabled={!canEditRule('events')} onChange={(value) => updateNumber('events', 'highPct', value)} />
                     </div>
                   </FactorRuleCard>
 
                   <FactorRuleCard title="Stock Buffer" icon={<Percent className="h-4 w-4 text-guava-green" />} entitlement={entitlementFor('stock')}>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <NumberField id="stock-safety" label="Safety margin" value={settings.stock.safetyMarginPct} min={0} max={100} disabled={!isUnlocked('stock')} onChange={(value) => updateNumber('stock', 'safetyMarginPct', value)} />
-                      <NumberField id="stock-bias" label="Stock bias cap" value={settings.stock.maxBiasPct} min={0} max={100} disabled={!isUnlocked('stock')} onChange={(value) => updateNumber('stock', 'maxBiasPct', value)} />
+                      <NumberField id="stock-safety" label="Safety margin" value={settings.stock.safetyMarginPct} min={0} max={100} disabled={!canEditRule('stock')} onChange={(value) => updateNumber('stock', 'safetyMarginPct', value)} />
+                      <NumberField id="stock-bias" label="Stock bias cap" value={settings.stock.maxBiasPct} min={0} max={100} disabled={!canEditRule('stock')} onChange={(value) => updateNumber('stock', 'maxBiasPct', value)} />
                     </div>
                   </FactorRuleCard>
 
                   <FactorRuleCard title="History & Learning" icon={<SlidersHorizontal className="h-4 w-4 text-[#4A9ECC]" />} entitlement={entitlementFor('learning')}>
-                    <ToggleRow label="Learning correction enabled" checked={settings.learning.enabled} disabled={!isUnlocked('learning')} onChange={(value) => updateBoolean('learning', 'enabled', value)} />
+                    <ToggleRow label="Learning correction enabled" checked={settings.learning.enabled} disabled={!canEditRule('learning')} onChange={(value) => updateBoolean('learning', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <NumberField id="history-weeks" label="History lookback" value={settings.history.maxWeeks} min={1} max={16} suffix="wks" disabled={!isUnlocked('history')} onChange={(value) => updateNumber('history', 'maxWeeks', value)} />
+                        <NumberField id="history-weeks" label="History lookback" value={settings.history.maxWeeks} min={1} max={16} suffix="wks" disabled={!canEditRule('history')} onChange={(value) => updateNumber('history', 'maxWeeks', value)} />
                         {/* The card's lock badge describes the *learning*
                             entitlement; this field is gated by `history`,
                             which can require a different plan. Without this the
@@ -1055,18 +1092,44 @@ export default function Factors() {
                                 </div>
                                 <p className="mt-1 text-xs text-muted">{fmtDate(eventDayKey(event))}</p>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                // Was an icon-only button with no accessible
-                                // name at all: "button", repeated once per
-                                // event, for an irreversible delete.
-                                aria-label={`Remove event ${event.name}`}
-                                disabled={deletingEventId != null}
-                                onClick={() => deleteEvent(event._id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              {/* One click used to delete the event outright, with no
+                                  confirm and no undo (FB-019): ask in place, naming it. */}
+                              {confirmingEventId === event._id ? (
+                                <div className="flex shrink-0 items-center gap-2" role="group" aria-label={`Remove ${event.name}?`}>
+                                  <span className="text-xs text-text">Remove {event.name}?</span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    autoFocus
+                                    aria-label={`Keep ${event.name}`}
+                                    onClick={() => setConfirmingEventId(null)}
+                                  >
+                                    Keep
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    aria-label={`Confirm removing ${event.name}`}
+                                    disabled={deletingEventId != null}
+                                    onClick={() => deleteEvent(event._id)}
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  // Was an icon-only button with no accessible
+                                  // name at all: "button", repeated once per
+                                  // event, for an irreversible delete.
+                                  aria-label={`Remove event ${event.name}`}
+                                  disabled={deletingEventId != null}
+                                  onClick={() => setConfirmingEventId(event._id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
                           )
                         })}

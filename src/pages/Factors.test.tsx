@@ -382,6 +382,50 @@ describe('Factors', () => {
     expect(mockPut).not.toHaveBeenCalled()
   })
 
+  // FB-018 (UAT-05 review, S08 / F-9): Save was disabled for a manager but every rule field stayed
+  // editable, so a manager could change values the server then refused with 403.
+  it('does not let a manager edit rule fields the server will refuse to save', async () => {
+    renderWithAuth(<Factors />, { role: 'manager' })
+
+    await userEvent.click(await screen.findByText('Rules'))
+    expect(screen.getByLabelText('Safety margin')).toBeDisabled()
+    expect(screen.getByLabelText('Rain')).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Weather enabled' })).toBeDisabled()
+  })
+
+  it('leaves the rule fields an owner may change editable', async () => {
+    renderWithAuth(<Factors />)
+
+    await userEvent.click(await screen.findByText('Rules'))
+    expect(screen.getByLabelText('Safety margin')).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Weather enabled' })).toBeEnabled()
+  })
+
+  // FB-013 (UAT-05-S07): the lock line printed the raw plan id ("Unlock on growth.")
+  // where the lookback line on the same tab already said "Unlock on Pro".
+  it('names the plan that unlocks a locked rule card the way the product names it', async () => {
+    renderWithAuth(<Factors />)
+
+    await userEvent.click(await screen.findByText('Rules'))
+    expect(screen.getByText(/^Unlock on Pro\. /)).toBeInTheDocument()
+    expect(screen.queryByText(/Unlock on pro\./)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Pro', { exact: true }).length).toBeGreaterThan(0)
+    expect(screen.queryByText('pro', { exact: true })).not.toBeInTheDocument()
+  })
+
+  // FB-014 (UAT-05-S07, S08, S11): a locked card dimmed its whole content, so the
+  // line explaining the lock fell to 3.12:1. Only the disabled controls dim.
+  it('keeps the explanation of a locked field at full strength', async () => {
+    renderWithAuth(<Factors />)
+
+    await userEvent.click(await screen.findByText('Rules'))
+    const help = screen.getByText(/Unlock on Pro to change the\s+history lookback\./)
+    expect(help.closest('[class*="opacity-"]')).toBeNull()
+    const suffix = screen.getByText('wks')
+    expect(suffix.closest('[class*="opacity-"]')).toBeNull()
+    expect(screen.getByLabelText('History lookback')).toBeDisabled()
+  })
+
   it('saves factor rules', async () => {
     renderWithAuth(<Factors />)
 
@@ -558,6 +602,50 @@ describe('Factors', () => {
     expect(
       screen.getByRole('button', { name: 'Remove event Saturday Market' })
     ).toBeInTheDocument()
+  })
+
+  // FB-021 (UAT-05 review, S11): the tabs followed none of the tabs keyboard pattern.
+  it('moves between the Factor tabs with the arrow keys and keeps one tab in the Tab order', async () => {
+    renderWithAuth(<Factors />)
+
+    const live = await screen.findByRole('tab', { name: /live factors/i })
+    const rules = screen.getByRole('tab', { name: 'Rules' })
+    const events = screen.getByRole('tab', { name: 'Events' })
+    expect(live).toHaveAttribute('tabindex', '0')
+    expect(rules).toHaveAttribute('tabindex', '-1')
+
+    live.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(rules).toHaveFocus()
+    expect(rules).toHaveAttribute('aria-selected', 'true')
+    await userEvent.keyboard('{End}')
+    expect(events).toHaveFocus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(live).toHaveFocus() // wraps
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(events).toHaveFocus()
+    await userEvent.keyboard('{Home}')
+    expect(live).toHaveFocus()
+    expect(live).toHaveAttribute('aria-selected', 'true')
+  })
+
+  // FB-019 (UAT-05 review, UX-5 / F-5): one click deleted the event, with no confirm and no undo.
+  it('asks before removing an event, naming it, and does nothing until confirmed', async () => {
+    mockDelete.mockResolvedValue({ data: { success: true } })
+    renderWithAuth(<Factors />)
+
+    await userEvent.click(await screen.findByText('Events'))
+    await userEvent.click(screen.getByRole('button', { name: 'Remove event Saturday Market' }))
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(screen.getByText(/Remove Saturday Market\?/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep Saturday Market' }))
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Remove Saturday Market\?/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove event Saturday Market' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm removing Saturday Market' }))
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('/events/event1'))
   })
 
   it('does not state a learning verdict when the forecast request failed', async () => {
