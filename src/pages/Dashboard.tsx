@@ -829,7 +829,7 @@ export default function Dashboard() {
             statsLoadFailed
               ? 'The portal could not verify your transaction history or load a forecast. Try again before treating this as an empty account.'
               : forecastLoadFailed
-              ? 'Your sales data is available, but the forecast service did not return a usable forecast. Try again, and check the backend logs if it keeps happening.'
+              ? 'Your sales data is safe, but the forecast could not be loaded just now. Try again in a moment; if it keeps happening, tell us on the Improvements page.'
               : 'Your sales data is available, but there is not enough matched history yet to build today\'s item forecast.'
           }
           action={statsLoadFailed || forecastLoadFailed ? <Button onClick={reload}>Try again</Button> : undefined}

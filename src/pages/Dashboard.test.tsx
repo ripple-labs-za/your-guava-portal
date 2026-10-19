@@ -275,6 +275,9 @@ describe('Dashboard', () => {
     })
 
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    // FB-020 (UAT-05 review, UX-6): the owner was told to "check the backend logs".
+    expect(screen.queryByText(/backend logs/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Your sales data is safe/)).toBeInTheDocument()
   })
 
   it('shows a clear no-predictions state when a forecast has no items', async () => {
