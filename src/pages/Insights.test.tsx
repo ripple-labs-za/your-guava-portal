@@ -231,6 +231,24 @@ function answerBubble() {
 }
 
 describe('Insights', () => {
+  it('explains the saved-chat cap and device-only answer without retrying the paid question, including after reload', async () => {
+    mockBaseRequests()
+    mockPost.mockRejectedValue({ response: { status: 409, data: { details: { code: 'INSIGHT_CHAT_LIMIT_REACHED', limit: 100 } } } })
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Complete paid answer.') + 'event: done\ndata: {"contextStats":null}\n\n'))
+    const view = render(<Insights />)
+    await askQuestion('Can I still ask at the chat cap?')
+    await screen.findByText('Complete paid answer.')
+    const notice = await screen.findByText(/limit of 100 saved chats.*this device only/i)
+    expect(notice).toHaveTextContent(/delete a saved chat.*start a new chat/i)
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+    expect(chatFallbackCalls()).toHaveLength(0)
+    await waitFor(() => expect(localStorage.getItem(CHAT_LIST_STORAGE_KEY)).toContain('Complete paid answer.'))
+    view.unmount()
+    render(<Insights />)
+    expect(await screen.findByText(/limit of 100 saved chats.*this device only/i)).toBeVisible()
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+  })
+
   it.each(['chat-custom-title', 'local-custom-title'])(
     'keeps the chosen title after renaming and continuing %s', async (id) => {
       let stored = chat({ _id: id, title: 'Original title' })

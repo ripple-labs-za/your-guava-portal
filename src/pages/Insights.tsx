@@ -94,6 +94,7 @@ interface InsightChat {
   archived: boolean
   updatedAt: string
   createdAt: string
+  saveLimitReached?: boolean
 }
 
 interface AssistantTypingState {
@@ -813,6 +814,10 @@ export default function Insights() {
   const [renameTitle, setRenameTitle] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<InsightChat | null>(null)
   const [chatNotice, setChatNotice] = useState<string | null>(null)
+  const cappedLocalChat = chats.some((chat) => chat._id === activeChatId && chat.saveLimitReached === true)
+  const saveLimitNotice = cappedLocalChat
+    ? 'You have reached the limit of 100 saved chats for this location. This conversation is kept on this device only. Delete a saved chat, then start a new chat to save to your account.'
+    : null
   const [scrollRevision, setScrollRevision] = useState(0)
   const [chatStatus, setChatStatus] = useState('')
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
@@ -1488,6 +1493,10 @@ export default function Insights() {
       const notice = savedChatFailureNotice(error)
       if (notice) { setChatNotice(notice); throw error }
       const localChat = createLocalChat(chatMessages, contextStats)
+      const response = (error as { response?: { status?: number; data?: { details?: { code?: string } } } })?.response
+      if (response?.status === 409 && response.data?.details?.code === 'INSIGHT_CHAT_LIMIT_REACHED') {
+        localChat.saveLimitReached = true
+      }
       setChats((current) => sortChats([localChat, ...current.filter((chat) => chat._id !== localChat._id)]))
       setActiveChat(localChat._id)
       return localChat._id
@@ -1925,7 +1934,7 @@ export default function Insights() {
               isLoading={isChatsLoading}
               isBusy={isChatLoading}
               hasMore={hasMoreChats}
-              notice={chatNotice}
+              notice={chatNotice || saveLimitNotice}
               onNewChat={startNewChat}
               onLoadMore={loadMoreChats}
               onSelectChat={openChat}
