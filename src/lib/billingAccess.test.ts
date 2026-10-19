@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { billingPageState, billingReadOnlyMessage, billingToolbarCopy } from './billingAccess'
+import { billingBadge, billingPageState, billingReadOnlyMessage, billingToolbarCopy } from './billingAccess'
 import type { BillingAccess, Organization } from '@/types'
 
 const org = (fields: Partial<Organization>) => ({ id: 'org', name: 'Cafe', plan: 'growth', ...fields }) as Organization
@@ -32,5 +32,37 @@ describe('billing access wording and renewal window', () => {
   })
   it.each([null, {}, { response: { status: 402, data: { details: { code: 'INSUFFICIENT_CREDITS' } } } }])('does not call other refusals grace', (error) => {
     expect(billingReadOnlyMessage(error)).toBeNull()
+  })
+})
+
+// BE-13-T03: the Billing badge says what the organisation can do today (billingAccess), not what it last bought.
+describe('billingBadge', () => {
+  const access = (status: BillingAccess['status']) => ({ allowed: status === 'active' || status === 'trialing', status, readOnly: status === 'grace', reason: null, periodEnd: null, graceEndsAt: null }) as BillingAccess
+
+  it.each([
+    ['trialing', 'Free trial', 'secondary'],
+    ['active', 'Active', 'success'],
+    ['grace', 'Read-only', 'warning'],
+    ['past_due', 'Payment required', 'destructive'],
+    ['canceled', 'Cancelled', 'destructive'],
+    ['missing', 'Unknown', 'secondary'],
+  ] as const)('access %s reads %s (%s)', (status, label, tone) => {
+    // The stored status says active throughout: access wins.
+    expect(billingBadge(org({ billingStatus: 'active', billingAccess: access(status) }))).toEqual({ label, tone })
+  })
+
+  it.each([
+    ['trialing', 'Free trial', 'secondary'],
+    ['active', 'Active', 'success'],
+    ['past_due', 'Payment required', 'destructive'],
+    ['canceled', 'Cancelled', 'destructive'],
+  ] as const)('an older server without billingAccess falls back to the stored %s', (billingStatus, label, tone) => {
+    expect(billingBadge(org({ billingStatus }))).toEqual({ label, tone })
+  })
+
+  it('never shows a green badge for an organisation that cannot use Guava today', () => {
+    for (const status of ['grace', 'past_due', 'canceled', 'missing'] as const) {
+      expect(billingBadge(org({ billingStatus: 'active', billingAccess: access(status) })).tone).not.toBe('success')
+    }
   })
 })

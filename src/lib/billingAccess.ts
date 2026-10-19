@@ -16,9 +16,27 @@ export function billingPageState(organization: Organization | undefined, isOwner
     ? `Your ${access.reason === 'trial_expired' ? 'free trial' : 'plan'} ended on ${formatBillingDate(access.periodEnd)}. Guava is read-only until ${formatBillingDate(access.graceEndsAt)}.`
     : null
   const graceDetail = `You can still view forecasts, analytics and history. Imports, edits and AI tools are paused. ${isOwner ? 'Choose a plan below to restore everything.' : 'Ask the account owner to renew.'}`
-  const statusLabel = access?.status === 'grace' ? 'Read-only'
-    : ({ trialing: 'Free trial', active: 'Active', past_due: 'Payment required', canceled: 'Cancelled' }[organization?.billingStatus || 'trialing'])
+  const statusLabel = billingBadge(organization).label
   return { access, renewable, trialing, periodSummary, graceHeading, graceDetail, statusLabel }
+}
+
+export type BillingBadgeTone = 'success' | 'warning' | 'destructive' | 'secondary'
+
+const BILLING_BADGES: Record<string, { label: string; tone: BillingBadgeTone }> = {
+  trialing: { label: 'Free trial', tone: 'secondary' },
+  active: { label: 'Active', tone: 'success' },
+  grace: { label: 'Read-only', tone: 'warning' },
+  past_due: { label: 'Payment required', tone: 'destructive' },
+  canceled: { label: 'Cancelled', tone: 'destructive' },
+}
+
+/**
+ * What the organisation can do today (billingAccess, BE-07-T03), not what it last bought: the stored billingStatus stays
+ * 'active' after a period lapses until a request flips it (BE-13-T03). An older server without billingAccess falls back to it.
+ */
+export function billingBadge(organization: Organization | undefined): { label: string; tone: BillingBadgeTone } {
+  const status = organization?.billingAccess?.status ?? organization?.billingStatus ?? 'trialing'
+  return Object.prototype.hasOwnProperty.call(BILLING_BADGES, status) ? BILLING_BADGES[status] : { label: 'Unknown', tone: 'secondary' }
 }
 
 export function billingToolbarCopy(until: string, isOwner: boolean) {

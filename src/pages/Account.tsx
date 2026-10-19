@@ -23,10 +23,11 @@ import { publishGuavaCredits } from '@/lib/creditEvents'
 import { publishBillingAccess } from '@/lib/billingEvents'
 import { AccountNotice } from '@/components/account/AccountNotice'
 import { NOT_CONFIRMED_MESSAGE, paymentOutcome, withoutPaymentParams, type NoticeOptions, type NoticeState, type NoticeTone, type PaymentIntent } from '@/lib/paymentOutcome'
-import { billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
+import { billingBadge, billingPageState, billingReadOnlyMessage } from '@/lib/billingAccess'
+import { describeApiError, readApiError } from '@/lib/apiErrors'
 import { formatPlanChangeDate as formatDate, planChangeSentence, planChangeNotice, pendingChangeSentence, planNameFor, previewFor } from '@/lib/planChange'
 import { secureRandomId } from '@/lib/idempotency'
-import { gatewayCopy } from '@/lib/billingProvider'
+import { cardOnFileLabel, gatewayCopy } from '@/lib/billingProvider'
 import type { Account, BillingPlan, BillingCycle } from '@/types'
 
 type SaveState = 'idle' | 'saving' | 'success' | 'error'
@@ -545,6 +546,24 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
   const displayOrgName = account?.organization.name || ''
   const displayBillingEmail = account?.organization.billingEmail || displayEmail
 
+  // A refused checkout in the owner's words (BE-13-T02 copy): a coded refusal says what happened and how to fix it, never
+  // the operator's configuration sentence; grace keeps its own read-only message (BE-07-T03).
+  const showCheckoutRefusal = (err: unknown) => {
+    const readOnly = billingReadOnlyMessage(err)
+    if (readOnly) {
+      showNotice('error', readOnly)
+      return
+    }
+    const info = readApiError(err)
+    const copy = describeApiError(info, { title: 'Could not start card checkout', body: 'Nothing was charged. Try again in a moment.' })
+    // No response means the charge cannot be known, so the offline body (never "nothing was charged") under the checkout title.
+    const title = info.offline ? 'Could not start card checkout' : copy.title
+    showNotice('error', `${title}. ${copy.body}`, {
+      persist: true,
+      ...(copy.action.kind === 'link' ? { action: { label: copy.action.label, to: copy.action.to } } : {}),
+    })
+  }
+
   const handlePlanCheckout = async (plan: BillingPlan) => {
     setCheckoutPlan(plan.id)
     const intent = `${plan.id}:${billingCycle}`
@@ -609,7 +628,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
         showNotice('error', err.response.data.message, { persist: true, action: { label: 'Open Team', to: '/team' } })
         return
       }
-      showNotice('error', billingReadOnlyMessage(err) || err?.response?.data?.message || 'Could not start card checkout.')
+      showCheckoutRefusal(err)
     } finally {
       setCheckoutPlan(null)
     }
@@ -662,7 +681,7 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       if (err?.response && err.response.status < 500 && err.response.status !== 408 && err.response.status !== 429) {
         creditCheckoutRef.current = null
       }
-      showNotice('error', billingReadOnlyMessage(err) || err?.response?.data?.message || 'Could not start card checkout.')
+      showCheckoutRefusal(err)
     } finally {
       setIsBuyingCredits(false)
     }
@@ -925,12 +944,10 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
               </div>
               {account && (
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="success">{statusLabel}</Badge>
+                  <Badge variant={billingBadge(account.organization).tone}>{statusLabel}</Badge>
                   <Badge variant="secondary">{account.organization.plan} plan</Badge>
                   {isOwner && account.organization.paymentMethod && (
-                    <Badge variant="outline">
-                      {account.organization.paymentMethod.brand} ending {account.organization.paymentMethod.last4}
-                    </Badge>
+                    <Badge variant="outline">{cardOnFileLabel(account.organization.paymentMethod)}</Badge>
                   )}
                 </div>
               )}

@@ -1071,4 +1071,50 @@ it.each([
   expect(calls[1][2].headers['Idempotency-Key']).not.toBe(calls[0][2].headers['Idempotency-Key'])
 })
 
+// BE-13-T03: what the account can do today, the card and who took it, and a refusal the owner can act on.
+function serveBillingOrg(organization: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  const base = accountPayload()
+  mockGet.mockImplementation((url: string) => {
+    if (url.includes('/account')) {
+      return Promise.resolve({ data: { success: true, account: { ...base, ...extra, organization: { ...base.organization, ...organization } } } })
+    }
+    return Promise.resolve({ data: {} })
+  })
+}
+
+it('labels the billing badge from what access allows, not from the stored status', async () => {
+  serveBillingOrg({
+    billingStatus: 'active',
+    billingAccess: { allowed: false, status: 'past_due', reason: 'billing_period_expired', periodEnd: '2026-09-01T00:00:00.000Z', readOnly: false, graceEndsAt: null },
+  })
+  renderWithAuth(<Account />)
+  expect(await screen.findByText('Payment required')).toBeInTheDocument()
+  expect(screen.queryByText(/^active$/i)).not.toBeInTheDocument()
+})
+
+it('shows the card on file with its brand, last four digits and the provider that took it', async () => {
+  serveBillingOrg({ paymentMethod: { brand: 'visa', last4: '4242', expiresAt: '12/30', provider: 'paystack' } })
+  renderWithAuth(<Account />)
+  expect(await screen.findByText('Visa ending 4242 · Paystack')).toBeInTheDocument()
+})
+
+it('tells the owner nothing was charged, not the operator how to configure the server', async () => {
+  mockPost.mockRejectedValueOnce({
+    response: {
+      status: 503,
+      data: {
+        success: false,
+        code: 'BILLING_PROVIDER_NOT_CONFIGURED',
+        message: 'Card payments are not configured. Set PAYMENT_PROVIDER and its credentials before accepting paid plan or credit purchases.',
+      },
+    },
+  })
+  serveBillingOrg({})
+  renderWithAuth(<Account />)
+  await userEvent.click(await screen.findByRole('button', { name: /move to starter/i }))
+  await userEvent.click(await screen.findByRole('button', { name: /confirm and pay/i }))
+  expect(await screen.findByText(/nothing was charged/i)).toBeInTheDocument()
+  expect(screen.queryByText(/PAYMENT_PROVIDER/)).not.toBeInTheDocument()
+})
+
 })
