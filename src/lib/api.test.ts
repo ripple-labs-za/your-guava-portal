@@ -181,6 +181,42 @@ describe('api interceptors', () => {
     expect(getAccessToken()).toBeNull()
   })
 
+  // UAT-01-S03: a wrong password on the verify page (401 VERIFICATION_PASSWORD_MISMATCH) went through the
+  // refresh path, which failed with no session and sent the page to /login, losing the form and its message.
+  // No public auth or invitation call carries a session, so its 401 is an answer for the page, not an expiry.
+  it.each([
+    '/auth/verify-email',
+    '/auth/resend-verification',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+    'http://localhost:5000/api/team/invitations/accept',
+    '/team/invitations/preview',
+  ])('hands a 401 from the public call %s to the page without refreshing or redirecting', async (url) => {
+    const { responseRejected } = await loadApi()
+    Object.defineProperty(window, 'location', { writable: true, value: { ...window.location, href: 'http://localhost/verify-email' } })
+    const error = {
+      config: { url, headers: {} },
+      response: { status: 401, data: { code: 'VERIFICATION_PASSWORD_MISMATCH', attemptsRemaining: 4 } },
+    }
+
+    await expect(responseRejected(error)).rejects.toBe(error)
+
+    expect(axiosMock.post).not.toHaveBeenCalled()
+    expect(axiosMock.instance).not.toHaveBeenCalled()
+    expect(window.location.href).toBe('http://localhost/verify-email')
+  })
+
+  // The exclusions are exact paths: a protected call beside them (an owner's invitation resend) still refreshes on a real expiry.
+  it.each(['/team/invitations/inv1/resend', '/auth/me'])('still refreshes a protected call %s whose session expired', async (url) => {
+    const { responseRejected } = await loadApi()
+    axiosMock.post.mockResolvedValueOnce({ data: { accessToken: 'fresh-token' } })
+    const error = { config: { url, headers: {} }, response: { status: 401, data: { message: 'Token expired' } } }
+
+    await expect(responseRejected(error)).resolves.toEqual(expect.objectContaining({ data: { retried: true } }))
+
+    expect(axiosMock.post).toHaveBeenCalledWith('http://localhost:5000/api/auth/refresh', expect.anything(), expect.anything())
+  })
+
   it('does not refresh when change-password rejects the current password', async () => {
     const { responseRejected, setAccessToken, getAccessToken } = await loadApi()
     setAccessToken('old-token')

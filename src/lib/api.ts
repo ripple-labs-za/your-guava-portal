@@ -68,12 +68,21 @@ try {
   // Storage can be unavailable in hardened/private browser contexts.
 }
 
+// A 401 from these is an answer for the page, never an expired session. The public calls carry no session at all:
+// a wrong password on the verify page (401 VERIFICATION_PASSWORD_MISMATCH) used to go through the refresh path, fail
+// for want of a session and send the page to /login, losing the form and its message (UAT-01-S03).
 const REFRESH_EXCLUDED_PATHS = new Set([
   '/auth/login',
   '/auth/register',
   '/auth/change-password',
   '/auth/logout',
   '/auth/refresh',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/team/invitations/accept',
+  '/team/invitations/preview',
 ])
 
 function normaliseApiPath(url?: string) {
