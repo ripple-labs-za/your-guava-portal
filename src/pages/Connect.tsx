@@ -866,7 +866,7 @@ export default function Connect() {
                             <span className="text-guava-red-text mt-0.5">•</span>
                             <span>
                               Filled actuals for past days — see{' '}
-                              <Link to="/planning" className="text-guava-red-text hover:underline">
+                              <Link to="/planning" className="text-guava-red-text underline">
                                 Planning - Last week's results
                               </Link>
                             </span>
@@ -889,7 +889,7 @@ export default function Connect() {
                               menu —{' '}
                               <Link
                                 to="/data-health/menu-items"
-                                className="text-guava-red-text hover:underline"
+                                className="text-guava-red-text underline"
                               >
                                 review them
                               </Link>
