@@ -28,16 +28,9 @@ import { AdjustLeaveForm, type LeaveAdjustment } from '@/components/staff/Adjust
 import { LeaveBar } from '@/components/staff/LeaveBar'
 import { formatDate, requestErrorMessage } from '@/components/staff/staffText'
 import { DEFAULT_WORK_DAYS, NO_WORK_DAYS_MESSAGE, WorkDaysField } from '@/components/staff/WorkDaysField'
+import { ROLE_COLORS, FALLBACK_ROLE_COLOR } from '@/components/staff/roleColors'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const ROLE_COLORS: Record<string, string> = {
-  barista: '#E76161', // Accessible red text on the tinted badge (ISSUES #79).
-  kitchen: '#E58A3C',
-  front: '#4A9ECC',
-  manager: '#9B59B6',
-  other: '#888888',
-}
 
 const ROLE_OPTIONS = ['barista', 'kitchen', 'front', 'manager', 'other'] as const
 
@@ -427,7 +420,7 @@ function StaffCard({
     setEditing(false)
   }
 
-  const roleColor = ROLE_COLORS[staff.role] ?? '#888888'
+  const roleColor = ROLE_COLORS[staff.role] ?? FALLBACK_ROLE_COLOR
   const rate = payRate(staff)
 
   return (

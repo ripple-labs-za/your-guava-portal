@@ -19,6 +19,7 @@ import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toLocalDateOnly } from '@/lib/date'
 import { requestErrorMessage } from '@/components/staff/staffText'
+import { ROLE_COLORS, FALLBACK_ROLE_COLOR } from '@/components/staff/roleColors'
 import type { Shift, StaffMember, ShiftSummary } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,14 +52,6 @@ function formatDateShort(date: Date): string {
 function getStaffName(staffId: Shift['staffId']): string {
   if (typeof staffId === 'object' && staffId !== null) return staffId.name
   return staffId
-}
-
-const ROLE_COLORS: Record<string, string> = {
-  barista: '#E76161', // Accessible red text on the tinted badge (ISSUES #79).
-  kitchen: '#E58A3C',
-  front: '#4A9ECC',
-  manager: '#9B59B6',
-  other: '#888888',
 }
 
 // ── Add Shift Form ───────────────────────────────────────────────────────────
@@ -230,8 +223,8 @@ function StaffSidebar({
                       variant="secondary"
                       className="text-[9px] px-1.5 py-0 shrink-0"
                       style={{
-                        color: ROLE_COLORS[staff.role] ?? '#888888',
-                        backgroundColor: `${ROLE_COLORS[staff.role] ?? '#888888'}18`,
+                        color: ROLE_COLORS[staff.role] ?? FALLBACK_ROLE_COLOR,
+                        backgroundColor: `${ROLE_COLORS[staff.role] ?? FALLBACK_ROLE_COLOR}18`,
                       }}
                     >
                       {staff.role}
