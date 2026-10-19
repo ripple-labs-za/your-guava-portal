@@ -1579,6 +1579,22 @@ it('caps the composer at the four thousand characters the model reads', async ()
     expect(within(answerBubble()).getByRole('button', { name: /try again \(3 credits\)/i })).toBeInTheDocument()
   })
 
+  it('stops before chat creation finishes without starting a paid request', async () => {
+    mockBaseRequests()
+    let finishChat!: (value: unknown) => void
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? new Promise((resolve) => { finishChat = resolve }) : Promise.resolve({ data: {} }))
+    vi.mocked(fetch).mockResolvedValue(streamResponse(deltaEvent('Too late') + 'event: done\ndata: {}\n\n'))
+    render(<Insights />)
+    await askQuestion('Stop before saving this chat')
+    await userEvent.click(await screen.findByRole('button', { name: /stop generating/i }))
+    await act(async () => { finishChat({ data: { chat: chat({ _id: 'chat-early-stop', messages: [] }) } }) })
+    await waitFor(() => expect(within(answerBubble()).getByText(/nothing was charged/i)).toBeInTheDocument())
+    expect(fetch).not.toHaveBeenCalled()
+    expect(chatFallbackCalls()).toHaveLength(0)
+    expect(screen.getByRole('textbox', { name: /ask a question/i })).toBeEnabled()
+  })
+
   it('shows that it is still working instead of an endless Thinking', async () => {
     vi.useFakeTimers()
     try {

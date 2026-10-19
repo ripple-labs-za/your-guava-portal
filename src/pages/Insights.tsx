@@ -1675,6 +1675,8 @@ export default function Insights() {
     let streamFailure: ChatFailure | undefined
     try {
       const chatId = await ensureActiveChat(nextMessages)
+      // Stop can precede the stream controller while a new chat is being saved.
+      if (userCancelledRef.current) throw new DOMException('Stopped before requesting an answer', 'AbortError')
       const payloadMessages = trailingChatWindow(messagesForApi(nextMessages))
       const conversationText = JSON.stringify(payloadMessages)
       const fingerprint = globalThis.crypto?.subtle
@@ -1686,6 +1688,7 @@ export default function Insights() {
         chatRequestKeyRef.current = { signature, key: createChatRequestKey() }
       }
       const idempotencyKey = chatRequestKeyRef.current.key
+      if (userCancelledRef.current) throw new DOMException('Stopped before requesting an answer', 'AbortError')
 
       try {
         const streamed = await streamAssistantMessage(
