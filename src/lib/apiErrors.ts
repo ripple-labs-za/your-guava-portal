@@ -136,6 +136,7 @@ export const API_ERROR_COPY: Record<string, ApiErrorCopy> = {
   UPLOAD_EXPIRED: { title: 'This unfinished upload expired', body: 'Upload the file again from Data Health.', preferServerMessage: false, action: { kind: 'link', label: 'Open Data Health', to: '/data-health' } },
   UPLOAD_FORM_TOO_LARGE: { title: 'The upload form sent too much', body: 'Upload one file at a time from Data Health.', preferServerMessage: true, action: NONE },
   UPLOAD_NO_NEW_ROWS: { title: 'Already up to date', body: 'Every row in this file was imported before, so nothing changed.', preferServerMessage: false, action: NONE },
+  UPLOAD_NOT_STAGED: { title: 'This file is no longer staged', body: 'Reload this upload to see its current state. Nothing was removed.', preferServerMessage: true, action: NONE },
   UPLOAD_PARSE_BUSY: { title: 'Many files are being read right now', body: 'Nothing was lost. Wait a moment, then upload the file again.', preferServerMessage: true, action: WAIT },
   UPLOAD_PARSE_RESOURCE_LIMIT: { title: 'This file needs more memory than one upload may use', body: 'Nothing was imported. Export a shorter date range and upload each part.', preferServerMessage: false, action: NONE },
   UPLOAD_PARSE_TIMEOUT: { title: 'This file took too long to read', body: 'Nothing was imported. Export a shorter date range, then upload it again.', preferServerMessage: false, action: NONE },

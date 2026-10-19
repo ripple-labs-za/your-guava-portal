@@ -41,6 +41,12 @@ describe('the codes BE-13-T02 round 2 registered', () => {
 })
 
 describe('the codes the sprint names', () => {
+  it('keeps the already-public staged-discard refusal in the client code registry', () => {
+    expect(API_ERROR_COPY.UPLOAD_NOT_STAGED).toBeDefined()
+    expect(describeApiError(readApiError(axiosError(409, { code: 'UPLOAD_NOT_STAGED' }))).title)
+      .toBe('This file is no longer staged')
+  })
+
   it('identifies unsafe spreadsheet dimensions and preserves the server recovery advice', () => {
     const message = 'This spreadsheet says it spans 1048576 rows by 16384 columns, which is too large to read safely.'
     const copy = describeApiError(readApiError(axiosError(400, { code: 'XLSX_DIMENSION_LIMIT', message })))
