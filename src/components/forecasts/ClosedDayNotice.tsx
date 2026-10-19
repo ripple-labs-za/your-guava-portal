@@ -46,7 +46,10 @@ export function ClosedDayNotice({
         <p className="text-text">{availability.reason}</p>
         <Link
           to="/settings?section=general"
-          className="inline-block font-medium text-guava-red-text underline-offset-4 hover:underline"
+          // Yellow, underlined: the red text measured 4.14:1 on this amber tint
+          // over Planning's day card (FB-012); yellow is 9.6:1 there, and the
+          // underline marks it as a link beside the reason without colour alone.
+          className="inline-block font-medium text-guava-yellow underline underline-offset-4 hover:no-underline"
           onClick={(e) => e.stopPropagation()}
         >
           Open trading hours
