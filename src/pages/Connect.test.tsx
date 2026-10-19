@@ -8,11 +8,12 @@ vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
 
 // Mock ColumnMappingWizard for wizard-appearance tests
 vi.mock('@/components/upload/ColumnMappingWizard', () => ({
-  ColumnMappingWizard: ({ open, onCancel, assistiveNotice }: { open: boolean; onCancel: () => void; assistiveNotice?: string | null }) =>
+  ColumnMappingWizard: ({ open, onCancel, assistiveNotice, errorMessage }: { open: boolean; onCancel: () => void; assistiveNotice?: string | null; errorMessage?: string | null }) =>
     open ? (
       <div data-testid="column-mapping-wizard">
         Map your CSV columns
         <p>{assistiveNotice}</p>
+        <p>{errorMessage}</p>
         <button onClick={onCancel}>Cancel mapping</button>
       </div>
     ) : null,
@@ -31,6 +32,7 @@ vi.mock('@/components/upload/UploadHistoryCard', () => ({
 // makes vitest throw the moment one is touched.
 const mockGet = vi.fn()
 const mockPost = vi.fn()
+const mockDelete = vi.fn()
 vi.mock('@/components/upload/SavedMappingCard', () => ({ SavedMappingCard: () => <div data-testid="saved-mapping-card" /> }))
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -42,7 +44,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       get: (...args: unknown[]) => mockGet(...args),
       post: (...args: unknown[]) => mockPost(...args),
       put: vi.fn(),
-      delete: vi.fn(),
+      delete: (...args: unknown[]) => mockDelete(...args),
       interceptors: {
         request: { use: vi.fn() },
         response: { use: vi.fn() },
@@ -713,6 +715,55 @@ describe('Connect mapping wizard lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancel mapping/i }))
     await waitFor(() => expect(screen.queryByTestId('column-mapping-wizard')).not.toBeInTheDocument())
 
+    confirmSpy.mockRestore()
+  })
+
+  it('waits for one staged upload deletion before closing an owner discard', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let finish!: (value: unknown) => void
+    mockDelete.mockImplementation(() => new Promise((resolve) => { finish = resolve }))
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'data.csv', { type: 'text/csv' }))
+    await screen.findByTestId('column-mapping-wizard')
+    fireEvent.click(screen.getByRole('button', { name: /cancel mapping/i }))
+    expect(mockDelete).toHaveBeenCalledExactlyOnceWith('/uploads/u1', { params: { stagedOnly: true } })
+    fireEvent.click(screen.getByRole('button', { name: /cancel mapping/i }))
+    expect(mockDelete).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('column-mapping-wizard')).toBeInTheDocument()
+    finish({ data: { success: true } })
+    await waitFor(() => expect(screen.queryByTestId('column-mapping-wizard')).not.toBeInTheDocument())
+    confirmSpy.mockRestore()
+  })
+
+  it('keeps the wizard and a retryable explanation when staged deletion fails', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockDelete.mockRejectedValue({ response: { status: 503, data: { message: 'Could not discard this file. Try again.' } } })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'data.csv', { type: 'text/csv' }))
+    await screen.findByTestId('column-mapping-wizard')
+    fireEvent.click(screen.getByRole('button', { name: /cancel mapping/i }))
+    expect(await screen.findByText('Could not discard this file. Try again.')).toBeInTheDocument()
+    expect(screen.getByTestId('column-mapping-wizard')).toBeInTheDocument()
+    confirmSpy.mockRestore()
+  })
+
+  it('truthfully closes a manager mapping without attempting an owner-only delete', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/auth/me')) return Promise.resolve({ data: { id: 'm1', role: 'manager' } })
+      if (url.includes('/transactions/status')) return Promise.resolve({ data: { data: { totalTransactions: 0, coverage30d: [] } } })
+      return Promise.reject(new Error('Unknown URL'))
+    })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'data.csv', { type: 'text/csv' }))
+    await screen.findByTestId('column-mapping-wizard')
+    fireEvent.click(screen.getByRole('button', { name: /cancel mapping/i }))
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/stay in Upload History.*owner can remove/i))
+    expect(mockDelete).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByTestId('column-mapping-wizard')).not.toBeInTheDocument())
     confirmSpy.mockRestore()
   })
 })

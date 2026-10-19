@@ -436,6 +436,7 @@ export default function Connect() {
   const [stageErrorMsg, setStageErrorMsg] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
+  const discardInFlightRef = useRef(false)
   const cancelledRef = useRef(false)
   const phaseTimerRef = useRef<number | null>(null)
 
@@ -999,16 +1000,28 @@ export default function Connect() {
           assistiveNotice={
             [savedMappingNotice(stageResponse.savedMapping), mappingAssistNotice(stageResponse)].filter(Boolean).join(' ') || null
           }
-          onCancel={() => {
+          onCancel={async () => {
+            if (discardInFlightRef.current) return
             const proceed = window.confirm(
-              'Discard this file? It will not be imported, and the copy we staged is thrown away. You can upload the same file again at any time.'
+              isOwner
+                ? 'Discard this file? It will not be imported, and the copy we staged is thrown away. You can upload the same file again at any time.'
+                : 'Close mapping? This file will stay in Upload History so you can finish it later. Only the owner can remove it.'
             )
             if (!proceed) return
-            setStageResponse(null)
             setStageErrorMsg(null)
-            setHistoryRefreshKey((key) => key + 1)
+            discardInFlightRef.current = true
+            try {
+              if (isOwner) await api.delete(`/uploads/${stageResponse.uploadId}`, { params: { stagedOnly: true } })
+              setStageResponse(null)
+              setHistoryRefreshKey((key) => key + 1)
+            } catch (error) {
+              setStageErrorMsg(readApiError(error).message || 'Could not discard this file. Try again.')
+            } finally {
+              discardInFlightRef.current = false
+            }
           }}
           onConfirm={async (mapping: ColumnMapping, itemsMode: ItemsMode) => {
+            if (discardInFlightRef.current) return
             try {
               setUploadState('uploading')
               setUploadPhase('importing')
