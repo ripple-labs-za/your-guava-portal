@@ -32,7 +32,7 @@ import { DEFAULT_WORK_DAYS, NO_WORK_DAYS_MESSAGE, WorkDaysField } from '@/compon
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const ROLE_COLORS: Record<string, string> = {
-  barista: '#D43D3D',
+  barista: '#E76161', // Accessible red text on the tinted badge (ISSUES #79).
   kitchen: '#E58A3C',
   front: '#4A9ECC',
   manager: '#9B59B6',
