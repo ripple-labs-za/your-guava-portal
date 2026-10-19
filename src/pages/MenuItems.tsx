@@ -633,11 +633,11 @@ export default function MenuItems() {
                 {isFirstImport && (
                   <div role="region" aria-label="First import" className="rounded-lg border border-guava-green/30 bg-guava-green/10 px-4 py-3">
                     <p className="text-sm font-medium text-text">You have {needsReviewTotal} new items from your first import. There is no menu to match them to yet, so keep them all as new menu items?</p>
-                    <p className="mt-1 text-xs text-muted">You can still rename, merge or ignore any of them afterwards.</p>
+                    <p className="mt-1 text-xs text-text/80">You can still rename, merge or ignore any of them afterwards.</p>
                     <Button className="mt-3" size="sm" onClick={keepAllNew} disabled={keepingAll || needsReviewTotal > 2000}>
                       {keepingAll ? `Keeping ${needsReviewTotal} items…` : `Keep all ${needsReviewTotal} as new items`}
                     </Button>
-                    {needsReviewTotal > 2000 && <p className="mt-2 text-sm text-muted">Too many items to keep in one step. Keep them from the list below instead.</p>}
+                    {needsReviewTotal > 2000 && <p className="mt-2 text-sm text-text/80">Too many items to keep in one step. Keep them from the list below instead.</p>}
                   </div>
                 )}
                 {reviewItems.length === 0 ? (
