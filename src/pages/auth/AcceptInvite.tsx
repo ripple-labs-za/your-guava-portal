@@ -183,7 +183,13 @@ export default function AcceptInvite() {
                 autoComplete="new-password"
                 minLength={8}
                 required
+                aria-describedby="invite-password-help"
               />
+              {/* The browser's own length check stops the submit before this page's message can show, so the rule is
+                  stated up front, as signup does (UAT-09-S02). */}
+              <p id="invite-password-help" className="text-muted text-xs">
+                At least 8 characters, up to 72 bytes (about 72 characters).
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="invite-password-confirm">Confirm password</Label>

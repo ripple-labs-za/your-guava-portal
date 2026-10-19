@@ -100,6 +100,18 @@ describe('AcceptInvite', () => {
     expect(screen.getByText(/confirmation do not match/i)).toBeInTheDocument()
     expect(mockPost).not.toHaveBeenCalledWith('/team/invitations/accept', expect.anything())
   })
+
+  // UAT-09-S02: the browser's minimum-length check stops the submit before the page's own message, so the rule
+  // was never stated. It is stated up front, tied to the field, as signup does.
+  it('states the password rule before the first submit', async () => {
+    renderPage()
+    await screen.findByText('Welcome, New Manager')
+
+    const field = screen.getByLabelText('Choose a password')
+    const help = document.getElementById(field.getAttribute('aria-describedby') || '')
+    expect(help).not.toBeNull()
+    expect(help).toHaveTextContent('At least 8 characters, up to 72 bytes (about 72 characters).')
+  })
 })
 
 describe('AcceptInvite link recovery', () => {
