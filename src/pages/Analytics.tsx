@@ -1,6 +1,7 @@
 import { MOVERS_CAPTION, moverThresholdNote, belowFloorNote, ItemTrend, closedCellLabels, CLOSED_CELL_BORDER, type MoverItem, type NewItem, type MoverFloor } from '@/lib/analyticsMovers'
 import { analyticsCustomersFrom } from '@/lib/analyticsCustomers'
-import { analyticsFailure, comboSampleCaption, useAnalyticsRetryDelay, type AnalyticsFailure, type ComboSampleMeta } from '@/lib/analyticsErrors'
+import { comboSampleCaption, useAnalyticsRetryDelay, type AnalyticsFailure, type ComboSampleMeta } from '@/lib/analyticsErrors'
+import { describeApiError, readApiError, waitSeconds } from '@/lib/apiErrors'
 import { openDaysCaption, formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
@@ -177,11 +178,28 @@ function PeriodSelector({ period, onChange }: { period: PeriodId; onChange: (p: 
 // Every tab used to dead-end on its own error: no retry, and the range selector
 // unmounted with it, so the one thing that might have helped — asking for a
 // smaller window — was gone too.
+function analyticsError(error: unknown, fallback: string): string {
+  return describeApiError(readApiError(error), { title: fallback, body: fallback }).body
+}
+
+function analyticsFailure(error: unknown, fallback: string): AnalyticsFailure {
+  return { message: analyticsError(error, fallback), retryDelayMs: (waitSeconds(readApiError(error)) ?? 0) * 1000 }
+}
+
 function TabError({ error, onRetry }: { error: AnalyticsFailure; onRetry: () => void }) {
   const disabled = useAnalyticsRetryDelay(error.retryDelayMs)
+  const [remaining, setRemaining] = useState(Math.ceil(error.retryDelayMs / 1000))
+  useEffect(() => {
+    const until = Date.now() + error.retryDelayMs
+    setRemaining(Math.ceil(error.retryDelayMs / 1000))
+    if (!error.retryDelayMs) return
+    const timer = setInterval(() => setRemaining(Math.max(0, Math.ceil((until - Date.now()) / 1000))), 1000)
+    return () => clearInterval(timer)
+  }, [error])
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center" role="alert">
       <p className="text-muted text-sm">{error.message}</p>
+      {remaining > 0 && <p className="text-muted text-sm mt-2">Try again in {remaining} seconds.</p>}
       <Button variant="outline" size="sm" className="mt-4" disabled={disabled} onClick={onRetry}>
         Retry
       </Button>
@@ -219,7 +237,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
           data: res.data || [],
         })
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load revenue data', period)) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load revenue data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -407,7 +425,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
         setNewItems(data.meta?.newItems || [])
         setMoverFloor(data.meta?.moverFloor ?? null)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load item data', period)) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load item data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -628,7 +646,7 @@ function HeatmapTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
         setCells(data.heatmap || data.data || [])
         setWithoutTime(data.meta?.timeOfDay?.transactionsWithoutTime ?? 0)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load heatmap data', period)) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load heatmap data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -817,7 +835,7 @@ function CustomersTab({ period, onWindow }: { period: PeriodId; onWindow: (windo
         onWindow(queriedWindowFrom(res.meta))
         setData(res.insights ?? res.data ?? null)
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load customer insights', period)) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load customer insights')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])
@@ -992,7 +1010,7 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
         setCombos(res.data || [])
         setSample(comboSampleCaption(res.meta))
       })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load combo data', period)) })
+      .catch((err: unknown) => { if (!controller.signal.aborted) setError(analyticsFailure(err, 'Failed to load combo data')) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [period, reloadKey, onWindow])

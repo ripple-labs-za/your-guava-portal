@@ -70,6 +70,81 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 describe('Analytics', () => {
+  const combinedWindow = { effectiveStartDay: '2026-08-21', effectiveEndDay: '2026-09-19', effectiveDays: 30,
+    timezone: 'Africa/Johannesburg', days: 30 }
+  const serveCombined = () => mockGet.mockImplementation((url: string) => {
+    const responses: Record<string, unknown> = {
+      revenue: { data: [{ date: '2026-09-10', revenue: 5000, transactions: 70 }],
+        summary: { totalRevenue: 150000, avgDailyRevenue: 5000, bestDay: null, worstDay: null, trend: 0, openDays: 26 },
+        meta: { ...combinedWindow, effectiveWindow: { startDate: '2026-08-21', endDate: '2026-09-19', days: 30, endReason: 'data_ends' },
+          comparisonWindow: { startDate: '2026-07-22', endDate: '2026-08-20', days: 30 }, trendReason: null } },
+      items: { items: [{ name: 'Latte', totalQty: 900, totalRevenue: 36000, avgPerDay: 34.6, trend: 4.2 },
+        { name: 'Matcha', totalQty: 40, totalRevenue: 2000, avgPerDay: 1.5, trend: null, isNew: true }],
+        meta: { ...combinedWindow, risingItems: [], decliningItems: [], newItems: [{ name: 'Matcha', currentQty: 40 }],
+          moverFloor: { minAvgPerDay: 2, windowDays: 7, minQty: 14, eligibleCount: 1, busiestQty: 210 } } },
+      heatmap: { heatmap: [{ dayOfWeek: 1, hour: 8, revenue: 900, transactions: 12, observedDays: 4, isOpen: true },
+        { dayOfWeek: 0, hour: 8, revenue: 0, transactions: 0, observedDays: 0, isOpen: false }],
+        meta: { ...combinedWindow, timeOfDay: { transactionsWithTime: 300, transactionsWithoutTime: 12 } } },
+      customers: { insights: { avgTransactionValue: 68, avgItemsPerTransaction: 1.6,
+        cashVsCardRatio: { cash: 20, card: 75, other: 5 }, tippingRate: 4, avgTip: 6, transactions: 2200,
+        refunds: { count: 3, value: 190 }, paymentMethodCoverage: { known: 2100, unknown: 100 } }, meta: combinedWindow },
+      combos: { data: [{ pair: ['Croissant', 'Latte'], count: 140 }],
+        meta: { ...combinedWindow, truncated: true, basketsConsidered: 20000, maxBaskets: 20000, maxItemsPerBasket: 20 } },
+    }
+    const tab = Object.keys(responses).find((name) => url.includes(`/analytics/${name}`))
+    return Promise.resolve({ data: tab ? responses[tab] : {} })
+  })
+
+  it('shows every server window and caveat together across all five tabs', async () => {
+    serveCombined()
+    render(<Analytics />)
+    expect(await screen.findByText(/21 Aug – 19 Sep vs 22 Jul – 20 Aug/)).toBeInTheDocument()
+    expect(screen.getByText(/your data ends 19 Sep/)).toBeInTheDocument()
+    expect(screen.getByText(/across 26 open days/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    expect(await screen.findByText(/new in the last 7 days/i)).toBeInTheDocument()
+    expect(screen.getByText(/40 sold · new/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Heatmap' }))
+    expect(await screen.findByText(/12 sales in this window came from exports with dates but no times/i)).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-closed="true"]').length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole('tab', { name: 'Customers' }))
+    expect(await screen.findByText(/3 refunds \(R190,00\) not counted as sales/i)).toBeInTheDocument()
+    expect(screen.getByText(/100 sales have no payment method/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Combos' }))
+    expect(await screen.findByText(/most recent 20\s000 baskets/)).toBeInTheDocument()
+  })
+
+  it('renders all five tabs in all three windows without console warnings or errors', async () => {
+    const warn = vi.spyOn(console, 'warn')
+    const error = vi.spyOn(console, 'error')
+    try {
+      serveCombined()
+      render(<Analytics />)
+      for (const period of [7, 30, 90]) {
+        await userEvent.click(screen.getByRole('button', { name: `Last ${period} days` }))
+        for (const tab of ['Revenue', 'Items', 'Heatmap', 'Customers', 'Combos']) {
+          await userEvent.click(screen.getByRole('tab', { name: tab }))
+          await waitFor(() => expect(mockGet).toHaveBeenLastCalledWith(expect.stringContaining(`/analytics/${tab.toLowerCase()}`), expect.anything()))
+        }
+        await screen.findByText(/most recent 20\s000 baskets/)
+      }
+      expect(warn).not.toHaveBeenCalled()
+      expect(error).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  it('uses shared refusal copy and the server Retry-After rather than a fixed delay', async () => {
+    mockGet.mockRejectedValue({ response: { status: 429, headers: { 'retry-after': '20' },
+      data: { code: 'ANALYTICS_RATE_LIMITED', message: 'Performance is refreshing too often. Wait a moment, then try again.' } } })
+    render(<Analytics />)
+    expect(await screen.findByText(/refreshing too often/i)).toBeInTheDocument()
+    expect(screen.getByText(/try again in 20 seconds/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeDisabled()
+  })
+
   it('keeps server day labels on 18 Oct in a New York browser and names the cafe zone', async () => {
     const original = Date.prototype.toLocaleDateString
     const localDate = vi
@@ -804,7 +879,7 @@ describe('Analytics', () => {
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
 
     expect(
-      await screen.findByText(/failed to load heatmap data/i)
+      await screen.findByText(/Nothing came back from the server/i)
     ).toBeInTheDocument()
     expect(
       screen.getByRole('group', { name: /date range/i })
@@ -1209,7 +1284,7 @@ describe('Analytics', () => {
     render(<Analytics />)
     await screen.findByText('Showing 6 Jul – 4 Aug · 30 days')
     await userEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
-    await screen.findByText('Failed to load revenue data')
+    await screen.findByText('Nothing came back from the server. Check your connection, then try again.')
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
   })
 
@@ -1489,7 +1564,7 @@ describe('Analytics', () => {
     await userEvent.click(screen.getByRole('tab', { name: /heatmap/i }))
     expect(
       await screen.findByText(
-        'Too many requests right now. Wait a minute, then press Retry.'
+        'Wait a moment, then try again.'
       )
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeDisabled()
