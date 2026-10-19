@@ -649,6 +649,10 @@ export default function MenuItems() {
                     <div key={item._id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-border p-3 text-sm">
                       <span className="font-medium text-text">{item.name}</span>
                       <span className="text-muted">Sold {item.totalSold ?? 0} · POS average {formatZar(item.avgPrice)}</span>
+                      <Button variant="outline" size="sm" aria-label={`Ignore the POS item ${item.name}`}
+                        onClick={() => resolveItem(item, 'ignore')} disabled={savingId === item._id}>
+                        Ignore
+                      </Button>
                     </div>
                   ) : (
                     <ReviewItemCard

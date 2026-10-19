@@ -599,6 +599,20 @@ it('offers one decision when a first import has no menu yet', async () => {
   expect(screen.queryByText(/smart checks are free/i)).not.toBeInTheDocument()
 })
 
+it('lets the first import ignore a POS fee without keeping every new item', async () => {
+  const fee = buildItem({ _id: 'fee', name: 'Delivery Fee', reviewStatus: 'needs_review' })
+  serveMenu({ review: [fee, ...firstImport(2)] })
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/items/fee/resolve') serveMenu({ review: firstImport(2), hidden: [{ ...fee, reviewStatus: 'ignored', isActive: false }] })
+    return Promise.resolve({ data: { success: true } })
+  })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Ignore the POS item Delivery Fee', exact: true }))
+  expect(mockPost).toHaveBeenCalledWith('/items/fee/resolve', expect.objectContaining({ action: 'ignore' }))
+  expect(mockPost.mock.calls.some(([url]) => url === '/items/confirm-all-new')).toBe(false)
+  expect(await screen.findByRole('button', { name: 'Keep all 2 as new items' })).toBeInTheDocument()
+})
+
 it('keeps all of them with one request and clears the queue', async () => {
   serveMenu({ review: firstImport(13) })
   mockPost.mockImplementation((url: string) => {
