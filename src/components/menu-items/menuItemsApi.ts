@@ -9,7 +9,10 @@ const MAX_LINK_TARGET_PAGES = 10 // 2,000 matched items; beyond that the select 
 
 // The server pages both lists and counts the whole menu (BE-03-T14): the header used to count the arrays it received,
 // so 300 unmatched items read "Need a match 50", and the Fix Imports list could never reach item 51.
-export interface ItemsListMeta { total: number; page: number; limit: number; pages: number; needsReview?: number; priceMismatches?: number }
+export interface ItemsListMeta {
+  total: number; page: number; limit: number; pages: number; needsReview?: number; priceMismatches?: number
+  counts?: { matched: number; needs_review: number; ignored: number; merged: number }
+}
 export interface ReconciliationMeta { needsReview: number; priceMismatches: number; total?: number; page?: number; pages?: number }
 export type ItemsPage = { items: SalesItem[]; meta: ItemsListMeta }
 export type ReviewPage = { items: SalesItem[]; meta: ReconciliationMeta }
@@ -19,6 +22,9 @@ export const fetchMenuPage = (page: number, q: string) => api.get<ItemsPage>('/i
 })
 export const fetchReviewPage = (page: number) => api.get<ReviewPage>('/items/reconciliation', {
   params: { page, limit: REVIEW_PAGE_SIZE },
+})
+export const fetchHiddenPage = (page: number) => api.get<ItemsPage>('/items', {
+  params: { active: 'false', page, limit: MENU_PAGE_SIZE },
 })
 // Every matched item is a link target, not just the first page of the menu.
 export const fetchLinkTargets = async (): Promise<SalesItem[]> => {

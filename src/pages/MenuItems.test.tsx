@@ -569,3 +569,95 @@ describe('MenuItems counts and paging', () => {
     expect(await screen.findByText(/1 of them changed elsewhere since you started/i)).toBeInTheDocument()
   })
 })
+
+
+describe('MenuItems first import and hidden decisions (BE-13-T06)', () => {
+  beforeEach(() => { vi.clearAllMocks(); localStorage.clear() })
+const firstImport = (n: number) => Array.from({ length: n }, (_, i) => buildItem({ _id: `new${i}`, name: `New line ${i + 1}`, reviewStatus: 'needs_review' }))
+
+function serveMenu({ matched = 0, review = [] as SalesItem[], hidden = [] as SalesItem[] } = {}) {
+  mockGet.mockImplementation((url: string, config?: { params?: Record<string, unknown> }) => {
+    if (url.includes('/items/reconciliation')) {
+      return Promise.resolve({ data: { items: review, meta: { needsReview: review.length, priceMismatches: 0, returned: review.length, limit: 50, total: review.length, page: 1, pages: 1 } } })
+    }
+    if (url.includes('/items')) {
+      const inactive = config?.params?.active === false || config?.params?.active === 'false' || url.includes('active=false')
+      const items = inactive ? hidden : []
+      const counts = { matched, needs_review: review.length, ignored: hidden.filter((i) => i.reviewStatus === 'ignored').length, merged: hidden.filter((i) => i.reviewStatus === 'merged').length }
+      return Promise.resolve({ data: { items, meta: { total: items.length, page: 1, limit: 50, pages: 1, counts, needsReview: review.length, priceMismatches: 0 } } })
+    }
+    return Promise.resolve({ data: {} })
+  })
+}
+
+it('offers one decision when a first import has no menu yet', async () => {
+  serveMenu({ review: firstImport(13) })
+  render(<MenuItems />)
+  expect(await screen.findByText(/you have 13 new items from your first import/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Keep all 13 as new items' })).toBeInTheDocument()
+  // Nothing to match against, so the per-item smart checks and AI reviews are collapsed.
+  expect(screen.queryByText(/smart checks are free/i)).not.toBeInTheDocument()
+})
+
+it('keeps all of them with one request and clears the queue', async () => {
+  serveMenu({ review: firstImport(13) })
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/items/confirm-all-new') {
+      serveMenu({ matched: 13 })
+      return Promise.resolve({ data: { success: true, confirmed: 13, meta: { needsReview: 0, counts: { matched: 13, needs_review: 0, ignored: 0, merged: 0 } } } })
+    }
+    return Promise.resolve({ data: {} })
+  })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Keep all 13 as new items' }))
+  await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/items/confirm-all-new', { expectedCount: 13 }))
+  expect(mockPost).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.queryByText(/new items from your first import/i)).not.toBeInTheDocument())
+  expect(screen.getByText('Need a match').nextElementSibling).toHaveTextContent('0')
+})
+
+it('asks again when more lines arrived since the owner looked', async () => {
+  serveMenu({ review: firstImport(13) })
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/items/confirm-all-new') {
+      serveMenu({ review: firstImport(14) })
+      return Promise.reject({ response: { status: 409, data: { success: false, code: 'ITEM_COUNT_CHANGED', message: '14 items are waiting now, not 13. Review the list again.', details: { code: 'ITEM_COUNT_CHANGED', expected: 13, actual: 14 } } } })
+    }
+    return Promise.resolve({ data: {} })
+  })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Keep all 13 as new items' }))
+  expect(await screen.findByText(/14 items are waiting now/i)).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Keep all 14 as new items' })).toBeInTheDocument()
+})
+
+it('does not offer keep-all once a menu exists', async () => {
+  serveMenu({ matched: 5, review: firstImport(3) })
+  render(<MenuItems />)
+  await screen.findAllByText(/new line 1/i)
+  expect(screen.queryByRole('button', { name: /keep all/i })).not.toBeInTheDocument()
+})
+
+it('never labels a merged item as ready', async () => {
+  serveMenu({ matched: 1, hidden: [buildItem({ _id: 'm1', name: 'Capuccino', reviewStatus: 'merged', isActive: false, mergedInto: { _id: 't1', name: 'Cappuccino' } } as Partial<SalesItem> & { _id: string; name: string })] })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: /hidden/i }))
+  expect(await screen.findByText('Merged into Cappuccino')).toBeInTheDocument()
+  expect(screen.queryByText('Ready')).not.toBeInTheDocument()
+})
+
+it('lists ignored and merged items with their state', async () => {
+  serveMenu({
+    matched: 1,
+    hidden: [
+      buildItem({ _id: 'i1', name: 'Delivery Fee', reviewStatus: 'ignored', isActive: false }),
+      buildItem({ _id: 'm1', name: 'Capuccino', reviewStatus: 'merged', isActive: false, mergedInto: { _id: 't1', name: 'Cappuccino' } } as Partial<SalesItem> & { _id: string; name: string }),
+    ],
+  })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Hidden (2)' }))
+  expect(await screen.findByText('Delivery Fee')).toBeInTheDocument()
+  expect(screen.getByText('Ignored')).toBeInTheDocument()
+  expect(screen.getByText('Merged into Cappuccino')).toBeInTheDocument()
+})
+})

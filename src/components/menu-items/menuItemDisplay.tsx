@@ -20,10 +20,14 @@ export function formatZar(value?: number) {
 }
 
 export function StatusPill({ item }: { item: SalesItem }) {
+  if (item.reviewStatus === 'merged') {
+    const target = typeof item.mergedInto === 'object' ? item.mergedInto.name : null
+    return <Badge variant="secondary">{target ? `Merged into ${target}` : 'Merged'}</Badge>
+  }
+  if (item.reviewStatus === 'ignored') return <Badge variant="secondary">Ignored</Badge>
   const mismatch = (item.priceMismatchCount ?? 0) > 0 || Boolean(item.lastPriceMismatchAt)
   if (mismatch) return <Badge className="border-amber-500/25 bg-amber-500/10 text-amber-300">Price differs</Badge>
   if (item.reviewStatus === 'needs_review') return <Badge className="border-red-500/25 bg-red-500/10 text-red-300">Needs a match</Badge>
-  if (item.reviewStatus === 'ignored') return <Badge variant="secondary">Ignored</Badge>
   return <Badge variant="success">Ready</Badge>
 }
 

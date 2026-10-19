@@ -15,11 +15,11 @@ import { CATEGORIES, ConflictNotice, StatusPill, formatZar, type ItemDraft } fro
 import { ReviewItemCard, type ResolveAction } from '@/components/menu-items/ReviewItemCard'
 import { buildDraft, draftPayload, draftsEqual, mergeServerDrafts, type DraftMap } from '@/components/menu-items/menuItemDrafts'
 import {
-  MENU_PAGE_SIZE, REVIEW_PAGE_SIZE, fetchItemsByIds, fetchLinkTargets, fetchMenuPage, fetchReviewPage, fetchReviewPages,
+  MENU_PAGE_SIZE, REVIEW_PAGE_SIZE, fetchItemsByIds, fetchLinkTargets, fetchMenuPage, fetchReviewPage, fetchReviewPages, fetchHiddenPage,
   type ItemsListMeta, type ItemsPage, type ReconciliationMeta,
 } from '@/components/menu-items/menuItemsApi'
 
-type Tab = 'review' | 'menu'
+type Tab = 'review' | 'menu' | 'hidden'
 type Notice = { type: 'success' | 'error'; message: string } | null
 
 const SEARCH_DEBOUNCE_MS = 300
@@ -54,6 +54,12 @@ export default function MenuItems() {
   const [loadError, setLoadError] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [savingAll, setSavingAll] = useState(false)
+  const [keepingAll, setKeepingAll] = useState(false)
+  const [hiddenItems, setHiddenItems] = useState<SalesItem[]>([])
+  const [hiddenMeta, setHiddenMeta] = useState<ItemsListMeta | null>(null)
+  const [hiddenPage, setHiddenPage] = useState(1)
+  const [hiddenLoading, setHiddenLoading] = useState(false)
+  const [hiddenError, setHiddenError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [aiReviewId, setAiReviewId] = useState<string | null>(null)
   const aiReviewKeysRef = useRef(new Map<string, string>())
@@ -190,6 +196,21 @@ export default function MenuItems() {
     refresh()
   }, [])
 
+  useEffect(() => {
+    if (tab !== 'hidden') return
+    let current = true
+    setHiddenLoading(true)
+    setHiddenError(null)
+    fetchHiddenPage(hiddenPage).then(({ data }) => {
+      if (!current) return
+      setHiddenItems(data.items)
+      setHiddenMeta(data.meta)
+    }).catch((err) => {
+      if (current) setHiddenError(apiError(err, 'Could not load hidden items.'))
+    }).finally(() => { if (current) setHiddenLoading(false) })
+    return () => { current = false }
+  }, [tab, hiddenPage])
+
   // The search box asks the server once the owner stops typing, from the first page.
   useEffect(() => {
     const next = query.trim()
@@ -253,6 +274,22 @@ export default function MenuItems() {
   const menuRowStart = menuTotal === 0 ? 0 : (currentMenuPage - 1) * MENU_PAGE_SIZE + 1
   const menuRowEnd = Math.min(currentMenuPage * MENU_PAGE_SIZE, menuTotal)
   const reviewTotal = reviewMeta?.total ?? reviewItems.length
+  const counts = menuMeta?.counts
+  const needsReviewTotal = reviewMeta?.needsReview ?? 0
+  const isFirstImport = !loadError && Boolean(counts) && counts?.matched === 0 && needsReviewTotal > 0
+  const hiddenCount = (counts?.ignored ?? 0) + (counts?.merged ?? 0)
+  const keepAllNew = async () => {
+    setKeepingAll(true)
+    try {
+      await api.post('/items/confirm-all-new', { expectedCount: needsReviewTotal })
+      showNotice('success', `${needsReviewTotal} items kept as new menu items.`)
+    } catch (err) {
+      showNotice('error', apiError(err, 'Could not keep the items. Nothing was changed. Try again.'))
+    } finally {
+      setKeepingAll(false)
+      await refresh({ background: true })
+    }
+  }
 
   const dirtyIds = useMemo(
     () => Object.keys(drafts).filter((id) => baseline[id] && !draftsEqual(drafts[id], baseline[id])),
@@ -573,7 +610,7 @@ export default function MenuItems() {
                 <CardTitle>Menu Items</CardTitle>
                 <CardDescription>POS names, menu prices, and aliases.</CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant={tab === 'review' ? 'success' : 'outline'} size="sm" onClick={() => setTab('review')}>
                   <Coffee className="w-3.5 h-3.5" />
                   Fix Imports
@@ -581,6 +618,9 @@ export default function MenuItems() {
                 <Button variant={tab === 'menu' ? 'success' : 'outline'} size="sm" onClick={() => setTab('menu')}>
                   <Tags className="w-3.5 h-3.5" />
                   Menu Prices
+                </Button>
+                <Button variant={tab === 'hidden' ? 'success' : 'outline'} size="sm" onClick={() => setTab('hidden')}>
+                  Hidden ({hiddenCount})
                 </Button>
               </div>
             </div>
@@ -590,12 +630,27 @@ export default function MenuItems() {
               <div className="text-sm text-muted py-8">Loading menu items...</div>
             ) : tab === 'review' ? (
               <div className="space-y-3">
+                {isFirstImport && (
+                  <div role="region" aria-label="First import" className="rounded-lg border border-guava-green/30 bg-guava-green/10 px-4 py-3">
+                    <p className="text-sm font-medium text-text">You have {needsReviewTotal} new items from your first import. There is no menu to match them to yet, so keep them all as new menu items?</p>
+                    <p className="mt-1 text-xs text-muted">You can still rename, merge or ignore any of them afterwards.</p>
+                    <Button className="mt-3" size="sm" onClick={keepAllNew} disabled={keepingAll || needsReviewTotal > 2000}>
+                      {keepingAll ? `Keeping ${needsReviewTotal} items…` : `Keep all ${needsReviewTotal} as new items`}
+                    </Button>
+                    {needsReviewTotal > 2000 && <p className="mt-2 text-sm text-muted">Too many items to keep in one step. Keep them from the list below instead.</p>}
+                  </div>
+                )}
                 {reviewItems.length === 0 ? (
                   <div className="rounded-lg border border-border bg-[#111111] px-4 py-8 text-center text-sm text-muted">
                     No menu item issues to review.
                   </div>
                 ) : (
-                  reviewItems.map((item) => (
+                  reviewItems.map((item) => isFirstImport && needsReviewTotal <= 2000 ? (
+                    <div key={item._id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-border p-3 text-sm">
+                      <span className="font-medium text-text">{item.name}</span>
+                      <span className="text-muted">Sold {item.totalSold ?? 0} · POS average {formatZar(item.avgPrice)}</span>
+                    </div>
+                  ) : (
                     <ReviewItemCard
                       key={item._id}
                       item={item}
@@ -625,6 +680,24 @@ export default function MenuItems() {
                     </Button>
                   </div>
                 )}
+              </div>
+            ) : tab === 'hidden' ? (
+              <div className="space-y-3">
+                {hiddenLoading ? <p className="text-sm text-muted">Loading hidden items...</p>
+                  : hiddenError ? <p role="alert" className="text-sm text-guava-red-text">{hiddenError}</p>
+                    : hiddenItems.length === 0 ? <p className="text-sm text-muted">No hidden items.</p>
+                      : hiddenItems.map((item) => (
+                        <div key={item._id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
+                          <span className="font-medium text-text">{item.name}</span>
+                          <StatusPill item={item} />
+                          <span className="text-muted">Sold {item.totalSold ?? 0}</span>
+                        </div>
+                      ))}
+                {(hiddenMeta?.pages ?? 1) > 1 && <div className="flex items-center justify-between gap-2">
+                  <Button variant="outline" size="sm" disabled={hiddenLoading || hiddenPage <= 1} onClick={() => setHiddenPage((page) => page - 1)}>Previous hidden page</Button>
+                  <span className="text-xs text-muted">Page {hiddenPage} of {hiddenMeta?.pages}</span>
+                  <Button variant="outline" size="sm" disabled={hiddenLoading || hiddenPage >= (hiddenMeta?.pages ?? 1)} onClick={() => setHiddenPage((page) => page + 1)}>Next hidden page</Button>
+                </div>}
               </div>
             ) : (
               <div className="space-y-4">

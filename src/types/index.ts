@@ -476,6 +476,7 @@ export interface SalesItem {
   expectedPrice?: number
   priceTolerancePct?: number
   reviewStatus: SalesItemReviewStatus
+  mergedInto?: string | { _id: string; name: string }
   source?: 'manual' | 'pos' | 'imported' | 'system'
   avgPrice?: number
   observedPriceMin?: number
