@@ -114,6 +114,16 @@ describe('Analytics', () => {
     expect(await screen.findByText(/most recent 20\s000 baskets/)).toBeInTheDocument()
   })
 
+  it.each(['21 Aug – 19 Sep', '22 Jul – 20 Aug'])(
+    'keeps the comparison range %s inside its own non-wrapping element',
+    async (range) => {
+      serveCombined()
+      render(<Analytics />)
+      const comparison = await screen.findByRole('group', { name: 'Revenue comparison' })
+      expect(within(comparison).getByText(range)).toHaveClass('whitespace-nowrap')
+    }
+  )
+
   it('renders all five tabs in all three windows without console warnings or errors', async () => {
     const warn = vi.spyOn(console, 'warn')
     const error = vi.spyOn(console, 'error')
