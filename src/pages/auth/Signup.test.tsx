@@ -258,6 +258,9 @@ describe('Signup pending screen', () => {
       'href',
       expect.stringContaining('mailto:')
     )
+    // UAT-01-S08/S09 axe link-in-text-block: green on muted grey is 1.12:1 against the sentence, so colour alone does
+    // not mark it as a link; it is underlined at rest.
+    expect(screen.getByRole('link', { name: /support@yourguava/i }).className).toMatch(/(^|\s)underline(\s|$)/)
   })
 
   // resendVerification answers the same 200 whether a link went out or the mail

@@ -79,6 +79,8 @@ describe('ForgotPassword', () => {
       'href',
       expect.stringContaining('mailto:')
     )
+    // UAT-01-S07 axe link-in-text-block (1.12:1 against the sentence): underlined at rest, not only on hover.
+    expect(screen.getByRole('link', { name: /support@yourguava/i }).className).toMatch(/(^|\s)underline(\s|$)/)
   })
 
   it('shows the server message rather than a generic retry prompt', async () => {

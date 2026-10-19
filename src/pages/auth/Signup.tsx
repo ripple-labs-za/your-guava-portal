@@ -163,7 +163,7 @@ export default function Signup() {
           <p className="mt-5 text-xs text-muted">
             Still nothing after two tries? Email{' '}
             <a
-              className="text-guava-green hover:underline"
+              className="text-guava-green underline underline-offset-2 hover:no-underline"
               href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Verification email not arriving')}`}
             >
               {SUPPORT_EMAIL}

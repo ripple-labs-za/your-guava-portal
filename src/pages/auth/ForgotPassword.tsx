@@ -83,7 +83,7 @@ export default function ForgotPassword() {
             <p className="mt-4 text-xs text-muted">
               Nothing after two tries? Email{' '}
               <a
-                className="text-guava-green hover:underline"
+                className="text-guava-green underline underline-offset-2 hover:no-underline"
                 href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Password reset email not arriving')}`}
               >
                 {SUPPORT_EMAIL}
