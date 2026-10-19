@@ -1,3 +1,4 @@
+import { readApiError, describeApiError, type ApiErrorCopy } from '@/lib/apiErrors'
 import { CHAT_CREDIT_COST, DEFAULT_RATE_LIMIT_SECONDS, ChatRequestError, chatRequestErrorFrom, chatFailureFrom, chatFailureFromStreamEvent, chatFailureCopy, savedChatFailureNotice, type ChatFailure, type ChatFailureKind } from '@/lib/chatFailure'
 import {
   useState,
@@ -72,6 +73,7 @@ interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  slow?: boolean
   pending?: boolean
   failure?: ChatFailure
 }
@@ -105,6 +107,9 @@ interface AssistantTypingState {
 const EMPTY_ANSWER = 'I could not generate an answer.'
 // Only a failure that could plausibly succeed on a second attempt earns the
 // non-streaming fallback, because that fallback is a second billable request.
+const STILL_WORKING_AFTER_MS = 8_000
+const STREAM_IDLE_TIMEOUT_MS = 45_000
+
 const RECOVERABLE_FAILURES = new Set<ChatFailureKind>(['offline', 'transient'])
 
 const QUICK_PROMPTS = [
@@ -391,11 +396,11 @@ const MarkdownLite = memo(function MarkdownLite({ text, streaming = false }: { t
   )
 })
 
-function ThinkingIndicator() {
+function ThinkingIndicator({ slow }: { slow?: boolean }) {
   return (
     <div className="flex items-center gap-2.5 text-sm text-muted">
       <Sparkles className="h-4 w-4 animate-pulse text-guava-green" />
-      <span>Reading your cafe data...</span>
+      <span>Reading your cafe data...{slow && <span className="mt-1 block text-xs">Still working. Answers that read a lot of history can take up to a minute; you can stop at any time.</span>}</span>
     </div>
   )
 }
@@ -465,7 +470,7 @@ const MessageRow = memo(function MessageRow({
       <div ref={setNode} data-message-role="assistant" className="py-5 sm:py-6">
         <div className="max-w-3xl">
           {isThinking ? (
-            <ThinkingIndicator />
+            <ThinkingIndicator slow={message.slow} />
           ) : (
             message.content && <MarkdownLite text={message.content} streaming={message.pending} />
           )}
@@ -746,6 +751,7 @@ export default function Insights() {
   const [insights, setInsights] = useState<Insight[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [insightsFailureCopy, setInsightsFailureCopy] = useState<ApiErrorCopy | null>(null)
   const [insightsError, setInsightsError] = useState(false)
   const [insightsRetryKind, setInsightsRetryKind] = useState<'load' | 'refresh'>('load')
   const [cacheStatus, setCacheStatus] = useState<InsightCacheStatus>('empty')
@@ -813,6 +819,8 @@ export default function Insights() {
   const [cooldownSeconds, setCooldownSeconds] = useState(0)
   const isMountedRef = useRef(true)
   const userCancelledRef = useRef(false)
+  const streamStalledRef = useRef(false)
+  const slowTimerRef = useRef<number | null>(null)
   const streamDeliveredRef = useRef(false)
   const cooldownUntilRef = useRef<number | null>(null)
   // One question keeps one idempotency key across every attempt, including a
@@ -949,7 +957,7 @@ export default function Insights() {
     setIsLoading(true)
     try {
       const { data } = await api.get<InsightReadResponse>('/forecasts/insights')
-      const nextStatus: InsightCacheStatus = ['fresh', 'stale', 'empty', 'unconfigured'].includes(data?.cacheStatus)
+      const nextStatus: InsightCacheStatus = ['fresh', 'stale', 'empty', 'unconfigured', 'insufficient_data'].includes(data?.cacheStatus)
         ? data.cacheStatus
         : Array.isArray(data?.insights) && data.insights.length > 0
           ? 'fresh'
@@ -972,6 +980,7 @@ export default function Insights() {
     refreshInFlightRef.current = true
     setIsRefreshing(true)
     setInsightsError(false)
+    setInsightsFailureCopy(null)
     const idempotencyKey = insightRefreshKeyRef.current ?? createInsightRefreshKey()
     insightRefreshKeyRef.current = idempotencyKey
 
@@ -993,7 +1002,10 @@ export default function Insights() {
       setInsightsError(false)
     } catch (error) {
       setInsightsRetryKind('refresh')
-      setInsightNotice(insightRefreshErrorNotice(error))
+      const info = readApiError(error)
+      const copy = info.offline ? null : describeApiError(info)
+      setInsightsFailureCopy(copy)
+      setInsightNotice(copy ? `${copy.title}. ${copy.body}` : insightRefreshErrorNotice(error))
       setInsightsError(true)
     } finally {
       refreshInFlightRef.current = false
@@ -1152,6 +1164,7 @@ export default function Insights() {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
+      if (slowTimerRef.current !== null) window.clearTimeout(slowTimerRef.current)
       activeStreamAbortRef.current?.abort()
       activeStreamAbortRef.current = null
       cancelAssistantTyping()
@@ -1338,7 +1351,13 @@ export default function Insights() {
     const controller = new AbortController()
     activeStreamAbortRef.current?.abort()
     activeStreamAbortRef.current = controller
-    const timeoutId = window.setTimeout(() => controller.abort(), 90_000)
+    let idleTimer = 0
+    const armIdle = () => {
+      window.clearTimeout(idleTimer)
+      idleTimer = window.setTimeout(() => { streamStalledRef.current = true; controller.abort() }, STREAM_IDLE_TIMEOUT_MS)
+    }
+    // Also bound a connection that never returns response headers.
+    armIdle()
     try {
       const response = await authenticatedFetch('/forecasts/insights/chat/stream', {
         method: 'POST',
@@ -1358,6 +1377,7 @@ export default function Insights() {
       }
 
       const reader = response.body.getReader()
+      armIdle()
       const decoder = new TextDecoder()
       let buffer = ''
       let answer = ''
@@ -1378,6 +1398,7 @@ export default function Insights() {
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
+        armIdle()
         buffer += decoder.decode(value, { stream: true })
 
         const events = buffer.split('\n\n')
@@ -1395,7 +1416,7 @@ export default function Insights() {
 
       return { answer, contextStats: streamedContextStats }
     } finally {
-      window.clearTimeout(timeoutId)
+      window.clearTimeout(idleTimer)
       if (activeStreamAbortRef.current === controller) {
         activeStreamAbortRef.current = null
       }
@@ -1591,7 +1612,7 @@ export default function Insights() {
     updateTrackedMessages((current) =>
       current.map((message) => (message.id === assistantId ? { ...message, failure } : message))
     )
-    if (failure.kind === 'rate-limited') {
+    if (failure.kind === 'rate-limited' || failure.kind === 'busy') {
       setCooldownUntil(Date.now() + (failure.retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS) * 1000)
     }
     setChatStatus(`${chatFailureCopy(failure).title}. ${chatFailureCopy(failure).detail}`)
@@ -1643,6 +1664,11 @@ export default function Insights() {
     isChatLoadingRef.current = true
     userCancelledRef.current = false
     streamDeliveredRef.current = false
+    streamStalledRef.current = false
+    slowTimerRef.current = window.setTimeout(() => {
+      updateTrackedMessages((current) => current.map((message) =>
+        message.id === assistantId && message.pending && !message.content ? { ...message, slow: true } : message))
+    }, STILL_WORKING_AFTER_MS)
     setIsChatLoading(true)
     setChatStatus('Guava is working on your answer.')
 
@@ -1682,7 +1708,7 @@ export default function Insights() {
           stats
         )
       } catch (streamError) {
-        const failure = chatFailureFrom(streamError, userCancelledRef.current, streamDeliveredRef.current)
+        const failure = chatFailureFrom(streamError, userCancelledRef.current, streamDeliveredRef.current, streamStalledRef.current)
         streamFailure = failure
         // The fallback is a second billable request. It is only worth issuing
         // when the failure could plausibly resolve: a 402, 403 or 429 cannot,
@@ -1720,7 +1746,7 @@ export default function Insights() {
       }
     } catch (error) {
       if (!isMountedRef.current) return
-      const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current)
+      const failure = chatFailureFrom(error, userCancelledRef.current, streamDeliveredRef.current, streamStalledRef.current)
       // A failed fallback cannot settle a charge the stream explicitly left unknown.
       if (streamFailure?.charged === null) failure.charged = null
       if (failure.kind === 'transient' && failure.charged === false && !failure.serverMessage) {
@@ -1728,11 +1754,13 @@ export default function Insights() {
       }
       // A refusal is settled: the same question later is a new request, so it
       // must not reuse a key the server would replay.
-      if (failure.charged !== true && (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || failure.kind === 'interrupted')) {
+      if (failure.charged !== true && (failure.kind === 'out-of-credits' || failure.kind === 'not-permitted' || failure.kind === 'session-ended' || ['interrupted', 'billing-read-only', 'cafe-access', 'daily-limit', 'busy', 'invalid-request', 'payload-too-large', 'ai-unavailable'].includes(failure.kind))) {
         chatRequestKeyRef.current = null
       }
       applyChatFailure(assistantId, failure)
     } finally {
+      if (slowTimerRef.current !== null) window.clearTimeout(slowTimerRef.current)
+      slowTimerRef.current = null
       isChatLoadingRef.current = false
       userCancelledRef.current = false
       if (isMountedRef.current) setIsChatLoading(false)
@@ -1928,7 +1956,7 @@ export default function Insights() {
                       variant="secondary"
                       size="sm"
                       onClick={refreshInsights}
-                      disabled={isLoading || isRefreshing || cacheStatus === 'unconfigured'}
+                      disabled={isLoading || isRefreshing || (cacheStatus === 'unconfigured' || cacheStatus === 'insufficient_data')}
                     >
                       <RefreshCw className={cn('w-3.5 h-3.5', isRefreshing && 'animate-spin')} />
                       {isRefreshing ? 'Refreshing...' : 'Refresh (10 credits)'}
@@ -1940,7 +1968,10 @@ export default function Insights() {
                 <div role="status" aria-label="Analysis status" aria-live="polite" className={insightNotice ? 'mb-4 rounded-lg border border-border px-3.5 py-2.5 text-sm' : 'sr-only'}>
                   {cacheStatus === 'insufficient_data' && hasData ? `${insufficientNotice || resolveRefreshOutcome({ cacheStatus }).body} ` : ''}{insightNotice}
                 </div>
-                {!isLoading && insightsError && (
+                {insightsError && insightsFailureCopy?.action.kind === 'link' && (
+                  <Link to={insightsFailureCopy.action.to}>{insightsFailureCopy.action.label}</Link>
+                )}
+                {!isLoading && insightsError && insightsFailureCopy?.action.kind !== 'link' && (
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1962,7 +1993,8 @@ export default function Insights() {
                     <p className="text-muted text-sm mb-5 max-w-xs">
                       {insufficientNotice || resolveRefreshOutcome({ cacheStatus }).body}
                     </p>
-                    {cacheStatus !== 'unconfigured' && (
+                    {cacheStatus === 'insufficient_data' && <Link to="/data-health">Upload Sales Data</Link>}
+                    {cacheStatus !== 'unconfigured' && cacheStatus !== 'insufficient_data' && (
                       <div className="flex flex-wrap justify-center gap-2">
                         <Button type="button" onClick={refreshInsights} disabled={isRefreshing}>
                           <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />

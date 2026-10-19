@@ -116,7 +116,23 @@ describe('read-only billing refusals', () => {
       ...billing, billingStatus: 'grace', code: 'BILLING_REQUIRED',
     } } } }, false)
     expect(failure.kind).toBe('billing-read-only')
-    expect(chatFailureCopy(failure).title).toBe('Guava is read-only')
+    expect(chatFailureCopy(failure).title).toBe('Your billing period has ended')
     expect(chatFailureCopy(failure).detail).not.toMatch(/out of|balance|credits/i)
+  })
+})
+
+describe('Ask Guava refusal codes (BE-13-T04)', () => {
+  it.each(['AI_PROVIDER_BUSY', 'AI_PROVIDER_UNAVAILABLE', 'AI_PROVIDER_TIMEOUT'])('does not make a refunded SSE %s recoverable automatically', (code) => {
+    expect(chatFailureFromStreamEvent({ code, retryable: true, charged: false })).toMatchObject({ kind: 'ai-unavailable', charged: false })
+  })
+  it.each([
+    ['AI_USER_DAILY_BUDGET_REACHED', 'daily-limit'],
+    ['AI_ORG_DAILY_BUDGET_REACHED', 'daily-limit'],
+    ['AI_USER_CONCURRENCY_LIMIT', 'busy'],
+    ['AI_ORG_CONCURRENCY_LIMIT', 'busy'],
+    ['AI_PROVIDER_BUSY', 'ai-unavailable'],
+  ])('maps the axios code %s independently of its sentence', (code, kind) => {
+    const failure = chatFailureFrom({ response: { status: 429, data: { code, message: 'Changed server sentence.' } } }, false)
+    expect(failure).toMatchObject({ kind, charged: false })
   })
 })

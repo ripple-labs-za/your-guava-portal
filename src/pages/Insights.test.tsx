@@ -1491,4 +1491,156 @@ it('caps the composer at the four thousand characters the model reads', async ()
   expect(composer).toHaveAttribute('maxlength', '4000')
 })
 
+  function acceptNewChats(id: string) {
+    mockPost.mockImplementation((url: string) =>
+      url === '/insight-chats'
+        ? Promise.resolve({ data: { chat: chat({ _id: id, messages: [] }) } })
+        : Promise.resolve({ data: {} })
+    )
+  }
+
+  // fireEvent, not userEvent: userEvent waits on real timers, which a fake-timer test never advances.
+  async function askQuestionNow(question: string) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    const input = screen.getByPlaceholderText(/how can i help/i)
+    fireEvent.change(input, { target: { value: question } })
+    fireEvent.submit(input.closest('form')!)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  }
+
+  it('sends a lapsed organisation to billing, not to buy credits', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(402, {
+      success: false, code: 'BILLING_REQUIRED', message: 'Your plan has ended. Guava is read-only until 4 Oct 2026: renew in Billing to make changes.',
+      billing: { status: 'grace', readOnly: true },
+    }))
+    acceptNewChats('chat-lapsed')
+    render(<Insights />)
+    await askQuestion('What sold best?')
+    await screen.findAllByText(/your billing period has ended/i)
+    expect(within(answerBubble()).getByRole('link', { name: /open billing/i })).toHaveAttribute('href', '/settings?section=billing')
+    expect(within(answerBubble()).queryByText(/out of guava credits/i)).not.toBeInTheDocument()
+    expect(chatFallbackCalls()).toHaveLength(0)
+  })
+
+  it('names a revoked location instead of the credit permission', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(403, {
+      success: false, message: 'Cafe access is no longer available', details: { code: 'CAFE_ACCESS_REVOKED' },
+    }))
+    acceptNewChats('chat-revoked')
+    render(<Insights />)
+    await askQuestion('How was last week?')
+    await screen.findAllByText(/no longer have access to this location/i)
+    expect(within(answerBubble()).queryByText(/cannot spend guava credits/i)).not.toBeInTheDocument()
+  })
+
+  it('does not count down for a rolling daily AI limit', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(429, {
+      success: false, code: 'AI_USER_DAILY_BUDGET_REACHED', message: 'Your daily AI credit safety limit has been reached',
+      details: { code: 'AI_USER_DAILY_BUDGET_REACHED', limit: 500, used: 498, required: 3 },
+    }))
+    acceptNewChats('chat-daily')
+    render(<Insights />)
+    await askQuestion('And the week before?')
+    await screen.findAllByText(/today's ai safety limit/i)
+    expect(within(answerBubble()).queryByText(/wait \d+ seconds/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /rate limited/i })).not.toBeInTheDocument()
+  })
+
+  it('waits only seconds when another answer is still running', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(
+      429,
+      { success: false, code: 'AI_USER_CONCURRENCY_LIMIT', message: 'You already have the maximum number of AI requests in progress' },
+      { 'retry-after': '5' }
+    ))
+    acceptNewChats('chat-busy')
+    render(<Insights />)
+    await askQuestion('Quick one')
+    await screen.findAllByText(/another answer is still being written/i)
+    expect(within(answerBubble()).getByText(/wait 5 seconds/i)).toBeInTheDocument()
+  })
+
+  it('says the AI service is down and nothing was charged, without a paid fallback', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(refusedResponse(503, {
+      success: false, code: 'AI_PROVIDER_BUSY',
+      message: 'The AI service is temporarily unavailable. No credits were charged — please try again shortly.',
+      details: { code: 'AI_PROVIDER_BUSY', retryable: true },
+    }))
+    acceptNewChats('chat-down')
+    render(<Insights />)
+    await askQuestion('Anything?')
+    await screen.findAllByText(/the ai service is unavailable right now/i)
+    expect(within(answerBubble()).getByText(/nothing was charged/i)).toBeInTheDocument()
+    expect(chatFallbackCalls()).toHaveLength(0)
+    expect(within(answerBubble()).getByRole('button', { name: /try again \(3 credits\)/i })).toBeInTheDocument()
+  })
+
+  it('shows that it is still working instead of an endless Thinking', async () => {
+    vi.useFakeTimers()
+    try {
+      mockBaseRequests()
+      vi.mocked(fetch).mockImplementation(() => new Promise<Response>(() => {}))
+      acceptNewChats('chat-slow')
+      render(<Insights />)
+      await askQuestionNow('Take your time')
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_000) })
+      expect(within(answerBubble()).getByText(/still working/i)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('gives up on a stream that stops sending, says it was charged, and does not buy a second answer', async () => {
+    vi.useFakeTimers()
+    try {
+      mockBaseRequests()
+      vi.mocked(fetch).mockImplementation(openStreamResponse(deltaEvent('The first half of the answer')) as typeof fetch)
+      acceptNewChats('chat-stalled')
+      render(<Insights />)
+      await askQuestionNow('Long answer please')
+      await act(async () => { await vi.advanceTimersByTimeAsync(46_000) })
+      expect(within(answerBubble()).getByText(/stopped arriving/i)).toBeInTheDocument()
+      expect(within(answerBubble()).getByText(/it was charged \(3 credits\)/i)).toBeInTheDocument()
+      expect(within(answerBubble()).getByText(/the first half of the answer/i)).toBeInTheDocument()
+      expect(chatFallbackCalls()).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not offer a paid refresh when there is not enough data yet', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/forecasts/insights') {
+        return Promise.resolve({ data: { success: true, insights: [], generatedAt: null, requiresRefresh: false, cacheStatus: 'insufficient_data', insufficientData: true } })
+      }
+      if (url.includes('/insight-chats')) return Promise.resolve({ data: { chats: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    render(<Insights />)
+    expect(await screen.findByRole('heading', { name: /nothing to analyse yet/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /generate \(10 credits\)/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /refresh \(10 credits\)/i })).toBeDisabled()
+  })
+
+  it('names why a paid insight refresh was refused', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/forecasts/insights') {
+        return Promise.resolve({ data: { success: true, insights: ['Saved analysis'], generatedAt: '2026-07-30T08:00:00.000Z', requiresRefresh: true, cacheStatus: 'stale' } })
+      }
+      if (url.includes('/insight-chats')) return Promise.resolve({ data: { chats: [] } })
+      return Promise.resolve({ data: {} })
+    })
+    mockPost.mockRejectedValueOnce({
+      response: { status: 402, data: { success: false, code: 'INSUFFICIENT_CREDITS', message: 'Guava credit limit reached for this billing period', details: { available: 4, required: 10 } } },
+    })
+    render(<Insights />)
+    await userEvent.click(await screen.findByRole('button', { name: /refresh \(10 credits\)/i }))
+    expect(await screen.findByText(/you are out of guava credits/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /buy guava credits/i })).toHaveAttribute('href', '/settings?section=billing')
+  })
+
 })

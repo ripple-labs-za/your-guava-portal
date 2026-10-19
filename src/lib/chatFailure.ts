@@ -1,4 +1,4 @@
-import { isSessionRejection } from './api'
+import { readApiError, type ApiErrorInfo } from './apiErrors'
 import { billingReadOnlyMessage } from './billingAccess'
 
 export const CHAT_CREDIT_COST = 3
@@ -21,6 +21,10 @@ export function savedChatFailureNotice(error: unknown): string | null {
 }
 export type ChatFailureKind =
   | 'billing-read-only'
+  | 'daily-limit'
+  | 'busy'
+  | 'ai-unavailable'
+  | 'stalled'
   | 'out-of-credits'
   | 'not-permitted'
   | 'rate-limited'
@@ -62,113 +66,85 @@ export function chatFailureFromStreamEvent(data: {
   message?: unknown; code?: string; charged?: boolean | null; retryable?: boolean; credits?: number
 }): ChatFailure {
   return {
-    kind: data.retryable === false ? 'provider-rejected' : data.charged === true ? 'interrupted' : 'transient',
+    kind: data.retryable === false ? 'provider-rejected' : data.charged === true ? 'interrupted'
+      : data.charged === false && (data.code?.startsWith('AI_PROVIDER_') || data.code === 'AI_INVALID_RESPONSE' || data.code === 'AI_OUTPUT_TRUNCATED') ? 'ai-unavailable' : 'transient',
     charged: typeof data.charged === 'boolean' ? data.charged : null,
     credits: data.credits,
     serverMessage: serverMessageFrom(data.message),
   }
 }
 
-function failureKindForStatus(status: number, code?: string): ChatFailureKind | null {
-  if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return 'payload-too-large'
-  if (status === 403 && code === 'CAFE_ACCESS_REVOKED') return 'cafe-access'
-  if (status === 400 && code === 'AI_CHAT_INVALID_INPUT') return 'invalid-request'
-  if (status === 402) return 'out-of-credits'
-  if (status === 403) return 'not-permitted'
-  if (status === 429) return 'rate-limited'
-  if (status === 401) return 'session-ended'
-  return null
-}
-
-function retryAfterSecondsFrom(response: Response) {
-  const raw = typeof response.headers?.get === 'function' ? response.headers.get('retry-after') : null
-  return retryAfterSecondsValue(raw)
+export function failureFromInfo(info: ApiErrorInfo): ChatFailure {
+  const details = info.details ?? {}
+  let kind: ChatFailureKind = 'transient'
+  switch (info.code) {
+    case 'BILLING_REQUIRED': kind = 'billing-read-only'; break
+    case 'CAFE_ACCESS_REVOKED': kind = 'cafe-access'; break
+    case 'AI_CHAT_INVALID_INPUT': kind = 'invalid-request'; break
+    case 'PAYLOAD_TOO_LARGE': kind = 'payload-too-large'; break
+    case 'AI_USER_DAILY_BUDGET_REACHED':
+    case 'AI_ORG_DAILY_BUDGET_REACHED': kind = 'daily-limit'; break
+    case 'AI_USER_CONCURRENCY_LIMIT':
+    case 'AI_ORG_CONCURRENCY_LIMIT': kind = 'busy'; break
+    default:
+      if (details.retryable === false) kind = 'provider-rejected'
+      else if (info.code?.startsWith('AI_PROVIDER_') || info.code === 'AI_INVALID_RESPONSE' || info.code === 'AI_OUTPUT_TRUNCATED') kind = 'ai-unavailable'
+      else if (info.status === 401) kind = 'session-ended'
+      else if (info.status === 402) kind = 'out-of-credits'
+      else if (info.status === 403) kind = 'not-permitted'
+      else if (info.status === 413) kind = 'payload-too-large'
+      else if (info.status === 429) kind = 'rate-limited'
+  }
+  return {
+    kind,
+    available: typeof details.available === 'number' ? details.available : undefined,
+    required: typeof details.required === 'number' ? details.required : undefined,
+    retryAfterSeconds: info.retryAfterSeconds ?? (kind === 'busy' ? 5 : undefined),
+    serverMessage: info.message ?? undefined,
+  }
 }
 
 export async function chatRequestErrorFrom(response: Response) {
-  const status = typeof response.status === 'number' ? response.status : 0
-  let body: {
-    code?: string
-    message?: string
-    details?: { code?: string; available?: number; required?: number; retryable?: boolean }
-  } | null = null
-  if (typeof response.json === 'function') {
-    body = await response.json().catch(() => null)
-  }
+  // Keep the billing envelope's dated read-only explanation while reading the
+  // public error code and Retry-After through the shared API boundary.
+  const body = typeof response.json === 'function' ? await response.json().catch(() => null) : null
+  const info = readApiError({ response: { status: response.status, data: body, headers: response.headers } })
+  const failure = failureFromInfo(info)
   const billingMessage = billingReadOnlyMessage(body)
-
-  return new ChatRequestError(
-    {
-      kind: billingMessage ? 'billing-read-only' : status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? 'payload-too-large'
-        : body?.details?.retryable === false ? 'provider-rejected' : failureKindForStatus(status, body?.code ?? body?.details?.code) ?? 'transient',
-      ...(billingMessage || status === 413 || body?.details?.code === 'PAYLOAD_TOO_LARGE' ? { charged: false } : {}),
-      serverMessage: billingMessage ?? serverMessageFrom(body?.message),
-      available: body?.details?.available,
-      required: body?.details?.required,
-      retryAfterSeconds: retryAfterSecondsFrom(response),
-    },
-    serverMessageFrom(body?.message) || `Streaming chat request failed (${status || 'no status'})`
-  )
+  if (billingMessage) {
+    failure.kind = 'billing-read-only'
+    failure.serverMessage = billingMessage
+  }
+  return new ChatRequestError(failure, info.message || `Streaming chat request failed (${info.status ?? 'no status'})`)
 }
 
-export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = false): ChatFailure {
+export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delivered = false, stalled = false): ChatFailure {
   if (cancelledByUser) return { kind: 'cancelled', charged: delivered }
+  if (stalled) return { kind: 'stalled', charged: delivered, chargeInferred: true }
   if (error instanceof ChatRequestError) {
     const { failure } = error
-    const refusedBeforeDelivery = ['billing-read-only', 'out-of-credits', 'not-permitted', 'rate-limited', 'session-ended', 'cafe-access', 'invalid-request', 'provider-rejected', 'payload-too-large']
-      .includes(failure.kind)
+    const refusedBeforeDelivery = !['transient', 'offline', 'interrupted', 'stalled'].includes(failure.kind)
     return {
       ...failure,
-      charged: failure.charged === undefined
-        ? (delivered ? true : (refusedBeforeDelivery ? false : null))
-        : failure.charged,
+      charged: failure.charged === undefined ? (delivered ? true : refusedBeforeDelivery ? false : null) : failure.charged,
       chargeInferred: failure.charged === undefined || failure.chargeInferred,
     }
   }
-
   const name = (error as Error | undefined)?.name
-  // A torn-down or timed-out stream is recoverable in principle, but it is
-  // never worth a second reservation the user did not ask for.
   if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered, chargeInferred: true }
-
-  const response = (error as {
-    response?: { status?: number; headers?: Record<string, unknown>; data?: { code?: string; message?: string; details?: { code?: string; available?: number; required?: number; retryable?: boolean } } }
-  })?.response
-  const status = response?.status
-  const code = response?.data?.code ?? response?.data?.details?.code
-  if (status === 413 || code === 'PAYLOAD_TOO_LARGE') return { kind: 'payload-too-large', charged: false }
+  const info = readApiError(error)
+  if (info.offline) return { kind: 'offline', charged: delivered }
+  const failure = failureFromInfo(info)
   const billingMessage = billingReadOnlyMessage(error)
-  if (billingMessage) return { kind: 'billing-read-only', charged: delivered, serverMessage: billingMessage }
-  if (response?.data?.details?.retryable === false) {
-    return { kind: 'provider-rejected', charged: delivered, serverMessage: serverMessageFrom(response.data.message) }
+  if (billingMessage) {
+    failure.kind = 'billing-read-only'
+    failure.serverMessage = billingMessage
   }
-  if (typeof status === 'number') {
-    const kind = failureKindForStatus(status, code)
-    if (kind === 'cafe-access' || kind === 'invalid-request') return { kind, charged: delivered }
-  }
-
-  // api.ts now ends the session only for a refused credential, so 403 here is
-  // the credit-spend permission rather than a dead login, and a request with no
-  // response at all is a genuine transport failure instead of a logout.
-  if (isSessionRejection(error)) {
-    return status === 403 ? { kind: 'not-permitted', charged: delivered } : { kind: 'session-ended', charged: delivered }
-  }
-  if (typeof status === 'number') {
-    return {
-      kind: failureKindForStatus(status) ?? 'transient',
-      charged: delivered,
-      chargeInferred: true,
-      serverMessage: serverMessageFrom(response?.data?.message),
-      retryAfterSeconds: retryAfterSecondsValue(response?.headers?.['retry-after']),
-      available: response?.data?.details?.available,
-      required: response?.data?.details?.required,
-    }
-  }
-  return { kind: 'offline', charged: delivered }
+  return { ...failure, charged: delivered, chargeInferred: true }
 }
 
 export function chatFailureCopy(failure: ChatFailure) {
-  if (failure.charged === true && !['cancelled', 'interrupted'].includes(failure.kind)) {
+  if (failure.charged === true && !['cancelled', 'interrupted', 'stalled'].includes(failure.kind)) {
     return {
       title: 'Answer interrupted',
       detail: `The answer had started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). Loading it again costs nothing.`,
@@ -187,9 +163,35 @@ export function chatFailureCopy(failure: ChatFailure) {
   switch (failure.kind) {
     case 'billing-read-only':
       return {
-        title: 'Guava is read-only',
+        title: 'Your billing period has ended',
         detail: failure.serverMessage ?? 'Guava is read-only. Renew in Billing.',
         action: { kind: 'link' as const, label: 'Open Billing', to: '/settings?section=billing' },
+      }
+    case 'daily-limit':
+      return {
+        title: "You have reached today's AI safety limit",
+        detail: 'The limit counts the last 24 hours and frees up as earlier questions age out. Nothing was charged.',
+        action: null,
+      }
+    case 'busy':
+      return {
+        title: 'Another answer is still being written',
+        detail: `Wait ${failure.retryAfterSeconds ?? 5} seconds for it to finish, then ask again. Nothing was charged.`,
+        action: null,
+      }
+    case 'ai-unavailable':
+      return {
+        title: 'The AI service is unavailable right now',
+        detail: 'Nothing was charged. Try again in a few minutes.',
+        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
+      }
+    case 'stalled':
+      return {
+        title: 'The answer stopped arriving',
+        detail: failure.charged
+          ? `It had started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). What arrived is above. Loading it again costs nothing.`
+          : 'Nothing arrived, so nothing was charged.',
+        action: { kind: 'retry' as const, label: failure.charged ? 'Load the full answer (no extra charge)' : `Try again (${CHAT_CREDIT_COST} credits)` },
       }
     case 'payload-too-large':
       return {
@@ -253,7 +255,7 @@ export function chatFailureCopy(failure: ChatFailure) {
             detail: `Stopped. The answer had already started, so it was charged (${failure.credits ?? CHAT_CREDIT_COST} credits). The rest is kept for you at no extra charge.`,
             action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
           }
-        : { title: 'Stopped', detail: 'Stopped. No answer text had arrived.', action: null }
+        : { title: 'Stopped', detail: 'Stopped. No answer text had arrived. Nothing was charged.', action: null }
     case 'interrupted':
       return {
         title: 'The AI service stopped this answer part-way',
