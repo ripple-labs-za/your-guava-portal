@@ -38,7 +38,7 @@ const LEAVE_TYPE_COLORS: Record<string, string> = {
   annual: '#4DA63B',
   sick: '#4A9ECC',
   family: '#FFD166',
-  unpaid: '#888888',
+  unpaid: '#9A9A9A',
 }
 
 const LEAVE_TYPES = ['annual', 'sick', 'family', 'unpaid'] as const
