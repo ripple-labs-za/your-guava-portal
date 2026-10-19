@@ -826,7 +826,7 @@ export default function Connect() {
                         <p className="text-sm font-medium text-amber-200">
                           {result.errors.toLocaleString()} row{result.errors === 1 ? '' : 's'} {result.errors === 1 ? 'was' : 'were'} not imported
                         </p>
-                        <p className="mt-1 text-xs text-muted">
+                        <p className="mt-1 text-xs text-text/80">
                           Everything else is in. Fix the rows below in your export and upload just those
                           — rows already imported are skipped, so nothing is duplicated.
                         </p>
@@ -839,7 +839,7 @@ export default function Connect() {
                             ))}
                           </ul>
                         )}
-                        <p className="mt-2 text-xs text-muted">
+                        <p className="mt-2 text-xs text-text/80">
                           Upload History has the full rejected-row report, up to the first 50.
                         </p>
                       </div>

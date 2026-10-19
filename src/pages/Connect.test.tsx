@@ -718,6 +718,40 @@ describe('Connect mapping wizard lifecycle', () => {
     confirmSpy.mockRestore()
   })
 
+  it('keeps both rejected-row recovery instructions above AA contrast on the warning surface', async () => {
+    // css:false stubs CSS imports; read the real palette through the test runner's Node runtime.
+    const { readFileSync } = await vi.importActual<{ readFileSync: (file: string, encoding: 'utf8') => string }>('node:fs')
+    const themeCss = readFileSync('src/index.css', 'utf8')
+    mockPost.mockImplementation((url: string) => url === '/transactions/upload'
+      ? stageOnly(false)(url)
+      : Promise.resolve({ data: { stats: { imported: 45, skipped: 0, errors: 5, totalRows: 50 }, rowErrors: [{ rowNumber: 4, reason: 'Invalid total' }] } }))
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['Date,Items,Total'], 'partial.csv', { type: 'text/csv' }))
+    const instructions = [
+      await screen.findByText(/Everything else is in\. Fix the rows below/),
+      screen.getByText('Upload History has the full rejected-row report, up to the first 50.'),
+    ]
+    // Browser axe receipt FB034 measured this composited amber ground. Read the actual theme foreground/alpha,
+    // rather than prescribing a class name; the browser regression also checks the live ground and both paragraphs.
+    const background = [51, 45, 20]
+    const luminance = (rgb: number[]) => rgb.map((value) => value / 255)
+      .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+    for (const instruction of instructions) {
+      const foreground = [...instruction.classList].flatMap((name) => {
+        const utility = /^text-([^/]+)(?:\/(\d+))?$/.exec(name)
+        if (!utility) return []
+        const color = new RegExp(`--color-${utility[1]}:\\s*#([a-f\\d]{6})`, 'i').exec(themeCss)
+        return color ? [{ hex: color[1], alpha: Number(utility[2] ?? 100) / 100 }] : []
+      })[0]
+      expect(foreground, 'instruction has a known theme foreground').toBeDefined()
+      const rgb = [0, 2, 4].map((offset, index) => parseInt(foreground.hex.slice(offset, offset + 2), 16) * foreground.alpha + background[index] * (1 - foreground.alpha))
+      const ratio = (luminance(rgb) + 0.05) / (luminance(background) + 0.05)
+      expect(ratio, instruction.textContent ?? 'recovery guidance').toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('waits for one staged upload deletion before closing an owner discard', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     let finish!: (value: unknown) => void
