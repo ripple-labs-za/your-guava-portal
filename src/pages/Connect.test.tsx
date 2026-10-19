@@ -507,6 +507,15 @@ describe('Connect first-run guidance', () => {
     expect(await screen.findByText(/shorter date ranges/i)).toBeInTheDocument()
   })
 
+  it('shows the server sentence when the parser queue is busy', async () => {
+    const message = 'Too many uploads are being parsed. Try again shortly.'
+    mockPost.mockRejectedValue({ response: { status: 503, data: { code: 'UPLOAD_PARSE_BUSY', message } } })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['Receipt,Total\nA,38\n'], 'sales.csv', { type: 'text/csv' }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+  })
+
   it('says which dropped file it took and what to do with the rest', async () => {
     mockPost.mockImplementation(() => new Promise(() => {}))
 
