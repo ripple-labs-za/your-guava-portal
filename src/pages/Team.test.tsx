@@ -540,6 +540,9 @@ describe('Team', () => {
       expect(addButtons.length).toBeGreaterThan(0)
       addButtons.forEach((button) => expect(button).toBeDisabled())
     })
+    // UAT-09-S01: both say why, not only the toolbar button.
+    screen.getAllByRole('button', { name: /^add location$/i }).forEach((button) =>
+      expect(button).toHaveAttribute('title', expect.stringMatching(/^Location limit reached on the /)))
     expect(screen.getByText(/starter plan is full/i)).toBeInTheDocument()
   })
 
@@ -631,6 +634,30 @@ describe('Team', () => {
     })
     expect(document.activeElement).toBe(trigger)
     expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  // UAT-09-S01: a form dialog opened on its Close button and, on closing, left focus on the page body: a field that
+  // autofocuses mounts before the dialog records what had focus, so it recorded that field instead of the trigger.
+  it('opens a form dialog on its first field and returns focus to the trigger on close', async () => {
+    const user = userEvent.setup()
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/team')) return Promise.resolve({ data: { success: true, members: [] } })
+      if (url.includes('/cafe/list')) return Promise.resolve({ data: { success: true, cafes: [{ _id: 'c1', name: 'Blouberg Coffee' }] } })
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.resolve({ data: {} })
+    })
+
+    renderWithAuth(<Team />)
+    const trigger = (await screen.findAllByRole('button', { name: /^add member$/i }))[0]
+    trigger.focus()
+    await user.click(trigger)
+
+    await screen.findByRole('dialog', { name: /add team member/i })
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText('Team member name')))
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /add team member/i })).not.toBeInTheDocument())
+    expect(document.activeElement).toBe(trigger)
   })
 
   it('groups the cafe checkboxes under their visible heading', async () => {

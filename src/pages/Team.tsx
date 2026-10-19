@@ -144,15 +144,26 @@ function Dialog({
   // the first field mid-typing and restoring it to the trigger in between.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  // The trigger is recorded during the render that opens the dialog, while it still has focus. Recorded in the
+  // effect, it was already a field inside the dialog that autofocused as it mounted, so closing returned focus to
+  // a removed node and the keyboard user landed on the page body (UAT-09-S01).
+  const wasOpenRef = useRef(false)
+  const restoreRef = useRef<HTMLElement | null>(null)
+  if (open && !wasOpenRef.current) restoreRef.current = document.activeElement as HTMLElement | null
+  wasOpenRef.current = open
 
   useEffect(() => {
     if (!open) return
-    const previouslyFocused = document.activeElement as HTMLElement | null
+    const previouslyFocused = restoreRef.current
     const panel = panelRef.current
-    // Focus the first real control if there is one, otherwise the panel, so the
-    // user is never left on a trigger hidden behind the overlay.
-    const initial = panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-    ;(initial ?? panel)?.focus()
+    // Keep a field that already took focus; otherwise the first form field, then the first control, then the panel,
+    // so the user starts where they type and is never left on a trigger hidden behind the overlay.
+    const alreadyInside = panel && document.activeElement && panel.contains(document.activeElement) && document.activeElement !== panel
+    if (!alreadyInside) {
+      const initial = panel?.querySelector<HTMLElement>('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')
+        ?? panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+      ;(initial ?? panel)?.focus()
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -890,6 +901,8 @@ export default function Team() {
                   onClick={openLocationDialog}
                   disabled={locationLimitReached}
                   aria-label="Add location"
+                  // The same reason the header button gives (UAT-09-S01): a disabled icon said nothing about why.
+                  title={locationLimitReached ? `Location limit reached on the ${locationPlan ?? 'current'} plan` : undefined}
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
