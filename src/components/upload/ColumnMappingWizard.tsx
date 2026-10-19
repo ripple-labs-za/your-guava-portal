@@ -216,10 +216,10 @@ export function ColumnMappingWizard({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-auto">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center p-4 overflow-auto">
       <Card
         ref={dialogRef}
-        className="max-w-3xl w-full"
+        className="max-w-3xl w-full my-auto"
         role="dialog"
         aria-modal="true"
         aria-labelledby="column-mapping-title"
