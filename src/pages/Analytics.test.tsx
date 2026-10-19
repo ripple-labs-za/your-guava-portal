@@ -98,7 +98,7 @@ describe('Analytics', () => {
   it('shows every server window and caveat together across all five tabs', async () => {
     serveCombined()
     render(<Analytics />)
-    expect(await screen.findByText(/21 Aug – 19 Sep vs 22 Jul – 20 Aug/)).toBeInTheDocument()
+    expect(await screen.findByLabelText('Revenue comparison')).toHaveTextContent('21 Aug – 19 Sep vs 22 Jul – 20 Aug')
     expect(screen.getByText(/your data ends 19 Sep/)).toBeInTheDocument()
     expect(screen.getByText(/across 26 open days/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
@@ -1074,8 +1074,8 @@ describe('Analytics', () => {
 
     expect(await screen.findByText('+0.0%')).toBeInTheDocument()
     expect(
-      screen.getByText('6 Jul – 3 Aug vs 7 Jun – 5 Jul · today left out')
-    ).toBeInTheDocument()
+      screen.getByLabelText('Revenue comparison')
+    ).toHaveTextContent('6 Jul – 3 Aug vs 7 Jun – 5 Jul · today left out')
   })
 
   it('shows no trend, and says why, when the server cannot compare honestly', async () => {
@@ -1107,7 +1107,7 @@ describe('Analytics', () => {
     expect(
       await screen.findByText(/not enough history before this range/i)
     ).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Trend unavailable' })).toHaveTextContent('—')
     expect(screen.queryByText('+0.0%')).not.toBeInTheDocument()
   })
 
@@ -1254,6 +1254,28 @@ describe('Analytics', () => {
     await screen.findAllByText('No item data available')
     expect(screen.getByRole('status')).toBe(status)
     expect(status).toBeEmptyDOMElement()
+  })
+
+  it('clears the previous window while the next tab request is still pending', async () => {
+    let resolveItems!: (value: { data: { items: never[] } }) => void
+    const pendingItems = new Promise<{ data: { items: never[] } }>((resolve) => { resolveItems = resolve })
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/analytics/items')) return pendingItems
+      return Promise.resolve({ data: url.includes('/analytics/revenue')
+        ? { data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, bestDay: null, worstDay: null, trend: null },
+            meta: combinedWindow }
+        : {} })
+    })
+    render(<Analytics />)
+    await screen.findByText(/Showing 21 Aug – 19 Sep · 30 days/)
+    const status = screen.getByRole('status')
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    expect(mockGet).toHaveBeenLastCalledWith(expect.stringContaining('/analytics/items'), expect.anything())
+    // No response or period change has cleared this: only selecting the tab can do it.
+    expect(screen.getByRole('status')).toBe(status)
+    expect(status).toBeEmptyDOMElement()
+    resolveItems({ data: { items: [] } })
+    await screen.findAllByText('No item data available')
   })
 
   it('clears the previous window when a new range fetch fails', async () => {

@@ -2,7 +2,7 @@ import { MOVERS_CAPTION, moverThresholdNote, belowFloorNote, ItemTrend, closedCe
 import { analyticsCustomersFrom } from '@/lib/analyticsCustomers'
 import { comboSampleCaption, useAnalyticsRetryDelay, type AnalyticsFailure, type ComboSampleMeta } from '@/lib/analyticsErrors'
 import { describeApiError, readApiError, waitSeconds } from '@/lib/apiErrors'
-import { openDaysCaption, formatDayKey, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
+import { openDaysCaption, formatDayKey, formatDayRange, trendCaptionFrom, queriedWindowFrom, type RangeMeta, type QueriedWindow, type TrendMeta } from '@/lib/analyticsWindow'
 import { useState, useEffect, useMemo, useRef, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import {
@@ -209,8 +209,20 @@ function TabError({ error, onRetry }: { error: AnalyticsFailure; onRetry: () => 
 
 // ── Revenue Tab ──────────────────────────────────────────────────────────────
 
+function trendCaptionContent(meta?: TrendMeta): React.ReactNode {
+  const caption = trendCaptionFrom(meta)
+  if (!meta?.effectiveWindow || !meta.comparisonWindow || meta.trendReason) return caption
+  const suffix = caption.includes(' · ') ? ` · ${caption.split(' · ')[1]}` : ''
+  return <span role="group" aria-label="Revenue comparison">
+    <span className="whitespace-nowrap">{formatDayRange(meta.effectiveWindow)}</span>
+    {' vs '}
+    <span className="whitespace-nowrap">{formatDayRange(meta.comparisonWindow)}</span>
+    {suffix}
+  </span>
+}
+
 function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
-  const [trendCaption, setTrendCaption] = useState('')
+  const [trendCaption, setTrendCaption] = useState<React.ReactNode>('')
   const [reloadKey, setReloadKey] = useState(0)
   const [data, setData] = useState<RevenueAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -225,7 +237,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
       .then(({ data: res }) => {
         if (controller.signal.aborted) return
         onWindow(queriedWindowFrom(res.meta))
-        setTrendCaption(trendCaptionFrom(res.meta))
+        setTrendCaption(trendCaptionContent(res.meta))
         const summary = res.summary ?? res.meta?.summary
         setData({
           totalRevenue: summary?.totalRevenue ?? 0,
@@ -271,7 +283,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
             />
             <KpiCard
               label="Trend"
-              value={data.trend === null ? <span aria-label="Trend unavailable">—</span> : formatTrend(data.trend)}
+              value={data.trend === null ? <span role="img" aria-label="Trend unavailable">—</span> : formatTrend(data.trend)}
               sub={trendCaption || undefined}
               icon={data.trend === null ? Minus : data.trend < 0 ? TrendingDown : TrendingUp}
               accent={data.trend === null ? '#888888' : data.trend >= 0 ? '#4DA63B' : '#D43D3D'}
@@ -1083,7 +1095,7 @@ function KpiCard({
 }: {
   label: string
   value: React.ReactNode
-  sub?: string
+  sub?: React.ReactNode
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
   accent: string
 }) {
