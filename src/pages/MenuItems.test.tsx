@@ -607,7 +607,7 @@ it('lets the first import ignore a POS fee without keeping every new item', asyn
     return Promise.resolve({ data: { success: true } })
   })
   render(<MenuItems />)
-  await userEvent.click(await screen.findByRole('button', { name: 'Ignore the POS item Delivery Fee', exact: true }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Ignore the POS item Delivery Fee' }))
   expect(mockPost).toHaveBeenCalledWith('/items/fee/resolve', expect.objectContaining({ action: 'ignore' }))
   expect(mockPost.mock.calls.some(([url]) => url === '/items/confirm-all-new')).toBe(false)
   expect(await screen.findByRole('button', { name: 'Keep all 2 as new items' })).toBeInTheDocument()
