@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import api, { isSessionRejection } from '@/lib/api'
+import { API_ERROR_COPY, describeApiError, readApiError, waitSeconds } from '@/lib/apiErrors'
 import { XLS_GUIDANCE, INVALID_TYPE, overlapSkipMessage, savedMappingNotice, mappingAssistNotice } from '@/lib/uploadMessages'
 import { confirmUpload as confirmUploadRequest, type ConfirmUploadResponse } from '@/lib/uploads'
 import { useAuth } from '@/hooks/useAuth'
@@ -54,6 +55,13 @@ function serverReference(err: unknown): string | null {
 }
 
 function uploadFailureMessage(err: unknown): string {
+  // The code first (BE-13-T02): it says which failure this is whatever the wording, and a 429 says how long to wait.
+  const info = readApiError(err)
+  if (info.code && API_ERROR_COPY[info.code]) {
+    const text = describeApiError(info).body
+    const wait = waitSeconds(info)
+    return wait ? `${text} Try again in ${wait} seconds.` : text
+  }
   const serverMessage = extractErrorMsg(err, '')
   if (serverMessage) {
     const reference = serverReference(err)
@@ -498,7 +506,10 @@ export default function Connect() {
     setErrorMsg(msg)
     // Re-importing a file you already uploaded is normal housekeeping, not a
     // failure. The rows were skipped because they are already safely stored.
-    setUploadState(isDuplicateUploadMessage(msg) ? 'duplicate' : 'error')
+    // The code decides (BE-13-T02); the wording check stays for upload records
+    // stored before the code existed, which carry only their message.
+    const noNewRows = readApiError(err).code === 'UPLOAD_NO_NEW_ROWS' || isDuplicateUploadMessage(msg)
+    setUploadState(noNewRows ? 'duplicate' : 'error')
   }
 
   // ── Fetch data status ────────────────────────────────────────────

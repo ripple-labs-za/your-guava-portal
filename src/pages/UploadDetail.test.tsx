@@ -5,7 +5,7 @@ import UploadDetail from './UploadDetail'
 import api from '@/lib/api'
 
 vi.mock('@/lib/api', () => ({
-  default: { get: vi.fn(), delete: vi.fn(), patch: vi.fn() },
+  default: { get: vi.fn(), delete: vi.fn(), patch: vi.fn(), post: vi.fn() },
 }))
 vi.mock('@/components/layout/AppLayout', () => ({
   AppLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -21,6 +21,7 @@ const apiMock = api as unknown as {
   get: ReturnType<typeof vi.fn>
   delete: ReturnType<typeof vi.fn>
   patch: ReturnType<typeof vi.fn>
+  post: ReturnType<typeof vi.fn>
 }
 
 function mockUploadDetail() {
@@ -66,6 +67,7 @@ describe('UploadDetail', () => {
     apiMock.get.mockReset()
     apiMock.delete.mockReset()
     apiMock.patch.mockReset()
+    apiMock.post.mockReset()
     authState.user.role = 'owner'
     authState.isOwner = true
   })
@@ -363,6 +365,34 @@ describe('UploadDetail', () => {
     expect(confirmSpy).toHaveBeenCalled()
 
     confirmSpy.mockRestore()
+  })
+
+  it('recovers from MAPPING_ALREADY_COMMITTED by reloading the upload instead of failing', async () => {
+    // BE-13-T02: someone finished this import first with other columns; the page offers the upload as it now is.
+    const pending = {
+      _id: 'u1', fileName: 'abandoned.csv', status: 'pending_mapping', posType: 'wizard', itemsMode: 'packed', columnMapping: {},
+      stats: { imported: 0, skipped: 0, errors: 0, totalRows: 0 }, createdAt: new Date().toISOString(),
+      uploadedBy: { name: 'Shaun', email: 's@x.za' }, headers: ['Sale Date', 'Description', 'Amount'],
+      sampleRows: [{ 'Sale Date': '2026/04/01', Description: '1 x Flat White', Amount: '38.00' }],
+    }
+    let current: Record<string, unknown> = pending
+    apiMock.get.mockImplementation((url: string) => url.endsWith('/rows')
+      ? Promise.resolve({ data: { transactions: [], pagination: { total: 0, page: 1, limit: 50, pages: 1 } } })
+      : Promise.resolve({ data: { upload: current, downloadUrl: 'https://test.r2.local/foo' } }))
+    apiMock.post.mockRejectedValueOnce({ response: { status: 409, data: { success: false, code: 'MAPPING_ALREADY_COMMITTED', message: 'Upload already completed with a different mapping. Use remap to change it.' } } })
+    renderUploadDetail()
+
+    await screen.findByText('abandoned.csv')
+    fireEvent.click(screen.getByRole('button', { name: /complete mapping/i }))
+    fireEvent.change(await screen.findByLabelText(/^Date/), { target: { value: 'Sale Date' } })
+    fireEvent.change(screen.getByLabelText(/^Items \//), { target: { value: 'Description' } })
+    fireEvent.change(screen.getByLabelText(/^Total/), { target: { value: 'Amount' } })
+    fireEvent.click(screen.getByRole('button', { name: /import with these columns/i }))
+
+    expect(await screen.findByText(/already imported with other columns/i)).toBeInTheDocument()
+    current = { ...pending, status: 'completed', columnMapping: { date: 'Sale Date', items: 'Description', total: 'Amount' }, stats: { imported: 1, skipped: 0, errors: 0, totalRows: 1 } }
+    fireEvent.click(screen.getByRole('button', { name: /reload this upload/i }))
+    expect(await screen.findByRole('button', { name: /re-map columns/i })).toBeInTheDocument()
   })
 
   it('does not ask about a partial import for a 422 that is not a severe partial', async () => {

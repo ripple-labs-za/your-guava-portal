@@ -10,6 +10,7 @@ import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
 import { deleteUploadConsequence, overlapNotice, readmissionOutcome, skippedRowSentences } from '@/lib/uploadMessages'
 import api from '@/lib/api'
+import { API_ERROR_COPY, readApiError } from '@/lib/apiErrors'
 import { confirmUpload, confirmationKeyFor, severePartialImportDetails } from '@/lib/uploads'
 import type {
   Upload, ColumnMapping, ItemsMode, UploadRowError, UploadOverlap, DeleteUploadResponse,
@@ -157,6 +158,7 @@ export default function UploadDetail() {
   const [remapError, setRemapError] = useState<string | null>(null)
   const [completing, setCompleting] = useState(false)
   const [completeError, setCompleteError] = useState<string | null>(null)
+  const [alreadyImported, setAlreadyImported] = useState(false)
 
   const deleteDialogRef = useDialogKeyboard(showDeleteConfirm, () => {
     if (!deleting) setShowDeleteConfirm(false)
@@ -548,6 +550,20 @@ export default function UploadDetail() {
           {/* Re-mapping is only possible once a first mapping has been
               committed. Offering it for a pending_mapping upload produced a
               guaranteed "Cannot remap while pending_mapping" from the API. */}
+          {alreadyImported && (
+            <div role="alert" className="mb-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+              <p className="font-medium text-text">{API_ERROR_COPY.MAPPING_ALREADY_COMMITTED.title}</p>
+              <p className="mt-1 text-muted">{API_ERROR_COPY.MAPPING_ALREADY_COMMITTED.body}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => { setAlreadyImported(false); setDetailReloadToken((current) => current + 1) }}
+              >
+                Reload this upload
+              </Button>
+            </div>
+          )}
           {upload.status === 'pending_mapping' ? (
             <>
               <p className="mb-3 text-sm text-muted">
@@ -662,6 +678,12 @@ export default function UploadDetail() {
               setCompleting(false)
               setDetailReloadToken((current) => current + 1)
             } catch (err: unknown) {
+              // Someone finished this import first with other columns (BE-13-T02): offer the upload as it now is.
+              if (readApiError(err).code === 'MAPPING_ALREADY_COMMITTED') {
+                setCompleting(false)
+                setAlreadyImported(true)
+                return
+              }
               setCompleteError(extractApiError(err, 'Import failed. Check the column choices and try again.'))
               setCompleting(false)
             }

@@ -516,6 +516,39 @@ describe('Connect first-run guidance', () => {
     expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
+  // BE-13-T02: failures told apart by code, not by status or wording.
+  it('names the size limit when a file is too large', async () => {
+    mockPost.mockRejectedValueOnce({ response: { status: 413, data: { success: false, code: 'UPLOAD_TOO_LARGE', message: 'This file is larger than the 10 MB upload limit. Export a shorter date range and upload each part.' } } })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'big.csv', { type: 'text/csv' }))
+    expect(await screen.findByText(/larger than the 10 MB upload limit/i)).toBeInTheDocument()
+  })
+
+  it('tells the owner how long to wait when uploads are rate limited', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { status: 429, data: { success: false, code: 'UPLOAD_RATE_LIMITED', message: 'That is a lot of files at once. Wait a minute, then continue importing.' }, headers: { 'retry-after': '37' } },
+    })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'data.csv', { type: 'text/csv' }))
+    expect(await screen.findByText(/try again in 37 seconds/i)).toBeInTheDocument()
+  })
+
+  it('treats UPLOAD_NO_NEW_ROWS as a re-upload whatever its wording', async () => {
+    mockPost.mockImplementation((url: string) => {
+      if (url === '/transactions/upload') return stageOnly(false)(url)
+      if (url === '/uploads/u1/confirm') {
+        return Promise.reject({ response: { status: 409, data: { success: false, code: 'UPLOAD_NO_NEW_ROWS', message: 'Nothing new: every row in this file is on record.' } } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    pickFile(new File(['a,b'], 'data.csv', { type: 'text/csv' }))
+    expect(await screen.findByText(/already up to date/i)).toBeInTheDocument()
+  })
+
   it('says which dropped file it took and what to do with the rest', async () => {
     mockPost.mockImplementation(() => new Promise(() => {}))
 

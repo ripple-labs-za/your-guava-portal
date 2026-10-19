@@ -77,6 +77,22 @@ describe('api interceptors', () => {
     expect(window.location.href).toBe('http://localhost/team')
   })
 
+  it('sends a lapsed organisation to billing when the 402 carries BILLING_REQUIRED only in details', async () => {
+    // BE-13-T02: the metering path puts the code in details; the redirect must not depend on where it sits.
+    const { responseRejected } = await loadApi()
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { ...originalLocation, pathname: '/performance', href: 'http://localhost/performance' },
+    })
+    const error = {
+      config: { url: '/analytics/revenue', headers: {} },
+      response: { status: 402, data: { success: false, message: 'An active trial or paid billing period is required', details: { code: 'BILLING_REQUIRED', reason: 'trial_expired' } } },
+    }
+
+    await expect(responseRejected(error)).rejects.toBe(error)
+    expect(window.location.href).toBe('/settings?section=billing&billing=required')
+  })
+
   it('asks the refresh endpoint for the cafe this tab is showing', async () => {
     const { responseRejected, setTabCafeId } = await loadApi()
     setTabCafeId('cafeA')
