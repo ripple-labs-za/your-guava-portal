@@ -1184,6 +1184,46 @@ describe('Insights', () => {
     expect(screen.queryByText('Thinking...')).not.toBeInTheDocument()
   })
 
+  it('shows the next answer context counts before the first question', async () => {
+    mockBaseRequests()
+    const base = mockGet.getMockImplementation()
+    mockGet.mockImplementation((url: string, ...args: unknown[]) => url === '/forecasts/insights/context'
+      ? Promise.resolve({ data: { contextStats: { transactionCount: 5936, locations: 2, forecasts: 7, contextWindow: 'Last 90 days' } } })
+      : base?.(url, ...args))
+    render(<Insights />)
+    expect(await screen.findByText(/5\s936/)).toBeInTheDocument()
+    expect(screen.getByText('Locations').parentElement).toHaveTextContent('2')
+    expect(screen.getByText('Forecasts').parentElement).toHaveTextContent('7')
+  })
+
+  it('labels unavailable context counts instead of implying that no data exists', async () => {
+    mockBaseRequests()
+    const base = mockGet.getMockImplementation()
+    mockGet.mockImplementation((url: string, ...args: unknown[]) => url === '/forecasts/insights/context'
+      ? Promise.reject(new Error('Network Error')) : base?.(url, ...args))
+    render(<Insights />)
+    expect(await screen.findByTitle(/counts unavailable/i)).toBeInTheDocument()
+  })
+
+  it('releases the composer after a completed stream and accepts the next question', async () => {
+    mockBaseRequests()
+    vi.mocked(fetch).mockResolvedValue(streamResponse(
+      deltaEvent('A completed answer.') + 'event: done\ndata: ' + JSON.stringify({ contextStats }) + '\n\n'
+    ))
+    mockPost.mockImplementation((url: string) => url === '/insight-chats'
+      ? Promise.resolve({ data: { chat: chat({ _id: 'chat-completed', messages: [] }) } })
+      : Promise.resolve({ data: {} }))
+    render(<Insights />)
+    await askQuestion('First question')
+    expect(await screen.findByText('A completed answer.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^stop$/i })).not.toBeInTheDocument())
+    const composer = screen.getByPlaceholderText(/write a message|how can i help/i)
+    expect(composer).toBeEnabled()
+    fireEvent.change(composer, { target: { value: 'Second question' } })
+    fireEvent.submit(composer.closest('form')!)
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+  })
+
   it('renders hostile item names from the model as text, never as markup', async () => {
     const hostile = '<img src=x onerror=alert(1)>Latte'
     mockBaseRequests()

@@ -777,6 +777,17 @@ export default function Insights() {
   const [chatPage, setChatPage] = useState(1)
   const [hasMoreChats, setHasMoreChats] = useState(false)
   const [contextStats, setContextStats] = useState<ChatContextStats | null>(initialStoredChat?.contextStats || null)
+  const [liveStats, setLiveStats] = useState<ChatContextStats | null>(null)
+  const [liveStatsFailed, setLiveStatsFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    setLiveStats(null)
+    setLiveStatsFailed(false)
+    api.get<{ contextStats: ChatContextStats }>('/forecasts/insights/context')
+      .then(({ data }) => { if (active) setLiveStats(data.contextStats ?? null) })
+      .catch(() => { if (active) setLiveStatsFailed(true) })
+    return () => { active = false }
+  }, [storageScopeId])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const messageRefs = useRef(new Map<string, HTMLDivElement>())
@@ -1302,6 +1313,7 @@ export default function Insights() {
     }
     if (eventName === 'done') {
       setContextStats(data.contextStats || null)
+      if (data.contextStats) setLiveStats(data.contextStats)
       const creditSnapshot = data.guavaCredits ?? data.aiCredits
       setCreditsRemaining(creditSnapshot?.available ?? null)
       publishGuavaCredits(creditSnapshot)
@@ -1735,6 +1747,7 @@ export default function Insights() {
   // every render, so passing it directly re-rendered the composer — and the
   // textarea the user is trying to type into — on every streamed frame.
   const submitPrompt = useCallback((prompt: string) => sendPromptRef.current(prompt), [])
+  const shownContextStats = liveStats ?? contextStats
 
   return (
     <>
@@ -1764,14 +1777,14 @@ export default function Insights() {
                   Guava AI
                 </Badge>
               </div>
-              <div className="flex flex-wrap gap-3 pt-3">
-                <Stat icon={Database} label="Transactions" value={contextStats?.transactionCount ?? '-'} />
-                <Stat icon={MapPin} label="Locations" value={contextStats?.locations ?? '-'} />
-                <Stat icon={BarChart3} label="Forecasts" value={contextStats?.forecasts ?? '-'} />
+              <div className="flex flex-wrap gap-3 pt-3" title={!shownContextStats && liveStatsFailed ? 'Counts unavailable' : undefined}>
+                <Stat icon={Database} label="Transactions" value={shownContextStats?.transactionCount?.toLocaleString('en-ZA') ?? '—'} />
+                <Stat icon={MapPin} label="Locations" value={shownContextStats?.locations?.toLocaleString('en-ZA') ?? '—'} />
+                <Stat icon={BarChart3} label="Forecasts" value={shownContextStats?.forecasts?.toLocaleString('en-ZA') ?? '—'} />
               </div>
-              {contextStats?.contextWindow && (
+              {shownContextStats?.contextWindow && (
                 <p className="pt-2 text-xs text-muted">
-                  Analysis window: {contextStats.contextWindow}
+                  Analysis window: {shownContextStats.contextWindow}
                 </p>
               )}
             </CardHeader>
