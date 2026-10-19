@@ -816,7 +816,7 @@ export default function Insights() {
   const [chatNotice, setChatNotice] = useState<string | null>(null)
   const cappedLocalChat = chats.some((chat) => chat._id === activeChatId && chat.saveLimitReached === true)
   const saveLimitNotice = cappedLocalChat
-    ? 'You have reached the limit of 100 saved chats for this location. This conversation is kept on this device only. Delete a saved chat, then start a new chat to save to your account.'
+    ? 'You have reached the limit of 100 saved chats for this location. The latest 20 messages of this conversation are kept on this device only. Delete a saved chat, then start a new chat to save to your account.'
     : null
   const [scrollRevision, setScrollRevision] = useState(0)
   const [chatStatus, setChatStatus] = useState('')
@@ -1910,6 +1910,11 @@ export default function Insights() {
                         ))}
                       </div>
                     </div>
+                    {saveLimitNotice && (
+                      <p role="status" aria-label="Chat storage notice" className="rounded-lg border border-guava-green/25 bg-guava-green/10 px-3 py-2 text-sm text-guava-green">
+                        {saveLimitNotice}
+                      </p>
+                    )}
                     <div ref={messagesEndRef} className="h-52" />
                   </div>
                   <ChatComposer
