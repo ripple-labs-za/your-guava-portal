@@ -281,7 +281,7 @@ describe('Staff deactivation', () => {
     await userEvent.click(screen.getByRole('button', { name: /deactivate sarah/i }))
 
     const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/scheduled shifts from today on are cancelled/i)
+    expect(dialog).toHaveTextContent(/scheduled shifts that have not started yet are cancelled/i)
     expect(dialog).toHaveTextContent(/pending leave requests are withdrawn/i)
   })
 

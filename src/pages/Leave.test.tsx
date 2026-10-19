@@ -434,6 +434,18 @@ describe('Leave approval confirmation', () => {
     expect(dialog).toHaveTextContent(/5 days/i)
   })
 
+  // Guard (BE-08-T04 fix-back): the server refuses approval over rostered shifts
+  // with LEAVE_HAS_SHIFTS; the page shows its sentence, which says what to do.
+  it('shows why approval was refused when the person has shifts on those days', async () => {
+    const message =
+      'Sarah has shifts on 2026-04-02 and 2026-04-03 during this leave. Move or cancel those shifts first, then approve the leave.'
+    mockPut.mockRejectedValue({ response: { status: 409, data: { code: 'LEAVE_HAS_SHIFTS', message } } })
+    await openApprovalConfirmation()
+    await userEvent.click(screen.getByRole('button', { name: /^Approve \d+ days?$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+  })
+
   it('says the balance is spent and that approved leave can be cancelled later', async () => {
     const dialog = await openApprovalConfirmation()
 
