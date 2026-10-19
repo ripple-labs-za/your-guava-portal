@@ -513,6 +513,56 @@ describe('Account', () => {
     })
   })
 
+  it('clears the billing-required alert after a paid mock renewal', async () => {
+    window.history.pushState({}, '', '/account?section=billing&billing=required&keep=yes')
+    serveOrganization({ billingStatus: 'past_due', billingAccess: { allowed: false, status: 'past_due', readOnly: false } })
+    const active = accountPayload()
+    mockPost.mockResolvedValueOnce({ status: 200, data: {
+      success: true,
+      account: { ...active, organization: { ...active.organization, billingAccess: { allowed: true, status: 'active', readOnly: false } } },
+      checkout: { provider: 'mock', status: 'paid', planChange: { type: 'new', plan: 'growth', billingCycle: 'monthly' } },
+    } })
+    renderWithAuth(<Account />)
+    expect(await screen.findByText(/your billing period has ended/i)).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: /renew growth/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay R899/i }))
+    expect(await screen.findByText('Growth plan activated.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/your billing period has ended/i)).not.toBeInTheDocument())
+    const params = new URLSearchParams(window.location.search)
+    expect(params.has('billing')).toBe(false)
+    expect(params.get('section')).toBe('billing')
+    expect(params.get('keep')).toBe('yes')
+    expect(mockPost.mock.calls.filter(([url]) => url === '/account/checkout')).toHaveLength(1)
+  })
+
+  it.each([
+    { label: '202 initializing', httpStatus: 202, paymentStatus: 'initializing', notice: /Secure checkout is still being prepared/i },
+    { label: 'unpaid 200', httpStatus: 200, paymentStatus: 'pending', notice: /Checkout has not confirmed this payment yet/i },
+    { label: 'failed 200', httpStatus: 200, paymentStatus: 'failed', notice: /Card payment failed/i },
+    { label: 'paid but access still denied', httpStatus: 200, paymentStatus: 'paid', notice: /Growth plan activated/i },
+  ])('keeps required-billing guidance for $label', async ({ httpStatus, paymentStatus, notice }) => {
+    window.history.pushState({}, '', '/account?section=billing&billing=required&keep=yes')
+    const base = accountPayload()
+    const denied = { ...base, organization: { ...base.organization, billingStatus: 'past_due',
+      billingAccess: { allowed: false, status: 'past_due', readOnly: false } } }
+    serveOrganization(denied.organization)
+    mockPost.mockResolvedValueOnce({ status: httpStatus, data: {
+      success: true, account: denied,
+      checkout: { provider: 'mock', status: paymentStatus,
+        planChange: { type: 'new', plan: 'growth', billingCycle: 'monthly' } },
+    } })
+    renderWithAuth(<Account />)
+    await userEvent.click(await screen.findByRole('button', { name: /renew growth/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirm and pay R899/i }))
+    await screen.findByText(notice)
+    expect(screen.getByText(/your billing period has ended/i)).toBeInTheDocument()
+    if (paymentStatus !== 'paid') expect(screen.queryByText(/plan activated/i)).not.toBeInTheDocument()
+    const params = new URLSearchParams(window.location.search)
+    expect(params.get('billing')).toBe('required')
+    expect(params.get('section')).toBe('billing')
+    expect(params.get('keep')).toBe('yes')
+  })
+
   // ── 202 PAYMENT_SESSION_INITIALIZING ────────────────────────────────────────
 
   it('does not treat a 202 "still initializing" checkout as an activated plan', async () => {

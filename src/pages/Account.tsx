@@ -599,6 +599,13 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
       if (data.account && data.checkout.status === 'paid') {
         setAccount(data.account)
         publishBillingAccess(data.account.organization.billingAccess)
+        if (searchParams.get('billing') === 'required' && data.account.organization.billingAccess?.allowed) {
+          setSearchParams((current) => {
+            const resolved = new URLSearchParams(current)
+            resolved.delete('billing')
+            return resolved
+          }, { replace: true })
+        }
         planCheckoutRef.current = null
         showNotice('success', data.checkout.planChange
           ? planChangeNotice(data.checkout.planChange, plan.name)
