@@ -41,6 +41,16 @@ describe('the codes BE-13-T02 round 2 registered', () => {
 })
 
 describe('the codes the sprint names', () => {
+  it('identifies unsafe spreadsheet dimensions and preserves the server recovery advice', () => {
+    const message = 'This spreadsheet says it spans 1048576 rows by 16384 columns, which is too large to read safely.'
+    const copy = describeApiError(readApiError(axiosError(400, { code: 'XLSX_DIMENSION_LIMIT', message })))
+    expect(API_ERROR_COPY.XLSX_DIMENSION_LIMIT).toBeDefined()
+    expect(copy.title).toBe('Spreadsheet dimensions are too large')
+    expect(copy.body).toBe(message)
+    expect(copy.action.kind).toBe('none')
+    expect(copy.title).not.toBe(API_ERROR_COPY.XLSX_UNREADABLE.title)
+  })
+
   it('BILLING_REQUIRED sends the owner to billing whether the code is top level or in details', () => {
     for (const data of [{ code: 'BILLING_REQUIRED' }, { details: { code: 'BILLING_REQUIRED', reason: 'trial_expired' } }]) {
       const info = readApiError(axiosError(402, data))

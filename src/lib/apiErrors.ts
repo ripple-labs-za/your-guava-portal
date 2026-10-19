@@ -150,6 +150,7 @@ export const API_ERROR_COPY: Record<string, ApiErrorCopy> = {
   VERIFICATION_EMAIL_FAILED: { title: 'We could not send the confirmation email', body: 'Your account is waiting. Send a new link in a moment.', preferServerMessage: true, action: { kind: 'page', label: 'Send a new link' } },
   VERIFICATION_PASSWORD_MISMATCH: { title: 'That password does not match this signup', body: 'Use the password you chose when you signed up. The link still works.', preferServerMessage: true, action: NONE },
   WRITE_RATE_LIMITED: { title: 'You are doing that too quickly', body: 'Wait for the timer, then try again.', preferServerMessage: false, action: WAIT },
+  XLSX_DIMENSION_LIMIT: { title: 'Spreadsheet dimensions are too large', body: 'Save it again from Excel, or export it as CSV UTF-8, and upload that.', preferServerMessage: true, action: NONE },
   XLSX_PART_TOO_LARGE: { title: 'Part of this spreadsheet is far too large', body: 'Save it again from Excel, or export it as CSV UTF-8, and upload that.', preferServerMessage: true, action: NONE },
   XLSX_UNREADABLE: { title: 'This spreadsheet could not be read', body: 'Save it again from Excel, or export it as CSV UTF-8, and upload that.', preferServerMessage: true, action: NONE },
 }
