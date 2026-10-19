@@ -1778,7 +1778,7 @@ export default function Insights() {
   // every render, so passing it directly re-rendered the composer — and the
   // textarea the user is trying to type into — on every streamed frame.
   const submitPrompt = useCallback((prompt: string) => sendPromptRef.current(prompt), [])
-  const shownContextStats = liveStats ?? contextStats
+  const shownContextStats = liveStats ?? (liveStatsFailed ? null : contextStats)
 
   return (
     <>

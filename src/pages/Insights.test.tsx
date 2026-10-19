@@ -1205,6 +1205,21 @@ describe('Insights', () => {
     expect(await screen.findByTitle(/counts unavailable/i)).toBeInTheDocument()
   })
 
+  it('shows unavailable dashes instead of a saved chats older counts when the live fetch fails', async () => {
+    const saved = chat()
+    storeActiveChat(saved)
+    mockBaseRequests([saved])
+    const base = mockGet.getMockImplementation()
+    mockGet.mockImplementation((url: string, ...args: unknown[]) => url === '/forecasts/insights/context'
+      ? Promise.reject(new Error('Network Error')) : base?.(url, ...args))
+    render(<Insights />)
+    await screen.findByTitle(/counts unavailable/i)
+    for (const label of ['Transactions', 'Locations', 'Forecasts']) {
+      expect(screen.getByText(label).parentElement).toHaveTextContent('—')
+    }
+    expect(screen.getByText('Saved answer')).toBeInTheDocument()
+  })
+
   it('releases the composer after a completed stream and accepts the next question', async () => {
     mockBaseRequests()
     vi.mocked(fetch).mockResolvedValue(streamResponse(
@@ -1626,6 +1641,89 @@ it('caps the composer at the four thousand characters the model reads', async ()
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Each read waits for the next wire chunk; abort must reject the pending read
+  // just as fetch does, so deleting the per-chunk re-arm actually fails these tests.
+  function timedStreamResponse(chunks: Array<{ after: number; body: string }>) {
+    return (_url: string, init: RequestInit = {}) => {
+      let index = 0
+      return Promise.resolve({
+        ok: true, status: 200,
+        body: { getReader: () => ({ read: () => {
+          if (init.signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'))
+          const chunk = chunks[index++]
+          if (!chunk) return Promise.resolve({ done: true, value: undefined })
+          return new Promise((resolve, reject) => {
+            const onAbort = () => {
+              window.clearTimeout(timer)
+              reject(new DOMException('Aborted', 'AbortError'))
+            }
+            const timer = window.setTimeout(() => {
+              init.signal?.removeEventListener('abort', onAbort)
+              resolve({ done: false, value: new TextEncoder().encode(chunk.body) })
+            }, chunk.after)
+            init.signal?.addEventListener('abort', onAbort, { once: true })
+          })
+        } }) },
+      } as unknown as Response)
+    }
+  }
+
+  it('re-arms the idle timer for deltas every thirty seconds through a hundred second answer', async () => {
+    vi.useFakeTimers()
+    try {
+      mockBaseRequests()
+      acceptNewChats('chat-steady')
+      vi.mocked(fetch).mockImplementation(timedStreamResponse([
+        { after: 30_000, body: deltaEvent('First ') },
+        { after: 30_000, body: deltaEvent('second ') },
+        { after: 30_000, body: deltaEvent('third.') },
+        { after: 10_000, body: 'event: done\ndata: {}\n\n' },
+      ]) as typeof fetch)
+      const view = render(<Insights />)
+      await askQuestionNow('Keep going')
+      const signal = vi.mocked(fetch).mock.calls[0][1]?.signal
+      await act(async () => { await vi.advanceTimersByTimeAsync(101_000) })
+      expect(signal?.aborted).toBe(false)
+      expect(within(answerBubble()).getByText('First second third.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /stop generating/i })).not.toBeInTheDocument()
+      expect(screen.queryByText(/stopped arriving/i)).not.toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /ask a question/i })).toBeEnabled()
+      expect(chatFallbackCalls()).toHaveLength(0)
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+      expect(signal?.aborted).toBe(false)
+      view.unmount()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('accepts a fifty second wait for the first words while fifteen second SSE pings arrive', async () => {
+    vi.useFakeTimers()
+    try {
+      mockBaseRequests()
+      acceptNewChats('chat-pings')
+      vi.mocked(fetch).mockImplementation(timedStreamResponse([
+        { after: 15_000, body: ': ping\n\n' },
+        { after: 15_000, body: ': ping\n\n' },
+        { after: 15_000, body: ': ping\n\n' },
+        { after: 5_000, body: deltaEvent('Worth the wait.') + 'event: done\ndata: {}\n\n' },
+      ]) as typeof fetch)
+      const view = render(<Insights />)
+      await askQuestionNow('Think first')
+      const signal = vi.mocked(fetch).mock.calls[0][1]?.signal
+      await act(async () => { await vi.advanceTimersByTimeAsync(46_000) })
+      expect(signal?.aborted).toBe(false)
+      expect(within(answerBubble()).getByText(/still working/i)).toBeInTheDocument()
+      expect(within(answerBubble()).queryByText(/ping/i)).not.toBeInTheDocument()
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+      expect(within(answerBubble()).getByText('Worth the wait.')).toBeInTheDocument()
+      expect(signal?.aborted).toBe(false)
+      expect(screen.queryByRole('button', { name: /stop generating/i })).not.toBeInTheDocument()
+      expect(screen.queryByText(/stopped arriving/i)).not.toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: /ask a question/i })).toBeEnabled()
+      expect(chatFallbackCalls()).toHaveLength(0)
+      view.unmount()
+    } finally { vi.useRealTimers() }
   })
 
   it('does not offer a paid refresh when there is not enough data yet', async () => {
