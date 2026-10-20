@@ -115,6 +115,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [cafeName, setCafeName] = useState('')
   const [cafeList, setCafeList] = useState<CafeOption[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const switcherButtonRef = useRef<HTMLButtonElement | null>(null)
   // Below xl the closed drawer only slides off-canvas, which hides it from
   // sight alone: its links, cafe switcher and Sign Out stayed in the tab order
   // and the accessibility tree. When the viewport cannot be queried, assume the
@@ -260,8 +261,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {user && user.cafeIds && user.cafeIds.length > 1 && (
           <div className="px-3 pt-3 pb-1">
-            <div className="relative">
+            <div className="relative" onKeyDown={(event) => {
+              if (event.key !== 'Escape' || !switcherOpen) return
+              event.preventDefault()
+              event.stopPropagation()
+              setSwitcherOpen(false)
+              switcherButtonRef.current?.focus()
+            }}>
               <button
+                ref={switcherButtonRef}
                 onClick={() => setSwitcherOpen(!switcherOpen)}
                 aria-expanded={switcherOpen}
                 aria-haspopup="listbox"

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { AuthContext } from '@/contexts/AuthContext'
@@ -73,6 +74,33 @@ describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
+  })
+
+  it.each([true, false])('Escape closes only the cafe list and returns focus to its opener (desktop=%s)', async (desktop) => {
+    stubMatchMedia(desktop)
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    vi.mocked(api.get).mockImplementation((url) => Promise.resolve({ data: url === '/cafe/me'
+      ? { cafe: { name: 'Active Cafe' } }
+      : { cafes: [{ _id: 'cafe123', name: 'Active Cafe' }, { _id: 'cafe456', name: 'Other Cafe' }] } }))
+    renderSidebar('/planning', { isOpen: true, onClose }, { cafeIds: ['cafe123', 'cafe456'] })
+    const opener = screen.getByRole('button', { name: 'Switch active cafe' })
+    await user.click(opener)
+    const other = await screen.findByRole('button', { name: 'Other Cafe' })
+    other.focus()
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveAttribute('aria-expanded', 'false')
+    expect(opener).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Other Cafe' })).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    await user.keyboard('{Enter}')
+    expect(opener).toHaveAttribute('aria-expanded', 'true')
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveAttribute('aria-expanded', 'false')
+    if (!desktop) {
+      await user.keyboard('{Escape}')
+      expect(onClose).toHaveBeenCalledTimes(1)
+    }
   })
 
   it.each([['cafe123'], ['cafe123', 'cafe456']])('names the active cafe from allowed metadata when billing blocks its detail (%j)', async (...cafeIds) => {
