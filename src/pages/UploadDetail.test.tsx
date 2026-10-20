@@ -172,6 +172,16 @@ describe('UploadDetail', () => {
     expect(screen.queryByText('Not found.')).not.toBeInTheDocument()
   })
 
+  it.each([400, 404])('explains a permanent upload-address refusal without raw database wording or retry (%s)', async (status) => {
+    apiMock.get.mockRejectedValue({ response: { status, data: { message: 'Invalid value for _id' } } })
+    renderUploadDetail()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(status === 400 ? 'This upload address is invalid.' : 'This upload could not be found.')
+    expect(alert).not.toHaveTextContent('_id')
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back to Data Health' })).toBeInTheDocument()
+  })
+
   it('shows captured row-level import errors', async () => {
     apiMock.get.mockImplementation((url: string) => {
       if (url.endsWith('/rows')) {

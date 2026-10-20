@@ -140,6 +140,7 @@ export default function UploadDetail() {
   const [tab, setTab] = useState<'rows' | 'file'>('rows')
   const [loading, setLoading] = useState(true)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailRetryable, setDetailRetryable] = useState(true)
   const [detailReloadToken, setDetailReloadToken] = useState(0)
   const [rowsLoading, setRowsLoading] = useState(false)
   const [rowsError, setRowsError] = useState<string | null>(null)
@@ -230,6 +231,7 @@ export default function UploadDetail() {
       setLoading(true)
       setRowsLoading(true)
       setDetailError(null)
+      setDetailRetryable(true)
       setRowsError(null)
 
       const [detailResult, rowsResult] = await Promise.allSettled([
@@ -247,7 +249,13 @@ export default function UploadDetail() {
       } else {
         setUpload(null)
         setDownloadUrl('')
-        setDetailError(extractApiError(detailResult.reason, 'Upload details could not be loaded.'))
+        const status = readApiError(detailResult.reason).status
+        setDetailRetryable(status !== 400 && status !== 404)
+        setDetailError(status === 400
+          ? 'This upload address is invalid. Open Data Health to choose an upload from your history.'
+          : status === 404
+            ? 'This upload could not be found. It may have been removed. Open Data Health to choose another upload.'
+            : extractApiError(detailResult.reason, 'Upload details could not be loaded.'))
       }
       if (rowsResult.status === 'fulfilled') {
         setRowsFromResponse(rowsResult.value.data, 1)
@@ -302,14 +310,14 @@ export default function UploadDetail() {
           </Button>
           <div className="rounded-lg border border-red-900/30 bg-red-900/10 p-4 text-sm text-red-300" role="alert">
             <p>{detailError || 'Upload details could not be loaded.'}</p>
-            <Button
+            {detailRetryable && <Button
               variant="outline"
               size="sm"
               className="mt-3"
               onClick={() => setDetailReloadToken((current) => current + 1)}
             >
               Try again
-            </Button>
+            </Button>}
           </div>
         </div>
       </AppLayout>

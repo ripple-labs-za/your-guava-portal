@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router'
-import { RouteFocusContext } from '@/components/layout/AppLayout'
+import { Routes, Route, Navigate, Link, useLocation, useNavigationType } from 'react-router'
+import { AppLayout, RouteFocusContext } from '@/components/layout/AppLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { WORKFORCE_ENABLED } from '@/lib/features'
 
@@ -185,7 +185,14 @@ export default function App() {
       <Route path="/integrations" element={<ProtectedPage><Integrations /></ProtectedPage>} />
       <Route path="/integrations/:provider/callback" element={<ProtectedPage><IntegrationCallback /></ProtectedPage>} />
 
-      <Route path="*" element={<Navigate to="/today" replace />} />
+      <Route path="*" element={<ProtectedPage><AppLayout title="Page not found">
+        <div className="rounded-lg border border-border bg-surface p-6">
+          <p className="text-sm text-muted">This address does not match a page in Your Guava. Check the link, or go to Today to carry on.</p>
+          <Link to="/today" className="mt-4 inline-flex rounded-lg bg-guava-green-strong px-4 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-guava-green">
+            Go to Today
+          </Link>
+        </div>
+      </AppLayout></ProtectedPage>} />
       </Routes>
     </Suspense>
     </RouteFocusProvider>

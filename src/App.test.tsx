@@ -1,10 +1,24 @@
-import { useContext } from 'react'
+import { useContext, type ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Navigate, useLocation, useNavigate } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RouteFocusContext } from '@/components/layout/AppLayout'
-import { RouteFocusProvider } from './App'
+import App, { RouteFocusProvider } from './App'
+
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { role: 'owner' }, isLoading: false }) }))
+vi.mock('@/pages/Dashboard', () => ({ default: () => <p>Today page</p> }))
+vi.mock('@/components/layout/AppLayout', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/components/layout/AppLayout')>(),
+  AppLayout: ({ title, children }: { title: string; children: ReactNode }) => <main><h1>{title}</h1>{children}</main>,
+}))
+
+it('explains an unknown address and offers a way to Today instead of silently redirecting', async () => {
+  render(<MemoryRouter initialEntries={['/this-page-does-not-exist']}><App /></MemoryRouter>)
+  expect(await screen.findByRole('heading', { name: 'Page not found', level: 1 })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Go to Today' })).toHaveAttribute('href', '/today')
+  expect(screen.queryByText('Today page')).not.toBeInTheDocument()
+})
 
 function Probe() {
   const { shouldFocusMain, announcePage } = useContext(RouteFocusContext)
