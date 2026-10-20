@@ -328,9 +328,9 @@ function DataStatusCard({
             <Button type="button" variant="outline" size="sm" onClick={onRetry}>Try again</Button>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
             {/* Left: status */}
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1 basis-64">
               <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium mb-2', pillColor)}>
                 <span className="w-1.5 h-1.5 rounded-full bg-current" />
                 {statusLabel}
@@ -342,7 +342,7 @@ function DataStatusCard({
             </div>
 
             {/* Middle: 30-day coverage strip */}
-            <div className="shrink-0">
+            <div className="min-w-0 flex-1 basis-96">
               <p className="text-muted text-xs mb-1.5">Last 30 days</p>
               <div className="flex gap-0.5" role="list" aria-label="Data coverage for the last 30 completed days, plus today">
                 {days30.map((day) => {
