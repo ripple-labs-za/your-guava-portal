@@ -123,6 +123,17 @@ describe('UploadDetail', () => {
     expect(screen.getByRole('link', { name: /download/i })).toHaveAttribute('href', 'https://test.r2.local/foo')
   })
 
+  it('lets keyboard users reach the imported transaction table when its columns scroll on a phone', async () => {
+    mockUploadDetail()
+    renderUploadDetail()
+    const region = await screen.findByRole('region', { name: 'Imported transactions table' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    region.focus()
+    expect(region).toHaveFocus()
+    const table = within(region).getByRole('table')
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Date', 'Receipt', 'Items', 'Total'])
+  })
+
   it('keeps upload metadata visible when the transaction preview fails', async () => {
     apiMock.get.mockImplementation((url: string) => {
       if (url.endsWith('/rows')) {

@@ -435,7 +435,7 @@ export default function UploadDetail() {
               </div>
               {rowsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
             </CardHeader>
-            <CardContent className="space-y-4 overflow-auto">
+            <CardContent className="space-y-4">
               {rowsError ? (
                 <div className="rounded-lg border border-red-900/30 bg-red-900/10 p-3 text-sm text-red-300">
                   <p>{rowsError}</p>
@@ -450,26 +450,28 @@ export default function UploadDetail() {
                   </Button>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[#9E9E9E] text-xs">
-                      <th className="py-2">Date</th>
-                      <th>Receipt</th>
-                      <th>Items</th>
-                      <th className="text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r._id} className="border-t border-border">
-                        <td className="py-2">{new Date(r.date).toLocaleString('en-ZA')}</td>
-                        <td>{r.receiptId || '—'}</td>
-                        <td>{(r.items ?? []).map((i) => `${i.quantity} × ${i.name}`).join(', ')}</td>
-                        <td className="text-right">R{r.total?.toFixed(2)}</td>
+                <div role="region" aria-label="Imported transactions table" tabIndex={0} className="overflow-x-auto rounded focus-visible:outline-2 focus-visible:outline-primary">
+                  <table className="w-full min-w-[40rem] text-sm">
+                    <thead>
+                      <tr className="text-left text-[#9E9E9E] text-xs">
+                        <th className="py-2 pr-4">Date</th>
+                        <th className="pr-4">Receipt</th>
+                        <th className="pr-4">Items</th>
+                        <th className="text-right whitespace-nowrap">Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={r._id} className="border-t border-border">
+                          <td className="py-2 pr-4 whitespace-nowrap">{new Date(r.date).toLocaleString('en-ZA')}</td>
+                          <td className="pr-4 whitespace-nowrap">{r.receiptId || '—'}</td>
+                          <td className="min-w-48 pr-4">{(r.items ?? []).map((i) => `${i.quantity} × ${i.name}`).join(', ')}</td>
+                          <td className="text-right whitespace-nowrap">R{r.total?.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {showPagination && (
