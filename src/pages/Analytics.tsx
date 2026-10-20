@@ -586,7 +586,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
               ))}
             </div>
           ) : sorted.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" role="region" aria-label="Item Performance" tabIndex={0}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">

@@ -95,6 +95,22 @@ describe('Analytics', () => {
     return Promise.resolve({ data: tab ? responses[tab] : {} })
   })
 
+  it('makes the Item Performance scroll region named and keyboard reachable', async () => {
+    serveCombined()
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    const region = await screen.findByRole('region', { name: 'Item Performance' })
+    expect(within(region).getByRole('table')).toBeInTheDocument()
+    expect(region).toHaveAttribute('tabindex', '0')
+    const stops: Element[] = []
+    for (let index = 0; index < 40 && document.activeElement !== region; index++) {
+      await userEvent.tab()
+      if (document.activeElement) stops.push(document.activeElement)
+    }
+    expect(stops).toContain(region)
+    expect(region).toHaveFocus()
+  })
+
   it('shows every server window and caveat together across all five tabs', async () => {
     serveCombined()
     render(<Analytics />)
