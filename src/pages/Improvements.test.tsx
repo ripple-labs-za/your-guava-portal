@@ -100,6 +100,21 @@ describe('Improvements', () => {
     localStorage.clear()
   })
 
+  it.each([0, 1])('returns Cancel focus to the original improvement opener %s', async (index) => {
+    mockGet.mockImplementation(mockApiGet([], true))
+    render(<Improvements />)
+    await screen.findByText('No improvements logged yet')
+    const openers = screen.getAllByRole('button', { name: 'Log an improvement' })
+    expect(openers).toHaveLength(2)
+    await userEvent.click(openers[index])
+    expect(screen.getByRole('textbox', { name: /title/i })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /What's the idea\?/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('textbox', { name: /title/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Log an improvement' })[index]).toHaveFocus()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('renders the list of tickets', async () => {
     mockGet.mockImplementation(mockApiGet([sampleTicket]))
 

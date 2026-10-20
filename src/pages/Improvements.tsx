@@ -466,8 +466,19 @@ export default function Improvements() {
   const [loadError, setLoadError] = useState(false)
   const [filter, setFilter] = useState<'all' | ImprovementStatus>('all')
   const [showForm, setShowForm] = useState(() => Boolean(readImprovementDraft(draftScope)))
+  const headerLogRef = useRef<HTMLButtonElement>(null)
+  const emptyLogRef = useRef<HTMLButtonElement>(null)
+  const formOpenerRef = useRef<'header' | 'empty'>('header')
+  const restoreFormFocusRef = useRef(false)
   const [toast, setToast] = useState<ToastState>(null)
   const toastTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (showForm || !restoreFormFocusRef.current) return
+    restoreFormFocusRef.current = false
+    const opener = formOpenerRef.current === 'empty' ? emptyLogRef.current : headerLogRef.current
+    ;(opener ?? headerLogRef.current)?.focus()
+  }, [showForm])
 
   // Auth bootstrap is asynchronous. Recover only the current identity's draft
   // once it is known; keying the form also prevents cafe/user state reuse.
@@ -623,7 +634,7 @@ export default function Improvements() {
             the clearer the ticket, the faster it gets actioned.
           </p>
           {!showForm && (
-            <Button size="sm" variant="success" onClick={() => setShowForm(true)}>
+            <Button ref={headerLogRef} size="sm" variant="success" onClick={() => { formOpenerRef.current = 'header'; setShowForm(true) }}>
               <MessageSquarePlus className="h-4 w-4" />
               Log an improvement
             </Button>
@@ -632,6 +643,7 @@ export default function Improvements() {
 
         {showForm && <LogForm key={`${user?.id}:${user?.orgId}:${user?.activeCafeId}`} draftScope={draftScope} onSubmit={handleLog} onCancel={() => {
           removeImprovementDraft(draftScope)
+          restoreFormFocusRef.current = true
           setShowForm(false)
         }} />}
 
@@ -727,7 +739,7 @@ export default function Improvements() {
                   : 'Try a different filter, or log a new improvement.'}
               </p>
               {!showForm && (
-                <Button variant="success" onClick={() => setShowForm(true)}>
+                <Button ref={emptyLogRef} variant="success" onClick={() => { formOpenerRef.current = 'empty'; setShowForm(true) }}>
                   <MessageSquarePlus className="h-4 w-4" />
                   Log an improvement
                 </Button>
