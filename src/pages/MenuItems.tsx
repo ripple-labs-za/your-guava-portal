@@ -640,7 +640,13 @@ export default function MenuItems() {
                     {needsReviewTotal > 2000 && <p className="mt-2 text-sm text-text/80">Too many items to keep in one step. Keep them from the list below instead.</p>}
                   </div>
                 )}
-                {reviewItems.length === 0 ? (
+                {/* A failed load is not an empty list: saying "nothing to review" under the failure banner told the owner
+                    their items were clean when they had not been read at all (UAT-14-S22). */}
+                {loadError && reviewItems.length === 0 ? (
+                  <div className="rounded-lg border border-border bg-[#111111] px-4 py-8 text-center text-sm text-muted">
+                    The review list is not shown because it could not be loaded.
+                  </div>
+                ) : reviewItems.length === 0 ? (
                   <div className="rounded-lg border border-border bg-[#111111] px-4 py-8 text-center text-sm text-muted">
                     No menu item issues to review.
                   </div>

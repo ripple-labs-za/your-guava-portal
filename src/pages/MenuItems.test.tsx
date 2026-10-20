@@ -691,3 +691,21 @@ it('lists ignored and merged items with their state', async () => {
   expect(screen.getByText('Merged into Cappuccino')).toBeInTheDocument()
 })
 })
+
+// UAT-14-S22: with the API down the review tab stated "No menu item issues to review." under the load-failure banner.
+describe('MenuItems when the list could not be loaded', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
+
+  it('never says there is nothing to review', async () => {
+    mockGet.mockImplementation((url: string) => (url.includes('/cafe/me')
+      ? Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      : Promise.reject(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))))
+    render(<MenuItems />)
+    expect(await screen.findByText('Menu items could not be loaded. Counts below are unavailable.')).toBeInTheDocument()
+    expect(screen.queryByText('No menu item issues to review.')).not.toBeInTheDocument()
+    expect(screen.getByText('The review list is not shown because it could not be loaded.')).toBeInTheDocument()
+  })
+})
