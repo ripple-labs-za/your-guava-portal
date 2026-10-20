@@ -304,6 +304,27 @@ describe('UploadDetail', () => {
     expect(apiMock.get).toHaveBeenCalledWith('/uploads/u1/rows', { params: { page: 2, limit: 50 } })
   })
 
+  it('announces remapped sales above the upload actions', async () => {
+    mockUploadDetail()
+    apiMock.patch.mockResolvedValue({ data: {
+      success: true,
+      readmitted: { rows: 480, uploads: [{ uploadId: 'u2', fileName: 'overlap-b.csv', rows: 480 }] },
+      readmissionQueued: [],
+    } })
+    renderUploadDetail()
+    await screen.findByText('export.csv')
+    fireEvent.click(screen.getByRole('button', { name: /re-map columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /choose columns/i }))
+    fireEvent.click(screen.getByRole('button', { name: /re-import with these columns/i }))
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('480 sales were re-imported from overlap-b.csv.')
+    for (const name of [/re-map columns/i, /delete this upload/i]) {
+      const action = screen.getByRole('button', { name })
+      expect(notice.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+  })
+
   it('asks before a severe partial remap and retries with explicit partial-import approval', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     apiMock.patch

@@ -566,6 +566,7 @@ export default function UploadDetail() {
               </Button>
             </div>
           )}
+          {remapOutcome && <p role="status" className="text-sm text-muted mb-3">{remapOutcome}</p>}
           {upload.status === 'pending_mapping' ? (
             <>
               <p className="mb-3 text-sm text-muted">
@@ -620,7 +621,6 @@ export default function UploadDetail() {
           )}
           {deleteError && <p className="text-red-400 text-xs mt-2">{deleteError}</p>}
           {remapError && <p className="text-red-400 text-xs mt-2">{remapError}</p>}
-          {remapOutcome && <p role="status" className="text-sm text-muted mt-2">{remapOutcome}</p>}
         </div>
       </div>
 
