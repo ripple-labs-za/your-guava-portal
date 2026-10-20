@@ -96,6 +96,35 @@ describe('Team', () => {
     expect(screen.getByText(/only account owners/i)).toBeInTheDocument()
   })
 
+  it.each([402, 500])('keeps the invite draft and offers seat recovery only for a seat-limit refusal (%i)', async (status) => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/team') return Promise.resolve({ data: { members: [], seats: { plan: 'starter', used: 1, included: 2, remaining: 1 } } })
+      if (url === '/cafe/list') return Promise.resolve({ data: { cafes: [{ _id: 'c1', name: 'One Cafe' }] } })
+      return Promise.resolve({ data: {} })
+    })
+    mockPost.mockRejectedValueOnce({ response: { status, data: {
+      message: status === 402 ? 'Seat limit reached on the Starter plan. Upgrade your plan or remove a member.' : 'Temporary failure',
+    } } })
+    renderWithAuth(<Team />)
+    await userEvent.click((await screen.findAllByRole('button', { name: /^add member$/i }))[0])
+    const dialog = screen.getByRole('dialog', { name: 'Add team member' })
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'Unsent Manager')
+    await userEvent.type(within(dialog).getByLabelText('Email'), 'unsent@example.com')
+    await userEvent.click(within(dialog).getByRole('button', { name: /^add member$/i }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: /^add member$/i })).toBeEnabled())
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Unsent Manager')
+    expect(within(dialog).getByLabelText('Email')).toHaveValue('unsent@example.com')
+    if (status === 402) {
+      expect(within(dialog).getByRole('link', { name: 'Review billing' })).toHaveAttribute('href', '/settings?section=billing')
+      expect(within(dialog).getByRole('link', { name: 'Review members' })).toHaveAttribute('href', '#team-members')
+      await userEvent.click(within(dialog).getByRole('link', { name: 'Review members' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(document.getElementById('team-members')).toHaveFocus()
+    } else {
+      expect(within(dialog).queryByRole('link', { name: 'Review billing' })).not.toBeInTheDocument()
+    }
+  })
+
   it('renders team member list', async () => {
     const mockMembers = [
       {

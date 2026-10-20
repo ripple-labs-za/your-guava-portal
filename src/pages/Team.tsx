@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   AlertCircle,
   Archive,
@@ -32,7 +32,7 @@ import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { TeamMember, CafeBasic } from '@/types'
 
-type ToastState = { type: 'success' | 'error'; message: string } | null
+type ToastState = { type: 'success' | 'error'; message: string; seatLimit?: boolean } | null
 type SeatSummary = { plan: string; used: number; active?: number; pending?: number; included: number; remaining: number }
 type LocationUsage = { used: number; included: number; plan?: string }
 type AccountUsageResponse = {
@@ -56,10 +56,11 @@ const formatExpiry = (value: string) => {
   return parsed.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
 }
 
-function Toast({ toast }: { toast: ToastState }) {
+function Toast({ toast, onReviewMembers }: { toast: ToastState; onReviewMembers?: () => void }) {
   if (!toast) return null
   return (
     <div
+      role={toast.type === 'error' ? 'alert' : 'status'}
       className={cn(
         'flex items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm',
         toast.type === 'success'
@@ -72,7 +73,15 @@ function Toast({ toast }: { toast: ToastState }) {
       ) : (
         <AlertCircle className="h-4 w-4 shrink-0" />
       )}
-      <span>{toast.message}</span>
+      <div className="min-w-0">
+        <p>{toast.message}</p>
+        {toast.seatLimit && (
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+            <Link className="underline underline-offset-2" to="/settings?section=billing">Review billing</Link>
+            <a className="underline underline-offset-2" href="#team-members" onClick={onReviewMembers}>Review members</a>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -304,6 +313,7 @@ export default function Team() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [toast, setToast] = useState<ToastState>(null)
+  const toastTimerRef = useRef<number | null>(null)
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [invName, setInvName] = useState('')
@@ -332,9 +342,15 @@ export default function Team() {
   const [newCafeCity, setNewCafeCity] = useState('')
   const [addingCafe, setAddingCafe] = useState(false)
 
-  const showToast = useCallback((type: 'success' | 'error', message: string) => {
-    setToast({ type, message })
-    window.setTimeout(() => setToast(null), 4000)
+  const showToast = useCallback((type: 'success' | 'error', message: string, seatLimit = false) => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+    setToast({ type, message, seatLimit })
+    // An actionable refusal stays available while the owner chooses a way out.
+    toastTimerRef.current = seatLimit ? null : window.setTimeout(() => setToast(null), 4000)
+  }, [])
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
   }, [])
 
   const fetchData = useCallback(async () => {
@@ -449,6 +465,7 @@ export default function Team() {
       : 'Cafe branches'
 
   const openInviteDialog = () => {
+    setToast(null)
     setInvName('')
     setInvEmail('')
     setInvCafeIds(cafes.length === 1 ? [cafes[0]._id] : [])
@@ -509,7 +526,8 @@ export default function Team() {
       setInviteOpen(false)
       await fetchData()
     } catch (err: any) {
-      showToast('error', err?.response?.data?.message || 'Failed to add team member.')
+      const message = err?.response?.data?.message || 'Failed to add team member.'
+      showToast('error', message, err?.response?.status === 402 && /^Seat limit reached\b/.test(message))
     } finally {
       setInviting(false)
     }
@@ -522,7 +540,8 @@ export default function Team() {
       showToast('success', `A new invitation link was sent to ${invitation.email}.`)
       await fetchData()
     } catch (err: any) {
-      showToast('error', err?.response?.data?.message || 'Failed to resend invitation.')
+      const message = err?.response?.data?.message || 'Failed to resend invitation.'
+      showToast('error', message, err?.response?.status === 402 && /^Seat limit reached\b/.test(message))
     } finally {
       setInvitationActionId(null)
     }
@@ -699,7 +718,7 @@ export default function Team() {
   return (
     <AppLayout title="Team">
       <div className="space-y-6">
-        <Toast toast={toast} />
+        {!(inviteOpen && toast?.seatLimit) && <Toast toast={toast} />}
 
         {loadError && (
           <div
@@ -759,7 +778,7 @@ export default function Team() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <Card className="overflow-hidden">
+          <Card id="team-members" tabIndex={-1} className="overflow-hidden">
             <CardHeader className="border-b border-border">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -1056,6 +1075,10 @@ export default function Team() {
         }
       >
         <form id="invite-member-form" onSubmit={handleInvite} className="space-y-5">
+          {toast?.seatLimit && <Toast toast={toast} onReviewMembers={() => {
+            setInviteOpen(false)
+            window.requestAnimationFrame(() => document.getElementById('team-members')?.focus())
+          }} />}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="inv-name">Name</Label>
