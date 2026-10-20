@@ -8,9 +8,12 @@ import type { SalesItem } from '@/types'
 vi.mock('@/assets/logo.png', () => ({ default: 'logo.png' }))
 vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
 
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { role: 'owner' }, isLoading: false, isOwner: true }),
-}))
+vi.mock('@/hooks/useAuth', () => {
+  // AuthProvider keeps the user reference until the session changes. A new
+  // object on every render retriggers Sidebar's [user] effect indefinitely.
+  const user = { role: 'owner' }
+  return { useAuth: () => ({ user, isLoading: false, isOwner: true }) }
+})
 
 const mockGet = vi.fn()
 const mockPost = vi.fn()
