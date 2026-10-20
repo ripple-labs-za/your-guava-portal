@@ -41,6 +41,21 @@ describe('the codes BE-13-T02 round 2 registered', () => {
 })
 
 describe('the codes the sprint names', () => {
+  it('offers a local current-password retry without server text or a sign-in action', () => {
+    expect(Object.prototype.hasOwnProperty.call(API_ERROR_COPY, 'CURRENT_PASSWORD_INCORRECT')).toBe(true)
+    for (const data of [
+      { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Untrusted server detail' },
+      { details: { code: 'CURRENT_PASSWORD_INCORRECT' }, message: 'Untrusted server detail' },
+    ]) {
+      expect(describeApiError(readApiError(axiosError(401, data)))).toEqual({
+        title: 'Your current password did not match',
+        body: 'Enter your current password again, then retry. You are still signed in.',
+        preferServerMessage: false,
+        action: { kind: 'retry', label: 'Try again' },
+      })
+    }
+  })
+
   it('keeps the already-public staged-discard refusal in the client code registry', () => {
     expect(API_ERROR_COPY.UPLOAD_NOT_STAGED).toBeDefined()
     expect(describeApiError(readApiError(axiosError(409, { code: 'UPLOAD_NOT_STAGED' }))).title)

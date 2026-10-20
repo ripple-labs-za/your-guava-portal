@@ -67,6 +67,7 @@ export const API_ERROR_COPY: Record<string, ApiErrorCopy> = {
   CAFE_REQUIRED: { title: 'Choose a location first', body: 'Pick a location from the menu, then try again.', preferServerMessage: true, action: NONE },
   CHAT_RATE_LIMITED: { title: 'Chats are being saved too quickly', body: 'Wait for the timer, then try again.', preferServerMessage: false, action: WAIT },
   CREDIT_SPEND_FORBIDDEN: { title: 'This login cannot spend Guava Credits', body: 'The account owner has not enabled credit spending for you. Ask them to turn it on under Team. Nothing was charged.', preferServerMessage: false, action: NONE },
+  CURRENT_PASSWORD_INCORRECT: { title: 'Your current password did not match', body: 'Enter your current password again, then retry. You are still signed in.', preferServerMessage: false, action: RETRY },
   CSV_ROW_TOO_LONG: { title: 'A row in this file is too long to read', body: 'Open the file in Excel, save it as CSV UTF-8 and upload it again.', preferServerMessage: true, action: NONE },
   DOWNLOAD_SIGNING_NOT_CONFIGURED: { title: 'Downloads are not set up on this server', body: 'The upload itself is safe. Your Guava support needs to finish the setup.', preferServerMessage: false, action: NONE },
   EMAIL_VERIFICATION_REQUIRED: { title: 'Confirm your email first', body: 'Open the link we emailed you, or send a new one.', preferServerMessage: false, action: { kind: 'page', label: 'Send a new link' } },
