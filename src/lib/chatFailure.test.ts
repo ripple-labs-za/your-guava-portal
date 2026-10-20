@@ -35,6 +35,22 @@ describe('provider failure boundary', () => {
 })
 
 describe('charge recovery copy', () => {
+  it('does not infer a confirmed free answer from a failed network response', () => {
+    const failure = chatFailureFrom(new TypeError('Failed to fetch'), false)
+    expect(failure).toMatchObject({ kind: 'offline', chargeInferred: true })
+    expect(chatFailureCopy(failure).detail).toMatch(/any charge for an undelivered answer is refunded automatically/i)
+    expect(chatFailureCopy(failure).detail).not.toMatch(/nothing was charged/i)
+  })
+  it.each([null, undefined])('explains automatic refund for an offline charge that is unknown: %s', (charged) => {
+    const copy = chatFailureCopy({ kind: 'offline', charged })
+    expect(copy.detail).toMatch(/the answer did not arrive/i)
+    expect(copy.detail).toMatch(/any charge for an undelivered answer is refunded automatically/i)
+    expect(copy.detail).not.toMatch(/nothing was charged/i)
+  })
+  it('says nothing was charged for a confirmed non-inferred offline refusal', () => {
+    expect(chatFailureCopy({ kind: 'offline', charged: false }).detail).toMatch(/nothing was charged/i)
+    expect(chatFailureCopy(chatFailureFrom(new TypeError('Failed to fetch'), false, true)).detail).toMatch(/it was charged/i)
+  })
   it.each([
     Object.assign(new Error('aborted'), { name: 'AbortError' }),
     { response: { status: 503 } },

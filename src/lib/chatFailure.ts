@@ -133,7 +133,7 @@ export function chatFailureFrom(error: unknown, cancelledByUser: boolean, delive
   const name = (error as Error | undefined)?.name
   if (name === 'AbortError' || name === 'CanceledError') return { kind: 'transient', charged: delivered, chargeInferred: true }
   const info = readApiError(error)
-  if (info.offline) return { kind: 'offline', charged: delivered }
+  if (info.offline) return { kind: 'offline', charged: delivered, chargeInferred: true }
   const failure = failureFromInfo(info)
   const billingMessage = billingReadOnlyMessage(error)
   if (billingMessage) {
@@ -151,7 +151,7 @@ export function chatFailureCopy(failure: ChatFailure) {
       action: { kind: 'retry' as const, label: 'Load the full answer (no extra charge)' },
     }
   }
-  if (failure.charged === null) {
+  if (failure.charged === null && failure.kind !== 'offline') {
     return {
       title: 'Charge not confirmed',
       detail: failure.kind === 'provider-rejected'
@@ -264,8 +264,10 @@ export function chatFailureCopy(failure: ChatFailure) {
       }
     case 'offline':
       return {
-        title: 'I could not reach the AI analyst',
-        detail: 'Nothing came back from the server. Check your connection, then ask again.',
+        title: failure.charged === null ? 'Charge not confirmed' : 'I could not reach the AI analyst',
+        detail: failure.charged === false && !failure.chargeInferred
+          ? 'Nothing was charged. Check your connection, then ask again.'
+          : 'The answer did not arrive. Any charge for an undelivered answer is refunded automatically. Check your connection, then ask again.',
         action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
       }
     default:

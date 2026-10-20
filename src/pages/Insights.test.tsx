@@ -484,7 +484,7 @@ describe('Insights', () => {
       : Promise.reject(new Error('connection failed')))
     render(<Insights />)
     await askQuestion('Check charge status')
-    await within(answerBubble()).findByText(charged === false ? /nothing came back from the server/i : /charge not confirmed/i)
+    await within(answerBubble()).findByText(charged === false ? /the answer did not arrive/i : /charge not confirmed/i)
     expect(within(answerBubble()).queryByText(/it was charged/i)).not.toBeInTheDocument()
     expect(screen.getByRole('status', { name: 'Chat status' })).not.toHaveTextContent(/nothing was charged/i)
   })
