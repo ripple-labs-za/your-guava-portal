@@ -206,6 +206,22 @@ describe('api interceptors', () => {
     expect(window.location.href).toBe('http://localhost/verify-email')
   })
 
+  // UAT-09-S11: a wrong current password on ownership transfer is a 401 "Current password is incorrect". It went through the
+  // refresh, was retried, 401'd again and sent the owner to /login; it is an answer for the dialog, as on change-password.
+  // And (FB-022 review) a query string does not hide an excluded path.
+  it.each(['/team/transfer-ownership', 'http://localhost:5000/api/team/transfer-ownership', '/auth/verify-email?x=1'])(
+    'hands a 401 from %s to the page without refreshing or redirecting', async (url) => {
+      const { responseRejected } = await loadApi()
+      Object.defineProperty(window, 'location', { writable: true, value: { ...window.location, href: 'http://localhost/team' } })
+      const error = { config: { url, headers: {} }, response: { status: 401, data: { message: 'Current password is incorrect' } } }
+
+      await expect(responseRejected(error)).rejects.toBe(error)
+
+      expect(axiosMock.post).not.toHaveBeenCalled()
+      expect(axiosMock.instance).not.toHaveBeenCalled()
+      expect(window.location.href).toBe('http://localhost/team')
+    })
+
   // The exclusions are exact paths: a protected call beside them (an owner's invitation resend) still refreshes on a real expiry.
   it.each(['/team/invitations/inv1/resend', '/auth/me'])('still refreshes a protected call %s whose session expired', async (url) => {
     const { responseRejected } = await loadApi()

@@ -83,6 +83,9 @@ const REFRESH_EXCLUDED_PATHS = new Set([
   '/auth/reset-password',
   '/team/invitations/accept',
   '/team/invitations/preview',
+  // A wrong current password is a 401 here, as on change-password: retried after a refresh it 401'd again and sent the
+  // owner to /login from the transfer dialog (UAT-09-S11).
+  '/team/transfer-ownership',
 ])
 
 function normaliseApiPath(url?: string) {
