@@ -44,8 +44,8 @@ function RouteFallback() {
   )
 }
 
-function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, isLoading, bootstrapError } = useAuth()
+export function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { user, isLoading, bootstrapError, signedOut } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -86,7 +86,8 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to='/login' replace state={{ from: location.pathname + location.search }} />
+    // A deliberate Sign Out keeps no return page (UAT-14-S20): the next sign-in, perhaps someone else's, starts on Today.
+    return <Navigate to='/login' replace state={signedOut ? undefined : { from: location.pathname + location.search }} />
   }
 
   return <>{children}</>

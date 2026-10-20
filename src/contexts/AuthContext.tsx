@@ -16,6 +16,12 @@ interface AuthContextType {
    * protected-route guard knows whether the page they asked for cares.
    */
   bootstrapError?: 'unreachable' | null
+  /**
+   * The user pressed Sign Out in this tab. The protected-route guard then sends
+   * them to sign in without the page they left as the place to return to: the
+   * next person to sign in starts on Today, not on the last person's page.
+   */
+  signedOut?: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   register: (
@@ -64,6 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [bootstrapError, setBootstrapError] = useState<'unreachable' | null>(null)
+  const [signedOut, setSignedOut] = useState(false)
 
   // The access token lives only in module memory, so a page load starts without
   // one and the durable session is the HttpOnly refresh cookie. Asking /auth/me
@@ -122,6 +129,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     clearInsightChatStorage()
     setAccessToken(data.accessToken)
     setTabCafeId(data.user.activeCafeId ?? null)
+    setSignedOut(false)
     setUser(data.user)
   }
 
@@ -132,6 +140,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       clearAccessToken()
       clearTabCafeId()
       clearInsightChatStorage()
+      setSignedOut(true)
       setUser(null)
     }
   }
@@ -178,7 +187,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isOwner, bootstrapError, login, logout, register, switchCafe, updateCurrentUser }}
+      value={{ user, isLoading, isOwner, bootstrapError, signedOut, login, logout, register, switchCafe, updateCurrentUser }}
     >
       {/* A misconfigured build cannot talk to anything, so it is the one case
           that replaces the whole app. A failed bootstrap is NOT — an anonymous

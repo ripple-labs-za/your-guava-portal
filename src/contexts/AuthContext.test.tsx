@@ -44,6 +44,7 @@ function TestConsumer() {
       <div data-testid="loading">{ctx.isLoading ? 'true' : 'false'}</div>
       <div data-testid="bootstrapError">{ctx.bootstrapError ?? 'none'}</div>
       <div data-testid="isOwner">{ctx.isOwner ? 'true' : 'false'}</div>
+      <div data-testid="signedOut">{ctx.signedOut ? 'true' : 'false'}</div>
       <button onClick={() => ctx.login('test@test.com', 'pass')}>Login</button>
       <button onClick={() => ctx.logout()}>Logout</button>
       <button onClick={() => ctx.switchCafe('cafe456')}>Switch Cafe</button>
@@ -225,6 +226,29 @@ describe('AuthContext', () => {
 
     expect(localStorage.getItem('accessToken')).toBeNull()
     expect(getAccessToken()).toBeNull()
+  })
+
+  // UAT-14-S20: Sign Out left the page's path as the next sign-in's destination, so whoever signed in next landed on it.
+  it('remembers a deliberate sign-out until the next sign-in', async () => {
+    const mockUser = { id: 'u1', email: 'test@test.com', name: 'Test User', role: 'owner', orgId: 'org1', cafeIds: ['c1'], activeCafeId: 'c1' }
+    mockPost
+      .mockResolvedValueOnce({ data: { accessToken: 'token123', user: mockUser } }) // login
+      .mockResolvedValueOnce({}) // logout
+      .mockResolvedValueOnce({ data: { accessToken: 'token456', user: mockUser } }) // login again
+
+    render(<AuthProvider><TestConsumer /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('signedOut')).toHaveTextContent('false')
+
+    await userEvent.click(screen.getByText('Login'))
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('Test User'))
+    await userEvent.click(screen.getByText('Logout'))
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('null'))
+    expect(screen.getByTestId('signedOut')).toHaveTextContent('true')
+
+    await userEvent.click(screen.getByText('Login'))
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('Test User'))
+    expect(screen.getByTestId('signedOut')).toHaveTextContent('false')
   })
 
   it('isOwner returns true for owner role', async () => {
