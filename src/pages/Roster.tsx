@@ -18,6 +18,7 @@ import { LoadFailed, loadFailureReason } from '@/components/ui/load-failed'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { toLocalDateOnly } from '@/lib/date'
+import { useAuth } from '@/hooks/useAuth'
 import { requestErrorMessage } from '@/components/staff/staffText'
 import { ROLE_COLORS, FALLBACK_ROLE_COLOR } from '@/components/staff/roleColors'
 import type { Shift, StaffMember, ShiftSummary } from '@/types'
@@ -256,6 +257,7 @@ function StaffSidebar({
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Roster() {
+  const { isOwner } = useAuth()
   const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()))
   const [shifts, setShifts] = useState<Shift[]>([])
   const [staffList, setStaffList] = useState<StaffMember[]>([])
@@ -384,7 +386,7 @@ export default function Roster() {
                       )}
 
                       {/* Add Shift */}
-                      {addingDay === dateStr ? (
+                      {isOwner && (addingDay === dateStr ? (
                         <AddShiftForm
                           date={dateStr}
                           staffList={staffList}
@@ -400,7 +402,7 @@ export default function Roster() {
                           <Plus className="w-3 h-3" />
                           Add Shift
                         </button>
-                      )}
+                      ))}
                     </>
                   )}
                 </div>

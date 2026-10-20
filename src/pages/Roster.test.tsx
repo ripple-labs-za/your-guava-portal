@@ -3,6 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import Roster from './Roster'
 
+const auth = vi.hoisted(() => ({ isOwner: true }))
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ ...auth, user: null }) }))
+
 // Mock assets
 vi.mock('@/assets/logo.png', () => ({ default: 'logo.png' }))
 vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
@@ -49,8 +52,24 @@ function getCurrentMonday() {
 
 describe('Roster', () => {
   beforeEach(() => {
+    auth.isOwner = true
     vi.clearAllMocks()
     localStorage.clear()
+  })
+
+  it('lets a manager read shifts and navigate weeks without offering Add Shift', async () => {
+    auth.isOwner = false
+    mockWeek([{
+      _id: 'shift1', staffId: { _id: 'staff1', name: 'Sarah' }, cafeId: 'cafe1', date: getCurrentMonday(),
+      startTime: '08:00', endTime: '16:00', hoursWorked: 8, type: 'regular', status: 'scheduled',
+    }], [SARAH])
+    render(<Roster />)
+    expect(await screen.findByText('08:00 — 16:00')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeEnabled()
+    expect(screen.queryAllByRole('button', { name: /^Add Shift/ })).toHaveLength(0)
+    expect(screen.queryByRole('combobox', { name: 'Staff' })).not.toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+    auth.isOwner = true
   })
 
   it('renders 7-column weekly grid', async () => {
