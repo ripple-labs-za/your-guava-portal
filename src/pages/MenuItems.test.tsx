@@ -140,6 +140,34 @@ describe('MenuItems accessibility', () => {
     localStorage.clear()
   })
 
+  it('explains that an empty menu comes from a sales import and links to the first step', async () => {
+    mockItems([], [])
+    render(<MenuItems />)
+    expect(await screen.findByText(/your menu fills from the items in your sales imports/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Upload sales data' })).toHaveAttribute('href', '/data-health')
+    expect(screen.queryByText('No menu item issues to review.')).not.toBeInTheDocument()
+  })
+
+  it('keeps the resolved-review message for an existing menu without offering a first import', async () => {
+    mockItems([FLAT_WHITE], [])
+    render(<MenuItems />)
+    expect(await screen.findByText('No menu item issues to review.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Upload sales data' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the resolved-review message when every imported item is hidden', async () => {
+    mockItems([], [])
+    const serve = mockGet.getMockImplementation()!
+    mockGet.mockImplementation(async (...args: unknown[]) => {
+      const result = await serve(...args)
+      if (String(args[0]) === '/items') result.data.meta.counts = { matched: 0, needs_review: 0, ignored: 1, merged: 0 }
+      return result
+    })
+    render(<MenuItems />)
+    expect(await screen.findByText('No menu item issues to review.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Upload sales data' })).not.toBeInTheDocument()
+  })
+
   it('names every menu-table category select after its own row', async () => {
     mockItems([FLAT_WHITE, CROISSANT], [])
 

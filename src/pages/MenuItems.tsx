@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Coffee, Plus, Save, Search, Tags } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -648,7 +649,14 @@ export default function MenuItems() {
                   </div>
                 ) : reviewItems.length === 0 ? (
                   <div className="rounded-lg border border-border bg-[#111111] px-4 py-8 text-center text-sm text-muted">
-                    No menu item issues to review.
+                    {menuCount === 0 && hiddenCount === 0 ? (
+                      <>
+                        <p>Your menu fills from the items in your sales imports.</p>
+                        <Link to="/data-health" className="mt-3 inline-flex min-h-6 items-center text-guava-green underline underline-offset-2">
+                          Upload sales data
+                        </Link>
+                      </>
+                    ) : 'No menu item issues to review.'}
                   </div>
                 ) : (
                   reviewItems.map((item) => isFirstImport && needsReviewTotal <= 2000 ? (
