@@ -35,6 +35,11 @@ describe('provider failure boundary', () => {
 })
 
 describe('charge recovery copy', () => {
+  it('explains that an offline retry cannot charge twice for the same question and a finished answer is saved', () => {
+    const copy = chatFailureCopy(chatFailureFrom(new TypeError('Failed to fetch'), false))
+    expect(copy.action?.label).toBe('Try again (no second charge for the same question)')
+    expect(copy.detail).toMatch(/a finished answer is saved in the chat/i)
+  })
   it('does not infer a confirmed free answer from a failed network response', () => {
     const failure = chatFailureFrom(new TypeError('Failed to fetch'), false)
     expect(failure).toMatchObject({ kind: 'offline', chargeInferred: true })

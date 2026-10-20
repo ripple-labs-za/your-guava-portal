@@ -1855,7 +1855,7 @@ export default function Insights() {
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-3 pt-3" title={!shownContextStats && liveStatsFailed ? 'Counts unavailable' : undefined}>
-                <Stat icon={Database} label="Transactions (all locations)" value={shownContextStats?.transactionCount?.toLocaleString('en-ZA') ?? '—'} />
+                <Stat icon={Database} label="Transactions (all your locations)" value={shownContextStats?.transactionCount?.toLocaleString('en-ZA') ?? '—'} />
                 <Stat icon={MapPin} label="Locations" value={shownContextStats?.locations?.toLocaleString('en-ZA') ?? '—'} />
                 <Stat icon={BarChart3} label="Forecasts" value={shownContextStats?.forecasts?.toLocaleString('en-ZA') ?? '—'} />
               </div>

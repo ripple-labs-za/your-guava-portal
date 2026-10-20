@@ -266,9 +266,9 @@ export function chatFailureCopy(failure: ChatFailure) {
       return {
         title: failure.charged === null ? 'Charge not confirmed' : 'I could not reach the AI analyst',
         detail: failure.charged === false && !failure.chargeInferred
-          ? 'Nothing was charged. Check your connection, then ask again.'
-          : 'The answer did not arrive. Any charge for an undelivered answer is refunded automatically. Check your connection, then ask again.',
-        action: { kind: 'retry' as const, label: `Try again (${CHAT_CREDIT_COST} credits)` },
+          ? 'Nothing was charged. Check your connection, then ask again. A finished answer is saved in the chat.'
+          : 'The answer did not arrive. Any charge for an undelivered answer is refunded automatically. Check your connection, then ask again. A finished answer is saved in the chat.',
+        action: { kind: 'retry' as const, label: 'Try again (no second charge for the same question)' },
       }
     default:
       return {
