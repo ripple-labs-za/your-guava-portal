@@ -671,7 +671,8 @@ export default function Leave() {
               ) : listFailure ? (
                 <LoadFailed what="leave requests" reason={listFailure} reassurance="Your requests are safe; this page just could not fetch them." onRetry={loadData} />
               ) : requests.length > 0 ? (
-                <div className="overflow-x-auto">
+                <div role="region" aria-label="Leave requests" tabIndex={0}
+                  className="overflow-x-auto rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-guava-red">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">

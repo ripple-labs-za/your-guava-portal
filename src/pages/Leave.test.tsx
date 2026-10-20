@@ -30,12 +30,12 @@ vi.mock('@/lib/api', () => {
   }
 })
 
-function renderWithAuth(ui: ReactNode) {
+function renderWithAuth(ui: ReactNode, role: 'owner' | 'manager' = 'owner') {
   const user = {
     id: 'user123',
     email: 'test@yourguava.com',
     name: 'Test Owner',
-    role: 'owner' as const,
+    role,
     orgId: 'org123',
     cafeIds: ['cafe123'],
     activeCafeId: 'cafe123',
@@ -47,7 +47,7 @@ function renderWithAuth(ui: ReactNode) {
         value={{
           user,
           isLoading: false,
-          isOwner: true,
+          isOwner: role === 'owner',
           login: vi.fn(),
           logout: vi.fn(),
           register: vi.fn(),
@@ -64,6 +64,20 @@ describe('Leave', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+  })
+
+  it('gives a manager a named keyboard focus target for the horizontally scrolling requests', async () => {
+    mockGet.mockImplementation((url: string) => Promise.resolve({ data: (url === '/leave' || url.startsWith('/leave?'))
+      ? { requests: [{ _id: 'leave1', staffId: { _id: 'staff1', name: 'Sarah' }, type: 'annual',
+        startDate: '2026-11-02', endDate: '2026-11-03', days: 2, status: 'pending' }] }
+      : { calendar: [], balances: [], staff: [], cafe: { name: 'Test' } } }))
+    renderWithAuth(<Leave />, 'manager')
+    const region = await screen.findByRole('region', { name: 'Leave requests' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    region.focus()
+    expect(region).toHaveFocus()
+    expect(screen.getByText('Sarah')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).not.toBeInTheDocument()
   })
 
   it('renders leave request list', async () => {
