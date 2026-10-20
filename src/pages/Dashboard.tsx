@@ -174,10 +174,10 @@ function KpiCard({
   label: string; value: string; sub?: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; accent: string
 }) {
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardContent className="pt-5 pb-5">
-        <div className="flex items-start justify-between">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 break-words">
             <p className="text-muted text-xs font-medium uppercase tracking-wider mb-1">{label}</p>
             <p className="text-text text-2xl font-bold tracking-tight">{value}</p>
             {sub && <p className="text-muted text-xs mt-1">{sub}</p>}
@@ -231,19 +231,19 @@ function WeatherCard({ signals, locationLabel }: { signals: Forecast['signals'];
   return (
     <Card className="bg-gradient-to-br from-[#1A2030] to-surface border-[#2A3048]">
       <CardContent className="pt-5 pb-5">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <div className="flex items-end gap-3">
-              <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-xl bg-[#4A9ECC]/10">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+          <div className="min-w-0 flex-1 basis-48">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="mb-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#4A9ECC]/10">
                 <WeatherIcon className="h-7 w-7 text-[#4A9ECC]" />
               </div>
               {weatherAvailable ? (
-                <div>
+                <div className="min-w-0 flex-1 basis-32 break-words">
                   <span className="text-4xl font-bold text-text">{weatherTempLabel(weather)}</span>
                   <p className="text-[#AAB8CC] text-sm">{weather.condition}</p>
                 </div>
               ) : (
-                <div>
+                <div className="min-w-0 flex-1 basis-32 break-words">
                   <p className="font-semibold text-text">Weather unavailable</p>
                   <p className="mt-1 max-w-xs text-xs text-muted">{weatherUnavailableReason(weather)}</p>
                   {/* Only when it is the owner's to fix. See signalFix. */}
@@ -276,7 +276,7 @@ function WeatherCard({ signals, locationLabel }: { signals: Forecast['signals'];
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-4 pt-3 border-t border-[#2A3048]">
+        <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-[#2A3048]">
           {weatherAvailable && typeof weather.humidity === 'number' && Number.isFinite(weather.humidity) && (
             <div className="flex items-center gap-1.5">
               <Wind className="w-3.5 h-3.5 text-[#4A9ECC]" />
@@ -337,7 +337,7 @@ function ImpactFactorsCard({ forecast }: { forecast: Forecast }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-sm">Sales Impact Factors</CardTitle>
           <span className="text-muted text-xs">{activeCount} active</span>
         </div>
@@ -438,7 +438,7 @@ function PredictedOutput({
         </p>
       )}
       {planned.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3">
           {planned.map((item) => (
             <ItemCard
               key={item.itemName}
@@ -457,7 +457,7 @@ function PredictedOutput({
 
       {occasional.length > 0 && (
         <div>
-          <div className="flex items-baseline gap-2 mb-2">
+          <div className="flex flex-wrap items-baseline gap-2 mb-2">
             <h4 className="text-[11px] font-semibold uppercase tracking-wide text-[#8A8A8A]">
               Occasional sellers
             </h4>
@@ -472,7 +472,7 @@ function PredictedOutput({
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-[#161616] px-2.5 py-1 text-xs text-muted"
                 title={`${item.itemName} — typically ${item.predictedQty} a day`}
               >
-                <span className="truncate max-w-45">{item.itemName}</span>
+                <span className="min-w-0 break-words">{item.itemName}</span>
                 {/* "~0" reads as broken; for these lines the honest signal is
                     "some days none", not a number to order against. */}
                 <span className="tabular-nums text-[#949494]">
@@ -504,7 +504,7 @@ function ItemCard({
   const Icon = getItemIcon(itemName)
 
   return (
-    <div className="bg-[#111111] border border-border rounded-xl p-4 text-center hover:border-[#3A3A3A] transition-colors">
+    <div className="min-w-0 break-words bg-[#111111] border border-border rounded-xl p-4 text-center hover:border-[#3A3A3A] transition-colors">
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center mx-auto mb-2"
         style={{ backgroundColor: `${color}18` }}
@@ -517,7 +517,7 @@ function ItemCard({
       {/* Keep the variant. "Iced Coffee (Vanilla)" and "Iced Coffee (None)" are
           different products with different numbers; stripping the bracket
           rendered them as identical cards nobody could act on. */}
-      <div className="text-muted text-[11px] leading-tight truncate" title={itemName}>
+      <div className="text-muted text-[11px] leading-tight" title={itemName}>
         {itemName}
       </div>
       {/* The engine grades every line and the portal used to discard it, so a
@@ -754,7 +754,7 @@ export default function Dashboard() {
     <AppLayout title="Today">
       {/* KPI Row */}
       <div
-        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6"
+        className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4 mb-6"
         role={isLoading ? 'status' : undefined}
         aria-busy={isLoading || undefined}
       >
@@ -870,11 +870,11 @@ export default function Dashboard() {
       {/* Predicted Output */}
       {!isLoading && activeForecast && (
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-text text-sm font-semibold uppercase tracking-wider">
               Predicted Output
             </h2>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {isClosedDay && <Badge variant="destructive">Closed</Badge>}
               {activeForecast.totalPredictedRevenue > 0 && (
                 <span className="text-guava-green text-sm font-bold">
@@ -949,7 +949,7 @@ export default function Dashboard() {
       {/* Weather and backend-provided forecast factors */}
       {(isLoading || activeForecast) && (
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <div className="space-y-4 xl:col-span-2 xl:grid xl:grid-cols-2 xl:gap-5 xl:space-y-0">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-5 xl:col-span-2">
           {isLoading ? (
             <>
               <Skeleton className="h-40 rounded-xl" />
