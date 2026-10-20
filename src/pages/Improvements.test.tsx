@@ -237,7 +237,7 @@ describe('Improvements', () => {
     expect(screen.queryByText(/No improvements logged yet/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
     for (const label of ['All', 'Open', 'Planned', 'In progress', 'Done', 'Declined']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}\\s+-$`) })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: `${label}-` })).toBeInTheDocument()
     }
   })
 
