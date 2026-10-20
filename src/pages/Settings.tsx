@@ -78,9 +78,9 @@ const ensureWeek = (input?: TradingHoursEntry[]): TradingHoursEntry[] => {
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <p className="text-muted text-[11px] uppercase tracking-wider font-medium">{label}</p>
-      <p className="text-text text-sm font-medium">{value || '—'}</p>
+      <p className="text-text text-sm font-medium [overflow-wrap:anywhere]">{value || '—'}</p>
     </div>
   )
 }
@@ -591,8 +591,8 @@ export default function Settings() {
 
   return (
     <AppLayout title="Settings">
-      <div className="space-y-6 xl:space-y-0 xl:pl-[244px]">
-        <aside className="h-fit rounded-lg border border-border bg-surface p-2 xl:fixed xl:left-[calc(15rem+2rem)] xl:top-20 xl:z-20 xl:w-[220px] xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto">
+      <div className="space-y-6 2xl:space-y-0 2xl:pl-[244px]">
+        <aside className="h-fit rounded-lg border border-border bg-surface p-2 2xl:fixed 2xl:left-[calc(15rem+2rem)] 2xl:top-20 2xl:z-20 2xl:w-[220px] 2xl:max-h-[calc(100vh-6rem)] 2xl:overflow-y-auto">
           <nav className="space-y-1" aria-label="Settings sections">
             {visibleSections.map((section) => {
               const Icon = section.icon
@@ -611,7 +611,7 @@ export default function Settings() {
                   }
                 >
                   <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span className="min-w-0">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
                     <span className="block text-sm font-medium">{section.label}</span>
                     <span className={active ? 'block text-xs text-guava-red-muted' : 'block text-xs text-[#9E9E9E]'}>
                       {section.description}
@@ -625,7 +625,7 @@ export default function Settings() {
 
         <div className="min-w-0 space-y-6">
           {activeSection === 'general' && (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[0.9fr_1.1fr]">
         {loadState === 'loading' && (
           <div className="xl:col-span-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted" role="status">
             Loading the active cafe settings...
@@ -983,7 +983,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-5">
+                <div className="grid grid-cols-1 2xl:grid-cols-3 gap-x-6 gap-y-5">
                   <ReadOnlyField label="Latitude" value={cafeLatitude} />
                   <ReadOnlyField label="Longitude" value={cafeLongitude} />
                   <ReadOnlyField label="Timezone" value={cafeTimezone} />

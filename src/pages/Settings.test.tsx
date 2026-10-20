@@ -323,7 +323,7 @@ describe('Settings', () => {
     expect(mockPut).not.toHaveBeenCalled()
   })
 
-  it('keeps the settings section menu fixed on desktop', async () => {
+  it('keeps the settings section menu named and exposes the current section', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) {
         return Promise.resolve({
@@ -347,11 +347,10 @@ describe('Settings', () => {
       ).toBeInTheDocument()
     })
 
-    expect(
-      screen
-        .getByRole('navigation', { name: /settings sections/i })
-        .closest('aside')
-    ).toHaveClass('xl:fixed', 'xl:top-20', 'xl:w-[220px]')
+    const navigation = screen.getByRole('navigation', { name: /settings sections/i })
+    const current = navigation.querySelectorAll('[aria-current="page"]')
+    expect(current).toHaveLength(1)
+    expect(current[0]).toHaveTextContent('General')
   })
 
   it('renders the expanded address block and timezone in view mode', async () => {
