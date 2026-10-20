@@ -30,6 +30,13 @@ const closedDay = (id: string, date: string): Forecast => ({
 })
 
 describe('ItemsHeatmap', () => {
+  it('offers the full item name when the row heading is clipped on a phone', () => {
+    const forecast = tradingDay('f1', '2026-03-27', 30)
+    forecast.items[0].itemName = 'Toasted Cheese and Tomato'
+    render(<ItemsHeatmap forecasts={[forecast]} />)
+    expect(screen.getByRole('rowheader', { name: 'Toasted Cheese and Tomato' }))
+      .toHaveAttribute('title', 'Toasted Cheese and Tomato')
+  })
   it('marks a closed day rather than rendering it as a column of nothing predicted', () => {
     render(
       <ItemsHeatmap

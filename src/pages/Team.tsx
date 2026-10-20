@@ -828,7 +828,7 @@ export default function Team() {
                           <p className="truncate text-sm font-medium text-text">{member.name}</p>
                           <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-[#949494]">
                             <Mail className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{member.email}</span>
+                            <span className="truncate" title={member.email}>{member.email}</span>
                           </div>
                         </div>
                       </div>
@@ -1021,7 +1021,7 @@ export default function Team() {
                   <div key={invitation._id} className="grid gap-3 px-5 py-4 md:grid-cols-[minmax(220px,1fr)_minmax(180px,1fr)_auto] md:items-center">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-text">{invitation.name}</p>
-                      <p className="mt-1 truncate text-xs text-muted">{invitation.email}</p>
+                      <p className="mt-1 truncate text-xs text-muted" title={invitation.email}>{invitation.email}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <Badge variant={invitation.status === 'expired' ? 'destructive' : 'warning'}>
                           {invitation.status}

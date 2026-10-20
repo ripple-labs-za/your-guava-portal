@@ -494,7 +494,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                   <ul className="space-y-1.5">
                     {rising.map((item) => (
                       <li key={item.name} className="flex items-center justify-between text-xs">
-                        <span className="text-text truncate mr-2">{item.name}</span>
+                        <span className="text-text truncate mr-2" title={item.name}>{item.name}</span>
                         <span className="text-guava-green font-medium tabular-nums shrink-0">
                           {formatTrend(item.trend)}
                         </span>
@@ -513,7 +513,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                   <ul className="space-y-1.5">
                     {declining.map((item) => (
                       <li key={item.name} className="flex items-center justify-between text-xs">
-                        <span className="text-text truncate mr-2">{item.name}</span>
+                        <span className="text-text truncate mr-2" title={item.name}>{item.name}</span>
                         <span className="text-guava-red-text font-medium tabular-nums shrink-0">
                           {formatTrend(item.trend)}
                         </span>
@@ -529,7 +529,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                 <ul className="space-y-1.5">
                   {newItems.map((item) => (
                     <li key={item.name} className="flex items-center justify-between text-xs">
-                      <span className="text-text truncate mr-2">{item.name}</span>
+                      <span className="text-text truncate mr-2" title={item.name}>{item.name}</span>
                       <span className="text-muted tabular-nums shrink-0">{item.currentQty.toLocaleString('en-ZA')} sold · new</span>
                     </li>
                   ))}

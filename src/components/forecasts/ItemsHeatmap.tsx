@@ -118,6 +118,7 @@ export function ItemsHeatmap({ forecasts }: Props) {
               <tr key={itemName} className="border-b border-[#1F1F1F] last:border-0">
                 <th
                   scope="row"
+                  title={itemName}
                   className="sticky left-0 bg-surface px-4 py-2 text-muted font-normal text-left truncate max-w-36 border-r border-border"
                 >
                   {itemName}

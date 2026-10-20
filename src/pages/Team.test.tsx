@@ -67,6 +67,17 @@ function renderWithAuth(
 }
 
 describe('Team', () => {
+  it('offers the full member and invitation emails when phone labels clip', async () => {
+    const memberEmail = 'long.member.email.for.phone@example.com'
+    const invitationEmail = 'long.invitation.email.for.phone@example.com'
+    mockGet.mockImplementation((url: string) => Promise.resolve({ data: url === '/team' ? {
+      members: [{ _id: 'm1', name: 'Member', email: memberEmail, role: 'owner', cafeIds: [] }],
+      invitations: [{ _id: 'i1', name: 'Invitation', email: invitationEmail, status: 'pending', cafeIds: [] }],
+    } : {} }))
+    renderWithAuth(<Team />)
+    expect(await screen.findByText(memberEmail)).toHaveAttribute('title', memberEmail)
+    expect(await screen.findByText(invitationEmail)).toHaveAttribute('title', invitationEmail)
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()

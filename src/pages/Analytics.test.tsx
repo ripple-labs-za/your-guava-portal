@@ -111,6 +111,24 @@ describe('Analytics', () => {
     expect(region).toHaveFocus()
   })
 
+  it('offers full names for rising, declining and new movers on a phone', async () => {
+    serveCombined()
+    const base = mockGet.getMockImplementation()
+    const names = ['Toasted Cheese and Tomato', 'Chocolate Brownie', 'New seasonal toasted sandwich']
+    mockGet.mockImplementation(async (url: string, ...args: unknown[]) => {
+      const response = await base?.(url, ...args)
+      if (url.includes('/analytics/items')) {
+        response.data.meta.risingItems = [{ name: names[0], trend: 12 }]
+        response.data.meta.decliningItems = [{ name: names[1], trend: -12 }]
+        response.data.meta.newItems = [{ name: names[2], currentQty: 30 }]
+      }
+      return response
+    })
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    for (const name of names) expect(await screen.findByText(name)).toHaveAttribute('title', name)
+  })
+
   it('shows every server window and caveat together across all five tabs', async () => {
     serveCombined()
     render(<Analytics />)
