@@ -21,7 +21,7 @@ import api from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { historyBackfillBatch, historyBackfillFailure, historyBackfillNote, HISTORY_SPEND_PERMISSION, type HistoryBackfillFailure } from '@/lib/historyBackfill'
 import { cn } from '@/lib/utils'
-import type { ForecastHistoryResponse, ForecastHistoryRow } from '@/types'
+import type { ForecastFactorEntitlements, ForecastFactorSettings, ForecastHistoryResponse, ForecastHistoryRow } from '@/types'
 import { formatAccuracyPercent as formatPercent, historyAccuracyDetail, NOT_COUNTED_REASON } from '@/lib/historyAccuracy'
 import { parseDateOnly } from '@/lib/date'
 import {
@@ -126,6 +126,28 @@ export default function History() {
   // panel, so a failed extra batch read as if the history had been lost.
   const [backfillError, setBackfillError] = useState<HistoryBackfillFailure | null>(null)
   const [backfillNote, setBackfillNote] = useState<string | null>(null)
+  const [learningConfig, setLearningConfig] = useState<{
+    entitlements: ForecastFactorEntitlements | null
+    settings: ForecastFactorSettings | null
+    failed: boolean
+  } | null>(null)
+
+  // The learning correction is a Pro feature and the factor rules can switch it off. Without these the panel assumed
+  // it was on and told a Starter owner the correction was "Waiting for history" (UAT-06-S02), so it waits for them.
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get<{ entitlements: ForecastFactorEntitlements; settings: ForecastFactorSettings }>('/forecasts/factors')
+      .then(({ data }) => {
+        if (!cancelled) setLearningConfig({ entitlements: data.entitlements ?? null, settings: data.settings ?? null, failed: false })
+      })
+      .catch(() => {
+        if (!cancelled) setLearningConfig({ entitlements: null, settings: null, failed: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -286,7 +308,14 @@ export default function History() {
             </div>
 
             {meta.backtestAccuracy?.note && <p className="text-xs text-muted">{meta.backtestAccuracy.note}</p>}
-            <ModelLearningPanel sources={history} />
+            {learningConfig && (
+              <ModelLearningPanel
+                sources={history}
+                entitlements={learningConfig.entitlements}
+                settings={learningConfig.settings}
+                unavailable={learningConfig.failed}
+              />
+            )}
 
             <div className="overflow-hidden rounded-lg border border-border bg-surface">
               <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">

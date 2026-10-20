@@ -6,6 +6,8 @@ import type { ReactNode } from 'react'
 import History from './History'
 
 const mockGet = vi.fn()
+// /forecasts/factors gets its own mock so the history tests' queued answers stay in order.
+const mockFactorsGet = vi.fn()
 let mockHistoryUser: { role: 'owner' | 'manager'; permissions?: { canSpendCredits: boolean } } = { role: 'owner' }
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mockHistoryUser }) }))
@@ -17,7 +19,8 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return {
     ...actual,
     default: {
-      get: (...args: unknown[]) => mockGet(...args),
+      get: (url: string, ...rest: unknown[]) =>
+        url === '/forecasts/factors' ? mockFactorsGet(url, ...rest) : mockGet(url, ...rest),
     },
   }
 })
@@ -139,6 +142,21 @@ const historyPayload = {
   },
 }
 
+function factorsPayload(plan: 'starter' | 'pro', learningEnabled = true) {
+  const unlocked = plan === 'pro'
+  return {
+    data: {
+      settings: { learning: { enabled: learningEnabled } },
+      entitlements: {
+        plan,
+        factors: [{ key: 'learning', label: 'Learning correction', section: 'learning', requiredPlan: 'pro', summary: '', unlocked }],
+        unlockedKeys: unlocked ? ['learning'] : [],
+        lockedKeys: unlocked ? [] : ['learning'],
+      },
+    },
+  }
+}
+
 function renderHistory() {
   return render(
     <MemoryRouter>
@@ -205,6 +223,33 @@ describe('History page', () => {
     mockHistoryUser = { role: 'owner' }
     mockGet.mockReset()
     mockGet.mockResolvedValue({ data: historyPayload })
+    mockFactorsGet.mockReset()
+    mockFactorsGet.mockResolvedValue(factorsPayload('pro'))
+  })
+
+  // UAT-06-S02: without the plan, the panel assumed learning was unlocked and told a Starter owner it was "Waiting for history".
+  it('tells a Starter owner the learning correction needs Pro', async () => {
+    mockFactorsGet.mockResolvedValue(factorsPayload('starter'))
+    renderHistory()
+    expect(await screen.findByText('Pro plan required')).toBeVisible()
+    expect(screen.getByText('Learning is visible here, but future forecasts only apply it on Pro.')).toBeVisible()
+    expect(screen.queryByText('Waiting for history')).not.toBeInTheDocument()
+    expect(mockFactorsGet).toHaveBeenCalledWith('/forecasts/factors')
+  })
+
+  it('says learning is off when the factor rules switch it off', async () => {
+    mockFactorsGet.mockResolvedValue(factorsPayload('pro', false))
+    renderHistory()
+    expect(await screen.findByText('Learning is disabled in factor rules.')).toBeVisible()
+    expect(screen.getByText('Off')).toBeVisible()
+  })
+
+  it('makes no learning claim when the plan could not be read', async () => {
+    mockFactorsGet.mockRejectedValue(new Error('network'))
+    renderHistory()
+    expect(await screen.findByText('Status unavailable')).toBeVisible()
+    expect(screen.queryByText('Waiting for history')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pro plan required')).not.toBeInTheDocument()
   })
 
   it('loads historical prediction rows with weather and factors', async () => {
