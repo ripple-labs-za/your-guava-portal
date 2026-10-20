@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ComponentType } from 'react'
+import { useState, useEffect, useRef, type ComponentType, type KeyboardEvent } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router'
 import {
   LayoutDashboard,
@@ -122,6 +122,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isDesktop = useMediaQuery(DESKTOP_SIDEBAR_QUERY, true)
   const isDrawerHidden = !isDesktop && !isOpen
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const navRef = useRef<HTMLElement | null>(null)
   const wasOpenRef = useRef(false)
 
   // The drawer sits before the top bar in the DOM, so a keyboard user who opens
@@ -152,6 +153,31 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const handleNavClick = () => {
     onClose?.()
+  }
+
+  const handleDrawerKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (isDesktop || !isOpen) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose?.()
+      return
+    }
+    if (event.key !== 'Tab') return
+    const controls = Array.from(navRef.current?.querySelectorAll<HTMLElement>(
+      'a[href],button,input,select,textarea,[tabindex]'
+    ) ?? []).filter((el) => el.tabIndex >= 0 && !el.matches(':disabled')
+      && !el.closest('[hidden],[inert],[aria-hidden="true"]')
+      && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden')
+    const first = controls[0], last = controls[controls.length - 1]
+    if (!first || !last) { event.preventDefault(); return }
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   const isPathActive = (path: string, exact?: boolean) => {
@@ -186,7 +212,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       <nav
+        ref={navRef}
         id={SIDEBAR_ID}
+        onKeyDown={handleDrawerKeyDown}
         aria-label="Main"
         inert={isDrawerHidden}
         aria-hidden={isDrawerHidden || undefined}

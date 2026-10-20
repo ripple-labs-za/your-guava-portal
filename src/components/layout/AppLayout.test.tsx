@@ -181,6 +181,41 @@ describe('AppLayout', () => {
     expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveFocus()
   })
 
+  it('keeps twenty forward Tab presses inside an open phone navigation drawer', async () => {
+    stubMatchMedia(false)
+    const user = userEvent.setup()
+    renderLayout({ children: <button>Background action</button> })
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }))
+    const drawer = screen.getByRole('navigation', { name: 'Main' })
+    const escaped: number[] = []
+    for (let index = 0; index < 20; index += 1) {
+      await user.tab()
+      if (!drawer.contains(document.activeElement)) escaped.push(index + 1)
+    }
+    expect(escaped).toEqual([])
+  })
+
+  it('wraps Shift-Tab from Close to the last navigation control', async () => {
+    stubMatchMedia(false)
+    const user = userEvent.setup()
+    renderLayout()
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }))
+    await user.tab({ shift: true })
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveFocus()
+  })
+
+  it('closes phone navigation on Escape and returns focus to its opener', async () => {
+    stubMatchMedia(false)
+    const user = userEvent.setup()
+    renderLayout()
+    const opener = screen.getByRole('button', { name: 'Open navigation' })
+    await user.click(opener)
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveAttribute('aria-expanded', 'false')
+    expect(opener).toHaveFocus()
+    expect(document.getElementById('app-sidebar')).toHaveAttribute('inert')
+  })
+
   it('tells assistive tech whether the drawer is open', async () => {
     stubMatchMedia(false)
     const user = userEvent.setup()
