@@ -222,6 +222,16 @@ function trendCaptionContent(meta?: TrendMeta): React.ReactNode {
   </span>
 }
 
+function EmptyAnalyticsPrompt({ message }: { message: string }) {
+  return <div className="py-16 text-center">
+    <p className="text-muted text-sm">{message}</p>
+    <p className="mt-1 text-muted text-xs">Import a sales file to build this view.</p>
+    <Button asChild className="mt-3" size="sm" variant="outline">
+      <Link to="/data-health">Upload sales data</Link>
+    </Button>
+  </div>
+}
+
 function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window: QueriedWindow | null) => void }) {
   const [trendCaption, setTrendCaption] = useState<React.ReactNode>('')
   const [reloadKey, setReloadKey] = useState(0)
@@ -358,7 +368,7 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-muted text-sm text-center py-16">No revenue data for this period</p>
+            <EmptyAnalyticsPrompt message="No revenue data for this period" />
           )}
           {!loading && data && data.data.length > 0 && (
             <ChartDataTable
@@ -568,7 +578,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-muted text-sm text-center py-16">No item data available</p>
+            <EmptyAnalyticsPrompt message="No item data available" />
           )}
         </CardContent>
       </Card>
@@ -627,7 +637,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
               </table>
             </div>
           ) : (
-            <p className="text-muted text-sm text-center py-16">No item data available</p>
+            <EmptyAnalyticsPrompt message="No item data available" />
           )}
         </CardContent>
       </Card>
@@ -1074,9 +1084,7 @@ function CombosTab({ period, onWindow }: { period: PeriodId; onWindow: (window: 
               </table>
             </div>
           ) : (
-            <p className="text-muted text-sm text-center py-16">
-              Need more transactions with 2+ items to surface combos.
-            </p>
+            <EmptyAnalyticsPrompt message="Need more transactions with 2+ items to surface combos." />
           )}
         </CardContent>
       </Card>
