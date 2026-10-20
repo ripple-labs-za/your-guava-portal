@@ -1464,6 +1464,31 @@ describe('Analytics', () => {
     ).toBeInTheDocument()
   })
 
+  it('keeps a sixth qualifying new table row labelled New outside the top-five panel', async () => {
+    const names = ['A Latte', 'B Latte', 'C Latte', 'D Latte', 'E Latte', 'Sixth Latte']
+    mockGet.mockImplementation((url: string) => Promise.resolve({
+      data: url.includes('/analytics/items') ? {
+        items: [
+          ...names.map((name) => ({ name, totalQty: 20, totalRevenue: 800, avgPerDay: 2.9, trend: null, isNew: true })),
+          { name: 'Low Volume', totalQty: 2, totalRevenue: 80, avgPerDay: 0.3, trend: null, isNew: false },
+        ],
+        meta: {
+          risingItems: [], decliningItems: [],
+          newItems: names.slice(0, 5).map((name) => ({ name, currentQty: 20 })),
+          moverFloor: { minQty: 14, windowDays: 7, eligibleCount: 6, belowFloorCount: 1, busiestQty: 20 },
+        },
+      } : {},
+    }))
+    render(<Analytics />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Items' }))
+    const sixth = await screen.findByRole('row', { name: /Sixth Latte/ })
+    expect(within(sixth).getByText('New')).toBeInTheDocument()
+    expect(screen.getAllByText('20 sold · new')).toHaveLength(5)
+    const low = screen.getByRole('row', { name: /Low Volume/ })
+    expect(within(low).queryByText('New')).not.toBeInTheDocument()
+    expect(within(low).getByText('No sales in the earlier week')).toBeInTheDocument()
+  })
+
   it('dims hours the cafe is closed and says so', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/analytics/heatmap')) {

@@ -453,7 +453,6 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
 
   const risingNames = new Set(rising.map((i) => i.name))
   const decliningNames = new Set(declining.map((i) => i.name))
-  const newNames = new Set(newItems.map((i) => i.name))
 
   if (error) return <TabError error={error} onRetry={() => setReloadKey((key) => key + 1)} />
 
@@ -618,7 +617,7 @@ function ItemsTab({ period, onWindow }: { period: PeriodId; onWindow: (window: Q
                         <td className="py-2.5 px-4 text-right text-text tabular-nums">{formatZAR(item.totalRevenue)}</td>
                         <td className="py-2.5 px-4 text-right text-muted tabular-nums">{item.avgPerDay.toFixed(1)}</td>
                         <td className="py-2.5 pl-4 text-right">
-                          <ItemTrend trend={item.trend} isNew={item.isNew && newNames.has(item.name)} />
+                          <ItemTrend trend={item.trend} isNew={item.isNew} />
                         </td>
 
                       </tr>
