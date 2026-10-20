@@ -612,15 +612,15 @@ export default function MenuItems() {
                 <CardDescription>POS names, menu prices, and aliases.</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant={tab === 'review' ? 'success' : 'outline'} size="sm" onClick={() => setTab('review')}>
+                <Button aria-pressed={tab === 'review'} variant={tab === 'review' ? 'success' : 'outline'} size="sm" onClick={() => setTab('review')}>
                   <Coffee className="w-3.5 h-3.5" />
                   Fix Imports
                 </Button>
-                <Button variant={tab === 'menu' ? 'success' : 'outline'} size="sm" onClick={() => setTab('menu')}>
+                <Button aria-pressed={tab === 'menu'} variant={tab === 'menu' ? 'success' : 'outline'} size="sm" onClick={() => setTab('menu')}>
                   <Tags className="w-3.5 h-3.5" />
                   Menu Prices
                 </Button>
-                <Button variant={tab === 'hidden' ? 'success' : 'outline'} size="sm" onClick={() => setTab('hidden')}>
+                <Button aria-pressed={tab === 'hidden'} variant={tab === 'hidden' ? 'success' : 'outline'} size="sm" onClick={() => setTab('hidden')}>
                   Hidden ({hiddenCount})
                 </Button>
               </div>

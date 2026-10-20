@@ -114,6 +114,20 @@ function mockItems(menu: SalesItem[], review: SalesItem[]) {
   serveItems(() => menu, review)
 }
 
+it('exposes the selected menu view to assistive technology', async () => {
+  mockItems([FLAT_WHITE], [NEEDS_REVIEW])
+  render(<MenuItems />)
+  const review = await screen.findByRole('button', { name: /Fix Imports/ })
+  const prices = screen.getByRole('button', { name: /Menu Prices/ })
+  const hidden = screen.getByRole('button', { name: /^Hidden/ })
+  for (const selected of [review, prices, hidden, review]) {
+    await userEvent.click(selected)
+    for (const button of [review, prices, hidden]) {
+      expect(button).toHaveAttribute('aria-pressed', String(button === selected))
+    }
+  }
+})
+
 // A different menu on each Menu Prices list call (not the link-target fetch), so a refetch can be made to disagree
 // with what the user is currently editing.
 function mockItemsSequence(menuByCall: SalesItem[][], review: SalesItem[]) {
