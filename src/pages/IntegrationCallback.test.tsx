@@ -41,18 +41,34 @@ describe('IntegrationCallback', () => {
     expect(window.location.href).not.toContain('opaque-state')
   })
 
+  it('refuses an unknown provider before sending a callback POST', async () => {
+    mockPost.mockRejectedValue({ response: { status: 400, data: { message: 'Unknown provider' } } })
+    window.history.replaceState(null, '', '/integrations/__proto__/callback?code=x&state=y')
+    render(<BrowserRouter><Routes>
+      <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+    </Routes></BrowserRouter>)
+    expect(await screen.findByText('Unknown provider')).toBeInTheDocument()
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
+  it('uses the page fallback instead of showing raw network error messages', async () => {
+    mockPost.mockRejectedValue(new Error('Network Error: private transport diagnostics'))
+    window.history.replaceState(null, '', '/integrations/xero/callback?code=x&state=y')
+    render(<BrowserRouter><Routes>
+      <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+    </Routes></BrowserRouter>)
+    expect(await screen.findByText('Connection failed. Please try again.')).toBeInTheDocument()
+    expect(screen.queryByText(/private transport diagnostics/)).not.toBeInTheDocument()
+  })
+
   it.each(['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'uat12co'])(
-    'renders the literal unknown provider %s safely during exchange and preserves the server refusal', async (provider) => {
-      let refuse!: (reason: unknown) => void
-      mockPost.mockReturnValue(new Promise((_resolve, reject) => { refuse = reject }))
+    'renders the literal unknown provider %s safely and refuses it locally', async (provider) => {
       window.history.replaceState(null, '', `/integrations/${provider}/callback?code=x&state=y`)
       render(<BrowserRouter><Routes>
         <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
       </Routes></BrowserRouter>)
-      expect(screen.getByText(`Connecting to ${provider}…`)).toBeInTheDocument()
-      await waitFor(() => expect(mockPost).toHaveBeenCalledWith(`/integrations/${provider}/callback`, { code: 'x', state: 'y' }))
-      refuse({ response: { status: 400, data: { message: 'Unknown provider' } } })
       expect(await screen.findByText('Unknown provider')).toBeInTheDocument()
+      expect(mockPost).not.toHaveBeenCalled()
       expect(screen.getByRole('link', { name: 'Back to Integrations' })).toHaveAttribute('href', '/integrations')
       expect(window.location.search).toBe('')
     }

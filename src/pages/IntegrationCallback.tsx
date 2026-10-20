@@ -59,6 +59,12 @@ export default function IntegrationCallback() {
       return
     }
 
+    if (!Object.prototype.hasOwnProperty.call(PROVIDER_DISPLAY, provider)) {
+      setErrorMsg('Unknown provider')
+      setPhase('error')
+      return
+    }
+
     api
       .post(`/integrations/${provider}/callback`, callbackPayload)
       .then(() => {
@@ -70,8 +76,6 @@ export default function IntegrationCallback() {
         if (err && typeof err === 'object' && 'response' in err) {
           const r = (err as { response?: { data?: { message?: string } } }).response
           if (r?.data?.message) msg = r.data.message
-        } else if (err instanceof Error) {
-          msg = err.message
         }
         setErrorMsg(msg)
         setPhase('error')
