@@ -209,11 +209,15 @@ describe('api interceptors', () => {
   // UAT-09-S11: a wrong current password on ownership transfer is a 401 "Current password is incorrect". It went through the
   // refresh, was retried, 401'd again and sent the owner to /login; it is an answer for the dialog, as on change-password.
   // And (FB-022 review) a query string does not hide an excluded path.
-  it.each(['/team/transfer-ownership', 'http://localhost:5000/api/team/transfer-ownership', '/auth/verify-email?x=1'])(
-    'hands a 401 from %s to the page without refreshing or redirecting', async (url) => {
+  // Keyed on the server's code, not the path (FB-043 review): the same routes still refresh on a real expiry.
+  it.each(['/team/transfer-ownership', 'http://localhost:5000/api/team/transfer-ownership', '/auth/change-password'])(
+    'hands a wrong current password on %s to the dialog without refreshing or redirecting', async (url) => {
       const { responseRejected } = await loadApi()
       Object.defineProperty(window, 'location', { writable: true, value: { ...window.location, href: 'http://localhost/team' } })
-      const error = { config: { url, headers: {} }, response: { status: 401, data: { message: 'Current password is incorrect' } } }
+      const error = {
+        config: { url, headers: {} },
+        response: { status: 401, data: { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect' } },
+      }
 
       await expect(responseRejected(error)).rejects.toBe(error)
 
@@ -221,6 +225,26 @@ describe('api interceptors', () => {
       expect(axiosMock.instance).not.toHaveBeenCalled()
       expect(window.location.href).toBe('http://localhost/team')
     })
+
+  // An owner who read Team for longer than the 15-minute access token and then confirmed with the right password.
+  it.each(['/team/transfer-ownership', '/auth/change-password'])('still refreshes and retries %s after a real expiry', async (url) => {
+    const { responseRejected } = await loadApi()
+    axiosMock.post.mockResolvedValueOnce({ data: { accessToken: 'fresh-token' } })
+    const error = { config: { url, headers: {} }, response: { status: 401, data: { message: 'Invalid or expired token' } } }
+
+    await expect(responseRejected(error)).resolves.toEqual(expect.objectContaining({ data: { retried: true } }))
+
+    expect(axiosMock.post).toHaveBeenCalledWith('http://localhost:5000/api/auth/refresh', expect.anything(), expect.anything())
+  })
+
+  it('does not let a query string hide an excluded public path', async () => {
+    const { responseRejected } = await loadApi()
+    const error = { config: { url: '/auth/verify-email?x=1', headers: {} }, response: { status: 401, data: {} } }
+
+    await expect(responseRejected(error)).rejects.toBe(error)
+
+    expect(axiosMock.post).not.toHaveBeenCalled()
+  })
 
   // The exclusions are exact paths: a protected call beside them (an owner's invitation resend) still refreshes on a real expiry.
   it.each(['/team/invitations/inv1/resend', '/auth/me'])('still refreshes a protected call %s whose session expired', async (url) => {
@@ -238,7 +262,8 @@ describe('api interceptors', () => {
     setAccessToken('old-token')
     const error = {
       config: { url: 'http://localhost:5000/api/auth/change-password', headers: {} },
-      response: { status: 401, data: { message: 'Current password is incorrect' } },
+      // The server marks a wrong current password with this code (FB-043); a 401 without it is an expiry and refreshes.
+      response: { status: 401, data: { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect' } },
     }
 
     await expect(responseRejected(error)).rejects.toBe(error)

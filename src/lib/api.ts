@@ -74,7 +74,6 @@ try {
 const REFRESH_EXCLUDED_PATHS = new Set([
   '/auth/login',
   '/auth/register',
-  '/auth/change-password',
   '/auth/logout',
   '/auth/refresh',
   '/auth/verify-email',
@@ -83,10 +82,17 @@ const REFRESH_EXCLUDED_PATHS = new Set([
   '/auth/reset-password',
   '/team/invitations/accept',
   '/team/invitations/preview',
-  // A wrong current password is a 401 here, as on change-password: retried after a refresh it 401'd again and sent the
-  // owner to /login from the transfer dialog (UAT-09-S11).
-  '/team/transfer-ownership',
 ])
+
+// A wrong current password (change-password, ownership transfer) is a 401 that is an answer for the dialog, not an
+// expired session: refreshed and retried, it 401'd again and sent the owner to /login (UAT-09-S11). Keyed on the
+// server's code rather than the path, so the same routes still refresh when the access token really expired (FB-043).
+const ANSWER_401_CODES = new Set(['CURRENT_PASSWORD_INCORRECT'])
+
+function isAnswer401(error: unknown) {
+  const code = (error as { response?: { data?: { code?: unknown } } })?.response?.data?.code
+  return typeof code === 'string' && ANSWER_401_CODES.has(code)
+}
 
 function normaliseApiPath(url?: string) {
   if (!url) return ''
@@ -221,6 +227,8 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config
+    if (error.response?.status === 401 && isAnswer401(error)) return Promise.reject(error)
+
     if (error.response?.status === 401 && original && !original._retry && shouldAttemptRefresh(original.url)) {
       original._retry = true
       original.headers = original.headers || {}
