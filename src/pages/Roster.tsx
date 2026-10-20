@@ -147,8 +147,8 @@ function AddShiftForm({ date, staffList, onSubmit, onCancel }: AddShiftFormProps
 function ShiftCard({ shift }: { shift: Shift }) {
   return (
     <div className="bg-[#111111] border border-border rounded-lg p-2.5 mb-1.5">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-text text-xs font-medium truncate">{getStaffName(shift.staffId)}</span>
+      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+        <span className="min-w-0 text-text text-xs font-medium wrap-break-word">{getStaffName(shift.staffId)}</span>
         <Badge
           variant={shift.type === 'overtime' ? 'warning' : 'secondary'}
           className="text-[9px] px-1.5 py-0"
@@ -156,15 +156,15 @@ function ShiftCard({ shift }: { shift: Shift }) {
           {shift.type}
         </Badge>
       </div>
-      <div className="flex items-center gap-1.5 text-muted">
-        <Clock className="w-3 h-3" />
+      <div className="flex flex-wrap items-center gap-1.5 text-muted">
+        <Clock className="w-3 h-3 shrink-0" />
         <span className="text-[10px]">
           {shift.startTime} — {shift.endTime}{shift.endsNextDay ? ' (next day)' : ''}
         </span>
         <span className="text-[10px] text-muted ml-auto">{shift.hoursWorked}h</span>
       </div>
       {shift.notes && (
-        <p className="text-[10px] text-muted mt-1 truncate">{shift.notes}</p>
+        <p className="text-[10px] text-muted mt-1 wrap-break-word">{shift.notes}</p>
       )}
     </div>
   )
@@ -343,7 +343,7 @@ export default function Roster() {
       ) : (
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-6">
         {/* Weekly Grid */}
-        <div className="grid grid-cols-7 gap-2">
+        <div role="region" aria-label="Roster week" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {DAYS.map((dayLabel, idx) => {
             const dayDate = addDays(weekStart, idx)
             const dateStr = formatDateISO(dayDate)

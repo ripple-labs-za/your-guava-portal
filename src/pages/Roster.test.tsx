@@ -246,19 +246,15 @@ describe('Roster accessibility', () => {
     }
   })
 
-  // Seven fixed columns at every breakpoint leaves each day about 38px wide on a
-  // phone, which is narrower than the select and two time inputs the inline add
-  // form puts inside it. SC 1.4.10 Reflow.
-  // PENDING: the week grid is still fixed at seven columns below xl.
-  it.skip('does not lock the week to seven columns at every breakpoint', async () => {
-    const { container } = render(<Roster />)
-
+  it('exposes the complete roster week as a named region with all seven days', async () => {
+    mockWeek()
+    render(<Roster />)
     await waitFor(() => expect(screen.getByText('Mon')).toBeInTheDocument())
-
-    const grid = container.querySelector('[data-testid="roster-week-grid"]')
-    expect(grid).not.toBeNull()
-    expect(grid?.className).toContain('grid-cols-1')
-    expect(grid?.className).toMatch(/(sm|md|lg):grid-cols-/)
+    const week = screen.getByRole('region', { name: 'Roster week' })
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+      expect(within(week).getByText(day)).toBeInTheDocument()
+    }
+    expect(within(week).getAllByRole('button', { name: /^Add Shift on/ })).toHaveLength(7)
   })
 })
 
