@@ -243,6 +243,7 @@ export default function History() {
             {PERIODS.map((period) => (
               <Button
                 key={period.days}
+                aria-pressed={days === period.days}
                 variant={days === period.days ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => selectPeriod(period.days)}
@@ -256,7 +257,7 @@ export default function History() {
         {loading && <LoadingState />}
 
         {!loading && error && (
-          <div className="rounded-lg border border-guava-red/30 bg-guava-red/10 p-4 text-guava-red-text">
+          <div role="alert" className="rounded-lg border border-guava-red/30 bg-guava-red/10 p-4 text-guava-red-text">
             <div className="flex items-center gap-2 font-medium">
               <AlertCircle className="h-4 w-4" />
               {error}
@@ -320,7 +321,7 @@ export default function History() {
             <div className="overflow-hidden rounded-lg border border-border bg-surface">
               <div className="flex flex-col gap-3 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-text">Daily prediction history</p>
+                  <h2 className="text-sm font-semibold text-text">Daily prediction history</h2>
                   <p className="mt-0.5 text-xs text-muted">
                     Showing {rowStart.toLocaleString('en-ZA')}-{rowEnd.toLocaleString('en-ZA')} of {pageInfo.total.toLocaleString('en-ZA')} completed trading days
                   </p>
@@ -357,14 +358,14 @@ export default function History() {
 
                       return (
                         <tr key={`${row.forecastId}-${row.date}`} className="hover:bg-white/[0.03]">
-                          <td className="whitespace-nowrap px-4 py-3 font-medium text-text">
+                          <th scope="row" className="whitespace-nowrap px-4 py-3 text-left font-medium text-text">
                             <div>{formatDate(row.dateKey || row.date)}</div>
                             {row.origin === 'backfill' && (
                               <span className="mt-1 inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-normal text-amber-200">
                                 Retrospective backtest
                               </span>
                             )}
-                          </td>
+                          </th>
                           <td className="min-w-52 px-4 py-3 text-muted">
                             <div className="flex items-center gap-2">
                               <CloudRain className="h-4 w-4 shrink-0 text-[#9E9E9E]" />

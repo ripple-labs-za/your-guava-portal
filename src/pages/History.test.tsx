@@ -166,6 +166,44 @@ function renderHistory() {
 }
 
 describe('History page', () => {
+  it('exposes the selected history period to screen readers', async () => {
+    renderHistory()
+    await screen.findByText('Daily prediction history')
+    const periods = ['30d', '90d', '180d', '365d']
+    expect(screen.getByRole('button', { name: '90d' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: '180d' }))
+    for (const name of periods) {
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-pressed', String(name === '180d'))
+    }
+  })
+
+  it('makes the daily history title a navigable heading', async () => {
+    renderHistory()
+    expect(await screen.findByRole('heading', { name: 'Daily prediction history', level: 2 })).toBeInTheDocument()
+  })
+
+  it('makes history statistic labels navigable headings', async () => {
+    renderHistory()
+    expect(await screen.findByRole('heading', { name: 'Live forecast accuracy', level: 2 })).toBeInTheDocument()
+    for (const name of ['Backtest accuracy', 'Combined predicted', 'Combined actual', 'Combined variance']) {
+      expect(screen.getByRole('heading', { name, level: 2 })).toBeInTheDocument()
+    }
+  })
+
+  it('identifies each daily history date as its row header', async () => {
+    renderHistory()
+    const header = await screen.findByRole('rowheader')
+    expect(header).toHaveAttribute('scope', 'row')
+    expect(header).not.toHaveTextContent(/^$/)
+  })
+
+  it('announces a history load failure as an alert', async () => {
+    mockGet.mockRejectedValue(new Error('offline'))
+    renderHistory()
+    expect(await screen.findByRole('alert')).toHaveTextContent('History could not be loaded.')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
   it('shows item accuracy beside the daily and period figures', async () => {
     mockGet.mockResolvedValue({ data: {
       ...historyPayload,
