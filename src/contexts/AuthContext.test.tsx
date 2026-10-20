@@ -251,6 +251,50 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('signedOut')).toHaveTextContent('false')
   })
 
+  it('clears this tab\'s Improvements drafts on deliberate sign-out, preserving unrelated storage', async () => {
+    mockGet.mockResolvedValue({ data: { id: 'u1', name: 'Owner', role: 'owner', orgId: 'org1', activeCafeId: 'c1' } })
+    mockRefresh.mockResolvedValue('token')
+    mockPost.mockResolvedValue({})
+    sessionStorage.setItem('your-guava:improvement-draft:v1:u1:org1:c1', 'private draft')
+    sessionStorage.setItem('your-guava:improvement-draft:v1:u1:org1:c2', 'other cafe draft')
+    sessionStorage.setItem('unrelated', 'keep')
+    render(<AuthProvider><TestConsumer /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('Owner'))
+    await userEvent.click(screen.getByText('Logout'))
+    await waitFor(() => expect(screen.getByTestId('signedOut')).toHaveTextContent('true'))
+    expect(sessionStorage.getItem('your-guava:improvement-draft:v1:u1:org1:c1')).toBeNull()
+    expect(sessionStorage.getItem('your-guava:improvement-draft:v1:u1:org1:c2')).toBeNull()
+    expect(sessionStorage.getItem('unrelated')).toBe('keep')
+  })
+
+  it('clears private drafts even when the deliberate logout request fails', async () => {
+    const key = 'your-guava:improvement-draft:v1:u1:org1:c1'
+    sessionStorage.setItem(key, 'private draft')
+    mockGet.mockResolvedValue({ data: { id: 'u1', name: 'Owner', role: 'owner', orgId: 'org1', activeCafeId: 'c1' } })
+    mockRefresh.mockResolvedValue('token')
+    mockPost.mockRejectedValue(new Error('Network Error'))
+    function SafeLogout() {
+      const auth = useContext(AuthContext)
+      return <button onClick={() => { void auth?.logout().catch(() => {}) }}>Sign out despite failure</button>
+    }
+    render(<AuthProvider><TestConsumer /><SafeLogout /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('Owner'))
+    await userEvent.click(screen.getByText('Sign out despite failure'))
+    await waitFor(() => expect(screen.getByTestId('signedOut')).toHaveTextContent('true'))
+    expect(sessionStorage.getItem(key)).toBeNull()
+    expect(screen.getByTestId('user')).toHaveTextContent('null')
+  })
+
+  it('keeps a draft when session restoration is refused for a forced sign-in', async () => {
+    const key = 'your-guava:improvement-draft:v1:u1:org1:c1'
+    sessionStorage.setItem(key, 'private draft')
+    render(<AuthProvider><TestConsumer /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('user')).toHaveTextContent('null')
+    expect(screen.getByTestId('signedOut')).toHaveTextContent('false')
+    expect(sessionStorage.getItem(key)).toBe('private draft')
+  })
+
   it('isOwner returns true for owner role', async () => {
     const mockUser = {
       id: 'u1',

@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { API_ERROR_COPY, describeApiError, readApiError, waitSeconds } from '@/lib/apiErrors'
+import { readImprovementDraft, writeImprovementDraft, removeImprovementDraft, type ImprovementDraftScope } from '@/lib/improvementDraft'
 import type {
   Improvement,
   ImprovementType,
@@ -129,17 +130,23 @@ interface LogFormValues {
 interface LogFormProps {
   onSubmit: (values: LogFormValues) => Promise<void>
   onCancel: () => void
+  draftScope: ImprovementDraftScope | null
 }
 
-function LogForm({ onSubmit, onCancel }: LogFormProps) {
-  const [type, setType] = useState<ImprovementType>('improvement')
-  const [title, setTitle] = useState('')
-  const [area, setArea] = useState<ImprovementArea>('other')
-  const [priority, setPriority] = useState<ImprovementPriority>('medium')
-  const [description, setDescription] = useState('')
-  const [desiredOutcome, setDesiredOutcome] = useState('')
+function LogForm({ onSubmit, onCancel, draftScope }: LogFormProps) {
+  const [draft] = useState(() => readImprovementDraft(draftScope))
+  const [type, setType] = useState<ImprovementType>(draft?.type ?? 'improvement')
+  const [title, setTitle] = useState(draft?.title ?? '')
+  const [area, setArea] = useState<ImprovementArea>(draft?.area ?? 'other')
+  const [priority, setPriority] = useState<ImprovementPriority>(draft?.priority ?? 'medium')
+  const [description, setDescription] = useState(draft?.description ?? '')
+  const [desiredOutcome, setDesiredOutcome] = useState(draft?.desiredOutcome ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    writeImprovementDraft(draftScope, { type, title, area, priority, description, desiredOutcome })
+  }, [draftScope?.userId, draftScope?.orgId, draftScope?.cafeId, type, title, area, priority, description, desiredOutcome])
 
   const canSubmit = title.trim().length > 0 && description.trim().length > 0 && !submitting
 
@@ -446,7 +453,9 @@ interface ListResponse {
 }
 
 export default function Improvements() {
-  const { isOwner } = useAuth()
+  const { isOwner, user } = useAuth()
+  const draftScope = user?.id && user.orgId && user.activeCafeId
+    ? { userId: user.id, orgId: user.orgId, cafeId: user.activeCafeId } : null
   const location = useLocation()
   const [tickets, setTickets] = useState<Improvement[]>([])
   const [counts, setCounts] = useState<ImprovementStatusCounts>(EMPTY_COUNTS)
@@ -456,9 +465,15 @@ export default function Improvements() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [filter, setFilter] = useState<'all' | ImprovementStatus>('all')
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(() => Boolean(readImprovementDraft(draftScope)))
   const [toast, setToast] = useState<ToastState>(null)
   const toastTimerRef = useRef<number | null>(null)
+
+  // Auth bootstrap is asynchronous. Recover only the current identity's draft
+  // once it is known; keying the form also prevents cafe/user state reuse.
+  useEffect(() => {
+    setShowForm(Boolean(readImprovementDraft(draftScope)))
+  }, [user?.id, user?.orgId, user?.activeCafeId])
 
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     if (toastTimerRef.current !== null) {
@@ -522,6 +537,7 @@ export default function Improvements() {
       desiredOutcome: values.desiredOutcome || undefined,
       pageUrl: `${location.pathname}${location.search}`,
     })
+    removeImprovementDraft(draftScope)
     setShowForm(false)
     showToast('success', `Logged as #${data.improvement.ticketNumber} — thank you!`)
     // Surface the new ticket: jump to 'all' (effect reloads) or refetch in place.
@@ -614,7 +630,10 @@ export default function Improvements() {
           )}
         </div>
 
-        {showForm && <LogForm onSubmit={handleLog} onCancel={() => setShowForm(false)} />}
+        {showForm && <LogForm key={`${user?.id}:${user?.orgId}:${user?.activeCafeId}`} draftScope={draftScope} onSubmit={handleLog} onCancel={() => {
+          removeImprovementDraft(draftScope)
+          setShowForm(false)
+        }} />}
 
         {/* Status filters */}
         <div className="mb-4 flex flex-wrap gap-2">
