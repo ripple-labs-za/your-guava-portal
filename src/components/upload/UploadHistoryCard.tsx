@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { History, FileText, ExternalLink, Loader2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -119,6 +119,45 @@ export function UploadHistoryCard({ refreshKey = 0, canRemove = false }: UploadH
   const [pendingDelete, setPendingDelete] = useState<UploadListItem | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteDialogRef = useRef<HTMLDivElement>(null)
+  const deletingRef = useRef(deleting)
+  deletingRef.current = deleting
+
+  useEffect(() => {
+    if (!pendingDelete) return
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const dialog = deleteDialogRef.current
+    dialog?.querySelector<HTMLButtonElement>('button')?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (!deletingRef.current) setPendingDelete(null)
+      }
+      if (event.key !== 'Tab' || !dialog) return
+      const buttons = dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+      const first = buttons[0]
+      const last = buttons[buttons.length - 1]
+      if (!first) {
+        event.preventDefault()
+        dialog.focus()
+      } else if (!dialog.contains(document.activeElement) || document.activeElement === dialog ||
+        (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [pendingDelete])
+
+  useEffect(() => {
+    // Both actions are disabled during removal; keep focus in the modal.
+    if (deleting) deleteDialogRef.current?.focus()
+  }, [deleting])
 
   const confirmDelete = async () => {
     if (!pendingDelete) return
@@ -316,6 +355,8 @@ export function UploadHistoryCard({ refreshKey = 0, canRemove = false }: UploadH
       {pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
           <div
+            ref={deleteDialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="remove-upload-title"

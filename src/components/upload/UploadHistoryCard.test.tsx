@@ -1,16 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router'
 import { UploadHistoryCard, isDuplicateUploadMessage } from './UploadHistoryCard'
 import type { Upload, UploadListItem } from '@/types/upload'
 
 const mockGet = vi.fn()
+const mockDelete = vi.fn()
 vi.mock('@/lib/api', () => ({
   default: {
     get: (...args: unknown[]) => mockGet(...args),
     post: vi.fn(),
     put: vi.fn(),
-    delete: vi.fn(),
+    delete: (...args: unknown[]) => mockDelete(...args),
     interceptors: {
       request: { use: vi.fn() },
       response: { use: vi.fn() },
@@ -48,6 +50,62 @@ describe('UploadHistoryCard accessibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGet.mockResolvedValue({ data: { success: true, uploads: UPLOADS } })
+  })
+
+  it('contains staged-upload dialog focus and restores its exact opener on Cancel and Escape', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue({ data: { uploads: [
+      buildUpload({ _id: 'first', fileName: 'first.csv', status: 'pending_mapping', stats: { imported: 0, skipped: 0, errors: 0, totalRows: 0 } }),
+      buildUpload({ _id: 'second', fileName: 'second.csv', status: 'pending_mapping', stats: { imported: 0, skipped: 0, errors: 0, totalRows: 0 } }),
+    ] } })
+    render(<BrowserRouter><UploadHistoryCard canRemove /></BrowserRouter>)
+    const opener = await screen.findByRole('button', { name: 'Remove second.csv from history' })
+    for (const closeWith of ['Cancel', 'Escape']) {
+      await user.click(opener)
+      const dialog = screen.getByRole('dialog', { name: 'Remove this upload?' })
+      const cancel = within(dialog).getByRole('button', { name: 'Cancel' })
+      const remove = within(dialog).getByRole('button', { name: 'Remove upload' })
+      expect(cancel).toHaveFocus()
+      await user.tab({ shift: true })
+      expect(remove).toHaveFocus()
+      await user.tab()
+      expect(cancel).toHaveFocus()
+      for (let index = 0; index < 8; index += 1) {
+        await user.tab()
+        expect(dialog).toContainElement(document.activeElement as HTMLElement)
+      }
+      if (closeWith === 'Cancel') await user.click(cancel)
+      else await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(opener).toHaveFocus()
+      expect(screen.getByText('second.csv')).toBeInTheDocument()
+    }
+  })
+
+  it('keeps focus contained while removal is pending and after a refusal, without closing on Escape', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue({ data: { uploads: [buildUpload({ _id: 'stage', fileName: 'staged.csv',
+      status: 'pending_mapping', stats: { imported: 0, skipped: 0, errors: 0, totalRows: 0 } })] } })
+    let refuse!: (reason: unknown) => void
+    mockDelete.mockImplementationOnce(() => new Promise((_resolve, reject) => { refuse = reject }))
+    render(<BrowserRouter><UploadHistoryCard canRemove /></BrowserRouter>)
+    const opener = await screen.findByRole('button', { name: 'Remove staged.csv from history' })
+    await user.click(opener)
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Remove upload' }))
+    expect(mockDelete).toHaveBeenCalledExactlyOnceWith('/uploads/stage')
+    expect(dialog).toHaveFocus()
+    await user.tab()
+    expect(dialog).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(dialog).toBeInTheDocument()
+    refuse(new Error('offline'))
+    await screen.findByRole('alert')
+    await user.tab()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(opener).toHaveFocus()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('makes the mobile history table a named keyboard scroll region', async () => {
