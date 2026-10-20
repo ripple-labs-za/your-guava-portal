@@ -8,6 +8,8 @@ import ForgotPassword from './ForgotPassword'
 vi.mock('@/assets/logo.png', () => ({ default: 'logo.png' }))
 
 const mockPost = vi.fn()
+const authState = vi.hoisted(() => ({ user: null as { email: string } | null }))
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: authState.user }) }))
 vi.mock('@/lib/api', () => ({
   default: {
     post: (...args: unknown[]) => mockPost(...args),
@@ -31,9 +33,18 @@ async function submit(email = 'owner@example.com') {
 
 describe('ForgotPassword', () => {
   beforeEach(() => {
+    authState.user = null
     vi.clearAllMocks()
     window.history.replaceState(null, '', '/forgot-password')
     mockPost.mockResolvedValue({ data: { success: true } })
+  })
+
+  it('names an existing signed-in account and links back to Today without requesting a reset', async () => {
+    authState.user = { email: 'signed-in@example.com' }
+    renderPage()
+    expect(await screen.findByText(/you are signed in as signed-in@example.com/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to Today' })).toHaveAttribute('href', '/today')
+    expect(mockPost).not.toHaveBeenCalled()
   })
 
   it('submits without revealing whether the account exists', async () => {

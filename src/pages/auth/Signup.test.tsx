@@ -31,10 +31,11 @@ vi.mock('@/lib/api', () => {
 })
 
 const mockRegister = vi.fn()
+const authState = vi.hoisted(() => ({ user: null as { email: string } | null }))
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
     register: mockRegister,
-    user: null,
+    user: authState.user,
     isLoading: false,
   }),
 }))
@@ -49,8 +50,17 @@ const completeSignupForm = async (email = 'jane@cafe.co.za') => {
 
 describe('Signup', () => {
   beforeEach(() => {
+    authState.user = null
     vi.clearAllMocks()
     localStorage.clear()
+  })
+
+  it('names an existing signed-in account and links back to Today', async () => {
+    authState.user = { email: 'signed-in@example.com' }
+    render(<Signup />)
+    expect(await screen.findByText(/you are signed in as signed-in@example.com/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to Today' })).toHaveAttribute('href', '/today')
+    expect(mockRegister).not.toHaveBeenCalled()
   })
 
   it('submits the form and calls register with correct arguments', async () => {

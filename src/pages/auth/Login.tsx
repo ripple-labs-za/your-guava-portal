@@ -11,7 +11,7 @@ import api from '@/lib/api'
 const ERROR_ID = 'login-error'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const requestedPath = (location.state as { from?: unknown } | null)?.from
@@ -156,6 +156,12 @@ export default function Login() {
           <div className="bg-[#111111]/60 backdrop-blur-xl border border-white/8 rounded-2xl p-8">
             <h1 className="text-text text-xl font-bold tracking-tight mb-1">Welcome back</h1>
             <p className="text-muted text-sm mb-6">Sign in to your portal</p>
+            {user && (
+              <p role="status" className="mb-6 text-sm text-text">
+                You are signed in as {user.email}.{' '}
+                <Link to="/today" className="text-guava-green underline underline-offset-2">Go to Today</Link>
+              </p>
+            )}
 
             {error && (
               <div

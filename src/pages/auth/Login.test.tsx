@@ -68,6 +68,8 @@ describe('Login', () => {
     render(<Login />)
 
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/auth/me'))
+    expect(await screen.findByText(/you are signed in as a@b\.c/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to Today' })).toHaveAttribute('href', '/today')
     const refreshOrder = vi.mocked(refreshAccessToken).mock.invocationCallOrder[0]
     const meOrder = vi.mocked(api.get).mock.invocationCallOrder[0]
     expect(refreshOrder).toBeLessThan(meOrder)

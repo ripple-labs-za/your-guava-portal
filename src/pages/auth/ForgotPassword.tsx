@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import logo from '@/assets/logo.png'
+import { useAuth } from '@/hooks/useAuth'
 
 const SUPPORT_EMAIL = 'support@yourguava.co.za'
 // authLimiter is 30 requests per 15 minutes per IP, and it is shared with login,
@@ -31,6 +32,7 @@ function forgotErrorMessage(error: unknown): string {
 }
 
 export default function ForgotPassword() {
+  const { user } = useAuth()
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
@@ -55,6 +57,12 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md rounded-2xl border border-white/8 bg-[#111111] p-8">
         <img src={logo} alt="Your Guava" className="mx-auto mb-8 w-36" />
         <h1 className="text-xl font-bold text-text">Reset your password</h1>
+        {user && (
+          <p role="status" className="mt-4 text-sm text-text">
+            You are signed in as {user.email}.{' '}
+            <Link to="/today" className="text-guava-green underline underline-offset-2">Go to Today</Link>
+          </p>
+        )}
         <p className="mt-2 text-sm leading-6 text-muted">
           Enter your sign-in email. If an account exists, we’ll send a one-time reset link.
         </p>
