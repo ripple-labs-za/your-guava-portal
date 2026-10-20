@@ -599,6 +599,22 @@ it('offers one decision when a first import has no menu yet', async () => {
   expect(screen.queryByText(/smart checks are free/i)).not.toBeInTheDocument()
 })
 
+it('lets the first import keep one spelling without keeping every new item', async () => {
+  const canonical = buildItem({ _id: 'canonical', name: 'Cappuccino', reviewStatus: 'needs_review' })
+  serveMenu({ review: [canonical, ...firstImport(2)] })
+  mockPost.mockImplementation((url: string) => {
+    if (url === '/items/canonical/resolve') serveMenu({ matched: 1, review: firstImport(2) })
+    return Promise.resolve({ data: { success: true } })
+  })
+  render(<MenuItems />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Keep Cappuccino as a new menu item' }))
+  expect(mockPost).toHaveBeenCalledWith('/items/canonical/resolve', expect.objectContaining({ action: 'confirm' }))
+  expect(mockPost).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.queryByRole('button', { name: /keep all/i })).not.toBeInTheDocument())
+  expect(await screen.findByRole('button', { name: 'Keep New line 1 as a new menu item' })).toBeInTheDocument()
+  expect(screen.getByText('Need a match').nextElementSibling).toHaveTextContent('2')
+})
+
 it('lets the first import ignore a POS fee without keeping every new item', async () => {
   const fee = buildItem({ _id: 'fee', name: 'Delivery Fee', reviewStatus: 'needs_review' })
   serveMenu({ review: [fee, ...firstImport(2)] })
