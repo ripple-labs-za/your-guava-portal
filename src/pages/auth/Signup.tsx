@@ -192,7 +192,7 @@ export default function Signup() {
       <div className="absolute top-0 right-0 w-125 h-125 translate-x-1/4 -translate-y-1/4 rounded-full blur-[180px] opacity-[0.06]" style={{ background: '#4DA63B' }} />
 
       {/* Center container — logo left, form right */}
-      <div className="relative z-10 flex items-center justify-center gap-16 w-full max-w-4xl mx-auto px-6 min-h-screen">
+      <div className="relative z-10 flex items-center justify-center gap-16 w-full max-w-4xl mx-auto px-6 py-16 min-h-screen">
         {/* Left — branding */}
         <div className="hidden lg:block w-85 shrink-0">
           <img src={logo} alt="Your Guava" className="w-48 mx-auto mb-6" />
