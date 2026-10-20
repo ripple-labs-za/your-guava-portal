@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { API_ERROR_COPY, describeApiError, readApiError, waitSeconds } from '@/lib/apiErrors'
 import type {
   Improvement,
   ImprovementType,
@@ -153,6 +154,13 @@ function LogForm({ onSubmit, onCancel }: LogFormProps) {
       // POST /improvements sits behind a write rate limiter and has server-side
       // field validation. "Please try again" is wrong advice for the first and
       // useless for the second.
+      // The limiter's own 429 carries a code and a Retry-After: say how long to wait, as Data Health does (UAT-14-S24).
+      const info = readApiError(err)
+      const wait = waitSeconds(info)
+      if (wait && info.code && API_ERROR_COPY[info.code]) {
+        setError(`${describeApiError(info).body} Try again in ${wait} seconds.`)
+        return
+      }
       const serverMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       setError(serverMessage || 'Could not save. Please try again.')
     } finally {

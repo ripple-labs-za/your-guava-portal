@@ -359,6 +359,29 @@ describe('Improvements', () => {
     expect(await screen.findByText(/too many submissions/i)).toBeInTheDocument()
   })
 
+  // UAT-14-S24: the write limiter's own 429 printed "You are doing that too quickly. Please slow down." with no wait.
+  it('says how long to wait when the write limiter refuses a ticket', async () => {
+    mockGet.mockImplementation(mockApiGet([]))
+    mockPost.mockRejectedValue({
+      response: {
+        status: 429,
+        headers: { 'retry-after': '42' },
+        data: { success: false, code: 'WRITE_RATE_LIMITED', message: 'You are doing that too quickly. Please slow down.' },
+      },
+    })
+
+    render(<Improvements />)
+
+    await userEvent.click((await screen.findAllByRole('button', { name: /log an improvement/i }))[0])
+    await userEvent.type(screen.getByLabelText('Title *'), 'Rate limited')
+    await userEvent.type(screen.getByLabelText(/What's the idea/i), 'Body text.')
+    await userEvent.click(screen.getByRole('button', { name: /log it/i }))
+
+    expect(await screen.findByText('Wait for the timer, then try again. Try again in 42 seconds.')).toBeInTheDocument()
+    expect(screen.queryByText(/please slow down/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Title *')).toHaveValue('Rate limited')
+  })
+
   it('keeps declined and done tickets at full text contrast', async () => {
     const declined: Improvement = { ...sampleTicket, status: 'declined' }
     mockGet.mockImplementation(mockApiGet([declined]))
