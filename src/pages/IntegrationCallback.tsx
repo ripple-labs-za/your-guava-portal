@@ -24,7 +24,8 @@ export default function IntegrationCallback() {
   const called = useRef(false)
   const captured = useRef(false)
 
-  const providerName = PROVIDER_DISPLAY[provider] ?? provider
+  const providerName = Object.prototype.hasOwnProperty.call(PROVIDER_DISPLAY, provider)
+    ? PROVIDER_DISPLAY[provider] : provider
 
   // Authorization codes and state are short-lived secrets. Capture them before
   // paint and remove the full query string from browser history immediately.

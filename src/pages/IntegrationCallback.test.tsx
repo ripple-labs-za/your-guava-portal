@@ -41,6 +41,33 @@ describe('IntegrationCallback', () => {
     expect(window.location.href).not.toContain('opaque-state')
   })
 
+  it.each(['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'uat12co'])(
+    'renders the literal unknown provider %s safely during exchange and preserves the server refusal', async (provider) => {
+      let refuse!: (reason: unknown) => void
+      mockPost.mockReturnValue(new Promise((_resolve, reject) => { refuse = reject }))
+      window.history.replaceState(null, '', `/integrations/${provider}/callback?code=x&state=y`)
+      render(<BrowserRouter><Routes>
+        <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+      </Routes></BrowserRouter>)
+      expect(screen.getByText(`Connecting to ${provider}…`)).toBeInTheDocument()
+      await waitFor(() => expect(mockPost).toHaveBeenCalledWith(`/integrations/${provider}/callback`, { code: 'x', state: 'y' }))
+      refuse({ response: { status: 400, data: { message: 'Unknown provider' } } })
+      expect(await screen.findByText('Unknown provider')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Back to Integrations' })).toHaveAttribute('href', '/integrations')
+      expect(window.location.search).toBe('')
+    }
+  )
+
+  it.each([['xero', 'Xero'], ['quickbooks', 'QuickBooks'], ['sage', 'Sage Accounting']])(
+    'keeps the friendly display name for the real provider %s', (provider, display) => {
+      window.history.replaceState(null, '', `/integrations/${provider}/callback?code=x&state=y`)
+      render(<BrowserRouter><Routes>
+        <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+      </Routes></BrowserRouter>)
+      expect(screen.getByText(`Connecting to ${display}…`)).toBeInTheDocument()
+    }
+  )
+
   it('shows the server reason when the provider account is refused, and offers the way back', async () => {
     const reason =
       'Your Xero login authorised 2 organisations. Connect again and choose only the organisation this cafe uses.'
