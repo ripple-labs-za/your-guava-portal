@@ -450,7 +450,7 @@ export default function UploadDetail() {
                   </Button>
                 </div>
               ) : (
-                <div role="region" aria-label="Imported transactions table" tabIndex={0} className="overflow-x-auto rounded focus-visible:outline-2 focus-visible:outline-primary">
+                <div role="region" aria-label="Imported transactions table" tabIndex={0} className="overflow-x-auto rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-guava-red">
                   <table className="w-full min-w-[40rem] text-sm">
                     <thead>
                       <tr className="text-left text-[#9E9E9E] text-xs">
