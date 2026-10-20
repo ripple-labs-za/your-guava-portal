@@ -205,8 +205,8 @@ export function UploadHistoryCard({ refreshKey = 0, canRemove = false }: UploadH
             <p className="text-xs text-muted">
               Showing {rowStart.toLocaleString('en-ZA')}-{rowEnd.toLocaleString('en-ZA')} of {total.toLocaleString('en-ZA')} imports
             </p>
-            <div className="max-h-96 overflow-auto">
-              <table className="w-full text-sm">
+            <div className="max-h-96 overflow-auto" role="region" aria-label="Upload history" tabIndex={0}>
+              <table className="w-full min-w-[960px] text-sm [&_th]:whitespace-nowrap [&_th]:pr-4 [&_td]:pr-4">
                 <caption className="sr-only">Files imported into Your Guava, newest first</caption>
                 <thead>
                   <tr className="text-left text-[#9E9E9E] text-xs">

@@ -50,6 +50,16 @@ describe('UploadHistoryCard accessibility', () => {
     mockGet.mockResolvedValue({ data: { success: true, uploads: UPLOADS } })
   })
 
+  it('makes the mobile history table a named keyboard scroll region', async () => {
+    renderCard()
+    const table = await screen.findByRole('table', { name: 'Files imported into Your Guava, newest first' })
+    const region = screen.getByRole('region', { name: 'Upload history' })
+    expect(region).toContainElement(table)
+    expect(region).toHaveAttribute('tabindex', '0')
+    region.focus()
+    expect(region).toHaveFocus()
+  })
+
   it('names each View link after the upload it opens', async () => {
     renderCard()
 

@@ -335,7 +335,7 @@ function DataStatusCard({
                 <span className="w-1.5 h-1.5 rounded-full bg-current" />
                 {statusLabel}
               </div>
-              <p className="text-[#9E9E9E] text-sm truncate">{statusSubtitle}</p>
+              <p className="text-[#9E9E9E] text-sm break-words">{statusSubtitle}</p>
               {statusAction && (
                 <p className="text-text text-sm mt-1">{statusAction}</p>
               )}
