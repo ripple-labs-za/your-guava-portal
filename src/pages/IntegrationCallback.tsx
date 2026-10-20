@@ -108,7 +108,7 @@ export default function IntegrationCallback() {
             <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="w-6 h-6 text-red-400" />
             </div>
-            <p className="text-text font-semibold text-base">Connection failed</p>
+            <h1 className="text-text font-semibold text-base">Connection failed</h1>
             {errorMsg && (
               <p className="text-red-400 text-sm mt-2 break-words">{errorMsg}</p>
             )}

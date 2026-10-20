@@ -87,4 +87,14 @@ describe('IntegrationCallback', () => {
     expect(await screen.findByText(reason)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /back to integrations/i })).toHaveAttribute('href', '/integrations')
   })
+
+  it('exposes a heading for the callback refusal so it can be found by heading navigation', async () => {
+    window.history.replaceState(null, '', '/integrations/xero/callback')
+    render(<BrowserRouter><Routes>
+      <Route path="/integrations/:provider/callback" element={<IntegrationCallback />} />
+    </Routes></BrowserRouter>)
+    expect(await screen.findByRole('heading', { name: 'Connection failed', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to Integrations' })).toHaveAttribute('href', '/integrations')
+    expect(mockPost).not.toHaveBeenCalled()
+  })
 })
