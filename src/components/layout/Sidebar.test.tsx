@@ -111,6 +111,16 @@ describe('Sidebar', () => {
     expectInactive('Planning')
   })
 
+  it.each([
+    ['/dashboard', 'Today'], ['/forecasts', 'Planning'], ['/factors', 'Factors'],
+    ['/analytics', 'Performance'], ['/insights', 'Ask Guava'], ['/connect', 'Data Health'],
+    ['/menu-items', 'Menu Items'], ['/settings', 'Settings'],
+  ])('marks exactly the canonical sidebar link current at %s', (path, label) => {
+    renderSidebar(path)
+    const current = screen.getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')
+    expect(current).toEqual([screen.getByRole('link', { name: label })])
+  })
+
   it('does not highlight Data Health when Menu Items is selected', () => {
     renderSidebar('/data-health/menu-items')
 

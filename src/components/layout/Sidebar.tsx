@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ComponentType, type KeyboardEvent } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 import {
   LayoutDashboard,
   TrendingUp,
@@ -315,10 +315,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   const active = isItemActive(item)
 
                   return (
-                    <NavLink
+                    <Link
                       key={to}
                       to={to}
-                      end={item.exact}
                       onClick={handleNavClick}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
@@ -340,7 +339,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           {badge}
                         </span>
                       )}
-                    </NavLink>
+                    </Link>
                   )
                 })}
               </div>
