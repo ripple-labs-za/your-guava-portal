@@ -67,15 +67,15 @@ export function WeekHeader({
             }`
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-4">
       {/* Weekly predicted revenue */}
-      <Card>
+      <Card className="min-w-0">
         <CardContent className="p-5">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-guava-red/10">
               <TrendingUp className="w-4 h-4 text-guava-red-text" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">Weekly predicted revenue</p>
               <p className="text-text text-xl font-semibold">
                 {formatZAR(weekTotal)}
@@ -86,13 +86,13 @@ export function WeekHeader({
       </Card>
 
       {/* Peak day */}
-      <Card>
+      <Card className="min-w-0">
         <CardContent className="p-5">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-guava-green/10">
               <Star className="w-4 h-4 text-guava-green" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">Peak day</p>
               {peakDay ? (
                 <p className="text-text text-xl font-semibold">
@@ -110,13 +110,13 @@ export function WeekHeader({
       </Card>
 
       {/* 30-day accuracy */}
-      <Card>
+      <Card className="min-w-0">
         <CardContent className="p-5">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-[#555555]/20">
               <Target className="w-4 h-4 text-muted" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">30-day accuracy</p>
               <p className={`text-xl font-semibold ${accuracyColor}`}>
                 {accuracyLabel}
