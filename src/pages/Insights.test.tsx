@@ -1241,6 +1241,7 @@ describe('Insights', () => {
       : base?.(url, ...args))
     render(<Insights />)
     expect(await screen.findByText(/5\s936/)).toBeInTheDocument()
+    expect(screen.getByText('Transactions (all locations)').parentElement).toHaveTextContent(/5\s936/)
     expect(screen.getByText('Locations').parentElement).toHaveTextContent('2')
     expect(screen.getByText('Forecasts').parentElement).toHaveTextContent('7')
   })
@@ -1263,7 +1264,7 @@ describe('Insights', () => {
       ? Promise.reject(new Error('Network Error')) : base?.(url, ...args))
     render(<Insights />)
     await screen.findByTitle(/counts unavailable/i)
-    for (const label of ['Transactions', 'Locations', 'Forecasts']) {
+    for (const label of ['Transactions (all locations)', 'Locations', 'Forecasts']) {
       expect(screen.getByText(label).parentElement).toHaveTextContent('—')
     }
     expect(screen.getByText('Saved answer')).toBeInTheDocument()

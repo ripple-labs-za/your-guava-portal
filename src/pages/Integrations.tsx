@@ -118,7 +118,6 @@ function extractError(err: unknown, fallback: string): string {
     const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message
     if (msg) return msg
   }
-  if (err instanceof Error) return err.message
   return fallback
 }
 

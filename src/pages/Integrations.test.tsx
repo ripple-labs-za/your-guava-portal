@@ -53,6 +53,16 @@ describe('Integrations page', () => {
     localStorage.clear()
   })
 
+  it('explains an unreachable integration status instead of showing a raw network error', async () => {
+    mockBaseRequests()
+    const base = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => url === '/integrations'
+      ? Promise.reject(new Error('Network Error')) : base(url))
+    render(<Integrations />)
+    expect(await screen.findByText('Could not load integration status.')).toBeInTheDocument()
+    expect(screen.queryByText('Network Error')).not.toBeInTheDocument()
+  })
+
   it('renders all three providers as coming soon for MVP', async () => {
     mockBaseRequests()
 
