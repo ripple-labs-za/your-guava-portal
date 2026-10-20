@@ -1426,6 +1426,39 @@ describe('Insights', () => {
     expect(screen.getAllByText('Server thread')).toHaveLength(1)
   })
 
+  it.each(['rename', 'delete'] as const)('contains keyboard focus and restores the %s chat opener on Cancel and Escape', async (kind) => {
+    mockBaseRequests([chat({ title: 'Keyboard chat' })])
+    render(<Insights />)
+    const opener = await screen.findByRole('button', { name: new RegExp(`${kind} chat "Keyboard chat"`, 'i') })
+    for (const closeWith of ['Cancel', 'Escape']) {
+      await userEvent.click(opener)
+      const dialog = screen.getByRole('dialog', { name: new RegExp(`${kind} chat`, 'i') })
+      expect(dialog.contains(document.activeElement)).toBe(true)
+      for (let step = 0; step < 6; step++) {
+        await userEvent.tab()
+        expect(dialog.contains(document.activeElement)).toBe(true)
+      }
+      for (let step = 0; step < 6; step++) {
+        await userEvent.tab({ shift: true })
+        expect(dialog.contains(document.activeElement)).toBe(true)
+      }
+      if (kind === 'rename') {
+        await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Chat name' }))
+        expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
+        await userEvent.tab({ shift: true })
+        expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+        await userEvent.tab()
+        expect(within(dialog).getByRole('textbox', { name: 'Chat name' })).toHaveFocus()
+      }
+      if (closeWith === 'Escape') await userEvent.keyboard('{Escape}')
+      else await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(opener).toHaveFocus()
+    }
+    expect(mockPatch).not.toHaveBeenCalled()
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
   it('renames chats through the in-app dialog', async () => {
     const savedChat = chat({ _id: 'chat-rename', title: 'Untitled history' })
     mockBaseRequests([savedChat])

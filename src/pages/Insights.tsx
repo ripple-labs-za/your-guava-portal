@@ -822,6 +822,8 @@ export default function Insights() {
   const [renameTarget, setRenameTarget] = useState<InsightChat | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<InsightChat | null>(null)
+  const chatDialogRef = useRef<HTMLDivElement>(null)
+  const chatDialogOpenerRef = useRef<HTMLElement | null>(null)
   const [chatNotice, setChatNotice] = useState<string | null>(null)
   const cappedLocalChat = chats.some((chat) => chat._id === activeChatId && chat.saveLimitReached === true)
   const saveLimitNotice = cappedLocalChat
@@ -1197,16 +1199,41 @@ export default function Insights() {
 
   useEffect(() => {
     if (!renameTarget && !deleteTarget) return
-
+    const dialog = chatDialogRef.current
+    const opener = chatDialogOpenerRef.current
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex="0"]'
+    ) ?? [])
+    focusable()[0]?.focus()
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setRenameTarget(null)
-      setRenameTitle('')
-      setDeleteTarget(null)
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setRenameTarget(null)
+        setRenameTitle('')
+        setDeleteTarget(null)
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (!first || !last) return
+      if (!dialog?.contains(document.activeElement)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (opener?.isConnected) opener.focus()
+    }
   }, [renameTarget, deleteTarget])
 
   const setAssistantContent = (id: string, content: string, pending: boolean) => {
@@ -1544,6 +1571,7 @@ export default function Insights() {
   }
 
   const requestRenameChat = (chat: InsightChat) => {
+    chatDialogOpenerRef.current = document.activeElement as HTMLElement | null
     setRenameTarget(chat)
     setRenameTitle(chat.title)
   }
@@ -1598,6 +1626,7 @@ export default function Insights() {
   }
 
   const requestDeleteChat = (chat: InsightChat) => {
+    chatDialogOpenerRef.current = document.activeElement as HTMLElement | null
     setDeleteTarget(chat)
   }
 
@@ -2054,6 +2083,7 @@ export default function Insights() {
 
       {renameTarget && (
         <div
+          ref={chatDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
           role="dialog"
           aria-modal="true"
@@ -2072,7 +2102,6 @@ export default function Insights() {
               onChange={(event) => setRenameTitle(event.target.value)}
               className="w-full rounded-xl border border-border bg-[#101010] px-3 py-2.5 text-sm text-text outline-none transition-colors placeholder:text-[#949494] focus:border-guava-green"
               aria-label="Chat name"
-              autoFocus
             />
             <div className="mt-5 flex justify-end gap-2">
               <Button
@@ -2095,6 +2124,7 @@ export default function Insights() {
 
       {deleteTarget && (
         <div
+          ref={chatDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
           role="dialog"
           aria-modal="true"
