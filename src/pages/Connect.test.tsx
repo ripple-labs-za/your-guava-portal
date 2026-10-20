@@ -84,6 +84,26 @@ describe('Connect', () => {
     expect(screen.getByTestId('saved-mapping-card')).toBeInTheDocument()
   })
 
+  it.each([1, 2])('uses the right matching verb for %i waiting menu items', async (count) => {
+    const defaultGet = mockGet.getMockImplementation()!
+    mockGet.mockImplementation((url: string) => url === '/items'
+      ? Promise.resolve({ data: { meta: { needsReview: count } } }) : defaultGet(url))
+    mockPost.mockImplementation((url: string) => {
+      if (url === '/transactions/upload') return Promise.resolve({ data: {
+        uploadId: 'grammar', posType: 'yoco', columnMapping: { date: 'Date', items: 'Items', total: 'Total' },
+        itemsMode: 'packed', headers: ['Date', 'Items', 'Total'], preview: [], needsConfirmation: false,
+      } })
+      if (url === '/uploads/grammar/confirm') return Promise.resolve({ data: { stats: { imported: 1, skipped: 0, errors: 0, totalRows: 1 } } })
+      return Promise.reject(new Error('Unknown URL'))
+    })
+    render(<Connect />)
+    await screen.findByText(/drop your sales csv/i)
+    fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [new File(['Date,Items,Total'], 'sales.csv', { type: 'text/csv' })] } })
+    const expected = count === 1 ? /1 menu item still needs matching to your/ : /2 menu items still need matching to your/
+    expect(await screen.findByText(expected)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'review them' })).toHaveAttribute('href', '/data-health/menu-items')
+  })
+
   it('shows file type validation error for invalid file', async () => {
     render(<Connect />)
 

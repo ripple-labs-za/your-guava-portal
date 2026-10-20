@@ -885,7 +885,7 @@ export default function Connect() {
                             <span className="text-guava-yellow mt-0.5">•</span>
                             <span>
                               {itemsNeedingMatch.toLocaleString('en-ZA')} menu item
-                              {itemsNeedingMatch === 1 ? '' : 's'} still need matching to your
+                              {itemsNeedingMatch === 1 ? '' : 's'} still {itemsNeedingMatch === 1 ? 'needs' : 'need'} matching to your
                               menu —{' '}
                               <Link
                                 to="/data-health/menu-items"
