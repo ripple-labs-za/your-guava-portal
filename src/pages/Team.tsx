@@ -738,23 +738,23 @@ export default function Team() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <StatTile
             label="Seats"
-            value={seatValue}
-            sub={seatSub}
+            value={loadError ? '-' : seatValue}
+            sub={loadError ? 'Seat usage unavailable' : seatSub}
             icon={Users}
-            tone={seatLimitReached ? 'warn' : 'good'}
+            tone={loadError ? 'neutral' : seatLimitReached ? 'warn' : 'good'}
           />
           <StatTile
             label="Managers"
-            value={String(managerCount)}
-            sub={managerCount === 1 ? '1 manager account' : `${managerCount} manager accounts`}
+            value={loadError ? '-' : String(managerCount)}
+            sub={loadError ? 'Manager count unavailable' : managerCount === 1 ? '1 manager account' : `${managerCount} manager accounts`}
             icon={ShieldCheck}
           />
           <StatTile
             label="Locations"
-            value={locationValue}
-            sub={locationSub}
+            value={loadError ? '-' : locationValue}
+            sub={loadError ? 'Location usage unavailable' : locationSub}
             icon={Store}
-            tone={locationUsage ? (locationLimitReached ? 'warn' : 'good') : 'neutral'}
+            tone={!loadError && locationUsage ? (locationLimitReached ? 'warn' : 'good') : 'neutral'}
           />
         </div>
 
@@ -767,7 +767,7 @@ export default function Team() {
                     <Users className="h-4 w-4 text-guava-red-text" />
                     Team members
                   </CardTitle>
-                  <CardDescription>{members.length} member{members.length === 1 ? '' : 's'}</CardDescription>
+                  <CardDescription>{loadError ? 'Member count unavailable' : `${members.length} member${members.length === 1 ? '' : 's'}`}</CardDescription>
                 </div>
                 {seats && (
                   <Badge variant={seatLimitReached ? 'destructive' : 'secondary'} className="w-fit">
@@ -892,7 +892,7 @@ export default function Team() {
                     <Store className="h-4 w-4 text-guava-red-text" />
                     Locations
                   </CardTitle>
-                  <CardDescription>{cafes.length} cafe{cafes.length === 1 ? '' : 's'}</CardDescription>
+                  <CardDescription>{loadError ? 'Location count unavailable' : `${cafes.length} cafe${cafes.length === 1 ? '' : 's'}`}</CardDescription>
                 </div>
                 <Button
                   type="button"

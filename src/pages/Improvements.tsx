@@ -620,7 +620,7 @@ export default function Improvements() {
         <div className="mb-4 flex flex-wrap gap-2">
           {FILTERS.map((f) => {
             const active = filter === f.value
-            const count = counts[f.value] ?? 0
+            const count = loadError ? '-' : counts[f.value] ?? 0
             return (
               <button
                 key={f.value}

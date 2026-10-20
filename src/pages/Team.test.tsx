@@ -442,7 +442,7 @@ describe('Team', () => {
 
   // ── Load failure ────────────────────────────────────────────────────────────
 
-  it('does not claim the organisation is empty when the fetch failed', async () => {
+  it('does not show zero counts or an empty organisation when the fetch failed', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test Cafe' } } })
       if (url.includes('/team') || url.includes('/cafe/list')) return Promise.reject(new Error('network down'))
@@ -455,6 +455,12 @@ describe('Team', () => {
     // An owner with three managers must never be told they have none.
     expect(screen.queryByText(/no team members yet/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/no locations yet/i)).not.toBeInTheDocument()
+    for (const label of ['Seats', 'Managers', 'Locations']) {
+      expect(within(screen.getAllByText(label, { exact: true })[0].parentElement!).getByText('-')).toBeInTheDocument()
+    }
+    expect(screen.queryByText('0 manager accounts')).not.toBeInTheDocument()
+    expect(screen.getByText('Member count unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Location count unavailable')).toBeInTheDocument()
   })
 
   it('offers a persistent retry after a failed load', async () => {
@@ -488,6 +494,8 @@ describe('Team', () => {
     await userEvent.click(retry)
 
     expect(await screen.findByText('Alice Owner')).toBeInTheDocument()
+    expect(within(screen.getByText('Seats', { exact: true }).parentElement!).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByText('Managers', { exact: true }).parentElement!).getByText('0')).toBeInTheDocument()
   })
 
   // ── Location allowance ──────────────────────────────────────────────────────

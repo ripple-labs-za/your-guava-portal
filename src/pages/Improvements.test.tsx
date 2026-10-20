@@ -220,7 +220,7 @@ describe('Improvements', () => {
     })
   })
 
-  it('shows an error state with retry when the initial load fails', async () => {
+  it('shows unavailable filter counts and retry when the initial load fails', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/auth/me')) return noSession()
       if (url.includes('/improvements')) return Promise.reject(new Error('boom'))
@@ -236,6 +236,9 @@ describe('Improvements', () => {
     // It must NOT masquerade as the empty state
     expect(screen.queryByText(/No improvements logged yet/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    for (const label of ['All', 'Open', 'Planned', 'In progress', 'Done', 'Declined']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${label}\\s+-$`) })).toBeInTheDocument()
+    }
   })
 
   it('loads more when there are more tickets than the first page', async () => {

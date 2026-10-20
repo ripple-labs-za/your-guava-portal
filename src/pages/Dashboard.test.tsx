@@ -368,7 +368,7 @@ describe('Dashboard', () => {
     expect(document.body.textContent).not.toContain('undefined%')
   })
 
-  it('does not misreport an API failure as an empty account', async () => {
+  it('does not misreport an API failure as an empty account or zero total items', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/forecasts/week')) return Promise.reject(new Error('forecast service offline'))
       if (url.includes('/forecasts/today')) return Promise.reject(new Error('forecast service offline'))
@@ -382,6 +382,7 @@ describe('Dashboard', () => {
     expect(await screen.findByText('Dashboard data unavailable')).toBeInTheDocument()
     expect(screen.queryByText('No data yet')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    expect(within(screen.getByText('Total Items').parentElement!).getByText('-')).toBeInTheDocument()
   })
 
   it('renders a closed day as closed instead of blaming missing item history', async () => {
