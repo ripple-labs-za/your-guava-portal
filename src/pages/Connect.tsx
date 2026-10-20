@@ -35,12 +35,11 @@ function extractErrorMsg(err: unknown, fallback: string): string {
   return fallback
 }
 
-// The server's row-cap message is a fact with no instruction attached. A cafe
-// doing 50 sales a day crosses 10 000 rows in about seven months, and the
-// duplicate skip already makes month-by-month uploads safe -- so say that.
+// The safe date span depends on sales volume. Keep the server's row cap and
+// ask for smaller exports without promising that a fixed number of months fits.
 function friendlyUploadError(message: string): string {
   if (/row limit/i.test(message)) {
-    return `${message}. Export in shorter date ranges — about six months at a time — and upload them one after another. Rows you have already imported are skipped automatically.`
+    return `${message}. Export in shorter date ranges so each file stays within this row limit, and upload the files one after another. Rows you have already imported are skipped automatically.`
   }
   return message
 }

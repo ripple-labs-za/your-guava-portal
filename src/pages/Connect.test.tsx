@@ -499,14 +499,17 @@ describe('Connect first-run guidance', () => {
     expect(await screen.findByText(/Save As/i)).toBeInTheDocument()
   })
 
-  it('turns the server row-cap rejection into an instruction', async () => {
+  it('gives row-based recovery without promising that six-month exports fit the row cap', async () => {
     mockPost.mockRejectedValue({ response: { status: 400, data: { message: 'File exceeds the 10000 row limit' } } })
 
     render(<Connect />)
     await screen.findByText(/drop your sales csv/i)
     pickFile(new File(['a,b'], 'year.csv', { type: 'text/csv' }))
 
-    expect(await screen.findByText(/shorter date ranges/i)).toBeInTheDocument()
+    const instruction = await screen.findByText(/shorter date ranges/i)
+    expect(instruction).not.toHaveTextContent(/six months/i)
+    expect(instruction).toHaveTextContent('10000 row limit')
+    expect(instruction).toHaveTextContent(/each file.*row limit/i)
   })
 
   it('shows the server sentence when the parser queue is busy', async () => {
