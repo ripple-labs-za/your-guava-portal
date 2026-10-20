@@ -613,7 +613,7 @@ export default function Settings() {
                   <Icon className="mt-0.5 h-4 w-4 shrink-0" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">{section.label}</span>
-                    <span className={active ? 'block text-xs text-guava-red-muted' : 'block text-xs text-muted'}>
+                    <span className={active ? 'block text-xs text-guava-red-muted' : 'block text-xs text-[#9E9E9E]'}>
                       {section.description}
                     </span>
                   </span>
