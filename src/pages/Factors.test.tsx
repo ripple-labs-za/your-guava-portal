@@ -310,6 +310,27 @@ describe('Factors', () => {
     expect(screen.getByText(/live forecast factors and historical event effects/i)).toBeInTheDocument()
   })
 
+  // UAT-14-S22: with the API down the page read "Active this week 0 / Event days 0" and offered only Dismiss.
+  it('shows no counts and offers Try again when the factors could not be loaded', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test Cafe' } } })
+      if (url.includes('/cafe/list')) return Promise.resolve({ data: { cafes: [] } })
+      return Promise.reject(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+    })
+
+    renderWithAuth(<Factors />)
+
+    expect(await screen.findByText('Forecast factors could not be loaded. The figures below are unavailable.')).toBeInTheDocument()
+    const valueUnder = (label: string) => screen.getByText(label).nextElementSibling?.textContent
+    expect(valueUnder('Active this week')).toBe('—')
+    expect(valueUnder('Event days')).toBe('—')
+
+    const factorCalls = () => mockGet.mock.calls.filter(([url]) => String(url).includes('/forecasts/factors')).length
+    const before = factorCalls()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(factorCalls()).toBe(before + 1))
+  })
+
   it('shows the live factor workspace', async () => {
     renderWithAuth(<Factors />)
 

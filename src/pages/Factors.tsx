@@ -346,6 +346,7 @@ export default function Factors() {
   const [settings, setSettings] = useState<ForecastFactorSettings | null>(null)
   const [defaults, setDefaults] = useState<ForecastFactorSettings | null>(null)
   const [entitlements, setEntitlements] = useState<ForecastFactorEntitlements | null>(null)
+  const [factorsLoadFailed, setFactorsLoadFailed] = useState(false)
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [eventEffects, setEventEffects] = useState<EventSalesEffect[]>([])
   const [eventEffectSummary, setEventEffectSummary] = useState<{
@@ -399,6 +400,7 @@ export default function Factors() {
   const load = async () => {
     setLoading(true)
     setSupportingDataWarning('')
+    setFactorsLoadFailed(false)
     try {
       const [factorRes, eventRes, effectRes, weekRes] = await Promise.all([
         api.get<{
@@ -438,8 +440,9 @@ export default function Factors() {
       }
     } catch {
       // `settings` stays null, which the Rules tab now renders as an explicit
-      // retry state rather than falling through to the Events UI.
-      showNotice('error', 'Could not load forecast factors.')
+      // retry state rather than falling through to the Events UI. The page says
+      // so with a retry, and its counts read "—", not 0 (UAT-14-S22).
+      setFactorsLoadFailed(true)
     } finally {
       setLoading(false)
     }
@@ -645,6 +648,15 @@ export default function Factors() {
     <AppLayout title="Factors">
       <div className="space-y-5">
         <NoticeBanner notice={notice} onDismiss={() => { clearNoticeTimer(); setNotice(null) }} />
+        {factorsLoadFailed && (
+          <div
+            className="flex flex-col gap-3 rounded-lg border border-red-900/30 bg-red-900/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+          >
+            <p className="text-sm text-red-300">Forecast factors could not be loaded. The figures below are unavailable.</p>
+            <Button type="button" variant="outline" size="sm" onClick={load}>Try again</Button>
+          </div>
+        )}
         {supportingDataWarning && (
           <div
             className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-200"
@@ -667,7 +679,7 @@ export default function Factors() {
                     that has six factor types in total — and contradicted the
                     "Active factor mix" panel directly beneath it, which lists
                     each factor once with an "N days" badge. */}
-                <p className="mt-1 text-2xl font-bold text-text">{factorCounts.length}</p>
+                <p className="mt-1 text-2xl font-bold text-text">{factorsLoadFailed ? '—' : factorCounts.length}</p>
                 {/* Say what the count is drawn from when part of the week has
                     no forecast, so it does not read as a whole-week figure. */}
                 {awaitingDays.length > 0 && (
@@ -680,7 +692,7 @@ export default function Factors() {
             <Card>
               <CardContent className="pt-5">
                 <p className="text-xs uppercase tracking-wide text-muted">Event days</p>
-                <p className="mt-1 text-2xl font-bold text-text">{activeEventDays}</p>
+                <p className="mt-1 text-2xl font-bold text-text">{factorsLoadFailed ? '—' : activeEventDays}</p>
               </CardContent>
             </Card>
             <Card>
