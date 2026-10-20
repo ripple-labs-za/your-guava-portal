@@ -100,6 +100,16 @@ describe('AppLayout', () => {
     expect(headings[0]).toHaveTextContent('Ask Guava')
   })
 
+  it('announces the full Data Health title and retains skip focus with enlarged title content', async () => {
+    const user = userEvent.setup()
+    const announcePage = vi.fn()
+    renderLayout({ title: <span>Data Health</span>, shouldFocusMain: true, announcePage })
+    expect(screen.getByRole('heading', { level: 1, name: 'Data Health' })).toBeVisible()
+    expect(announcePage).toHaveBeenCalledWith('Data Health')
+    await user.click(screen.getByRole('link', { name: 'Skip to content' }))
+    expect(screen.getByRole('main', { name: 'Data Health' })).toHaveFocus()
+  })
+
   it('puts a skip link first in the tab order, aimed at the main region', () => {
     const { container } = renderLayout()
 

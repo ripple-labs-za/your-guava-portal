@@ -91,7 +91,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
 
       <div className="xl:ml-60 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-12.25 flex items-center justify-between gap-3 px-4 xl:px-8 bg-[#0F0F0F]/90 backdrop-blur-sm border-b border-border shrink-0">
+        <header className="sticky top-0 z-30 min-h-12.25 flex items-center justify-between gap-3 px-4 py-2 xl:px-8 bg-[#0F0F0F]/90 backdrop-blur-sm border-b border-border shrink-0">
           <div className="flex min-w-0 items-center gap-3">
             <button
               ref={menuButtonRef}
@@ -108,7 +108,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
               <h1
                 ref={headingRef}
                 id={PAGE_TITLE_ID}
-                className="text-text text-lg xl:text-xl font-semibold tracking-tight flex min-w-0 items-center gap-2 truncate"
+                className="text-text text-lg xl:text-xl font-semibold tracking-tight flex min-w-0 flex-wrap items-center gap-2 whitespace-normal wrap-break-word"
               >
                 {title}
               </h1>
