@@ -125,9 +125,9 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
 
   if (forecast.availability?.status === 'closed') {
     return (
-      <Card onClick={onClick} className="cursor-pointer hover:border-[#444444] transition-colors">
+      <Card onClick={onClick} className="min-w-0 break-words cursor-pointer hover:border-[#444444] transition-colors">
         <CardContent className="p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-text font-semibold text-sm">{getDayLabel(calendarDate)}</p>
               <p className="text-muted text-xs">{formatDate(calendarDate)}</p>
@@ -154,18 +154,18 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
   }
 
   return (
-    <Card onClick={onClick} className="cursor-pointer hover:border-[#444444] transition-colors">
+    <Card onClick={onClick} className="min-w-0 break-words cursor-pointer hover:border-[#444444] transition-colors">
       <CardContent className="p-4 space-y-3">
         {forecast.availability?.scheduleSource === 'inferred_from_sales' && (
           <p className="text-xs text-muted">Assumed open: hours not saved</p>
         )}
         {/* Header row */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-text font-semibold text-sm">{getDayLabel(calendarDate)}</p>
             <p className="text-muted text-xs">{formatDate(calendarDate)}</p>
           </div>
-          <div className="text-right">
+          <div className="text-right space-y-1">
             {mode === 'review' && hasActuals && actualRevenue != null ? (
               <>
                 <p className="text-text font-bold text-lg leading-tight">
@@ -210,16 +210,16 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
           <div className="space-y-1.5">
             {top5Plan.map((item) => {
               return (
-                <div key={item.itemName} className="flex items-center gap-2">
-                  <span className="text-muted text-[10px] w-28 truncate shrink-0">
+                <div key={item.itemName} className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 basis-28 text-muted text-[10px]">
                     {item.itemName}
                   </span>
-                  <div className="flex-1 flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1 basis-36 flex items-center gap-1.5">
                     <div
                       className="h-1.5 rounded-full bg-guava-red/60"
                       style={{ width: `${Math.max(8, (item.predictedQty / maxQtyPlan) * 100)}%` }}
                     />
-                    <div className="flex flex-col leading-none">
+                    <div className="shrink-0 flex flex-col whitespace-nowrap leading-snug">
                       <span className="text-muted text-[10px]">
                         Predicted: {item.predictedQty}
                       </span>
@@ -281,11 +281,11 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
               }
 
               return (
-                <div key={item.itemName} className="flex items-center gap-2">
-                  <span className="text-muted text-[10px] w-28 truncate shrink-0">
+                <div key={item.itemName} className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 basis-28 text-muted text-[10px]">
                     {item.itemName}
                   </span>
-                  <div className="flex-1 flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1 basis-36 flex items-center gap-1.5">
                     {hasActuals && (
                       <div
                         className={`h-1.5 rounded-full ${barFill}`}
@@ -298,7 +298,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                         style={{ width: `${Math.max(8, (pred / (top5Review[0].predictedQty || 1)) * 100)}%` }}
                       />
                     )}
-                    <div className="flex flex-col leading-none gap-0.5">
+                    <div className="shrink-0 flex flex-col whitespace-nowrap leading-snug gap-0.5">
                       {hasActuals ? (
                         <>
                           <span className="text-muted text-[10px]">

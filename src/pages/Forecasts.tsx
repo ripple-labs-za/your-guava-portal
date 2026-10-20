@@ -79,7 +79,7 @@ function AwaitingHistoryDayCard({ forecast }: { forecast: Forecast }) {
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-text font-semibold text-sm">{dayName(forecast)}</p>
             <p className="text-muted text-xs">{dayDate(forecast)}</p>
@@ -298,7 +298,7 @@ export default function Forecasts() {
             <span className="sr-only">Loading this week&apos;s forecast</span>
             <Skeleton className="h-24 w-full" />
             <Skeleton className="h-72 w-full" />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
               {Array.from({ length: 7 }).map((_, i) => (
                 <Skeleton key={i} className="h-48" />
               ))}
@@ -392,7 +392,7 @@ export default function Forecasts() {
               {/* Every day keeps its slot in the week. A day the engine cannot
                   answer is marked as such rather than dropped, so the plan is
                   never quietly shorter than seven days. */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
                 {futureForecasts.map((f) =>
                   dayAvailability(f) === 'awaiting_history' ? (
                     <AwaitingHistoryDayCard key={f._id} forecast={f} />
@@ -423,7 +423,7 @@ export default function Forecasts() {
                   can be checked against tomorrow's data.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
                   {pastForecasts.map((f) => (
                     <DayCard
                       key={f._id}
