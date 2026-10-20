@@ -30,9 +30,10 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { readApiError } from '@/lib/apiErrors'
 import type { TeamMember, CafeBasic } from '@/types'
 
-type ToastState = { type: 'success' | 'error'; message: string; seatLimit?: boolean } | null
+type ToastState = { type: 'success' | 'error'; message: string; seatLimit?: boolean; billingRequired?: boolean } | null
 type SeatSummary = { plan: string; used: number; active?: number; pending?: number; included: number; remaining: number }
 type LocationUsage = { used: number; included: number; plan?: string }
 type AccountUsageResponse = {
@@ -75,10 +76,10 @@ function Toast({ toast, onReviewMembers }: { toast: ToastState; onReviewMembers?
       )}
       <div className="min-w-0">
         <p>{toast.message}</p>
-        {toast.seatLimit && (
+        {(toast.seatLimit || toast.billingRequired) && (
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
             <Link className="underline underline-offset-2" to="/settings?section=billing">Review billing</Link>
-            <a className="underline underline-offset-2" href="#team-members" onClick={onReviewMembers}>Review members</a>
+            {toast.seatLimit && <a className="underline underline-offset-2" href="#team-members" onClick={onReviewMembers}>Review members</a>}
           </div>
         )}
       </div>
@@ -342,11 +343,11 @@ export default function Team() {
   const [newCafeCity, setNewCafeCity] = useState('')
   const [addingCafe, setAddingCafe] = useState(false)
 
-  const showToast = useCallback((type: 'success' | 'error', message: string, seatLimit = false) => {
+  const showToast = useCallback((type: 'success' | 'error', message: string, seatLimit = false, billingRequired = false) => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
-    setToast({ type, message, seatLimit })
+    setToast({ type, message, seatLimit, billingRequired })
     // An actionable refusal stays available while the owner chooses a way out.
-    toastTimerRef.current = seatLimit ? null : window.setTimeout(() => setToast(null), 4000)
+    toastTimerRef.current = seatLimit || billingRequired ? null : window.setTimeout(() => setToast(null), 4000)
   }, [])
 
   useEffect(() => () => {
@@ -442,7 +443,10 @@ export default function Team() {
       showToast('success', `${cafe.name} is active again. Give managers access to it from their member settings.`)
       await fetchData()
     } catch (err: any) {
-      showToast('error', err?.response?.data?.message || 'Could not restore this location.')
+      const billingRequired = err?.response?.status === 402 && readApiError(err).code === 'BILLING_REQUIRED'
+      showToast('error', billingRequired
+        ? 'Your billing period has ended. Renew your plan in Billing to restore this location. It is still archived.'
+        : err?.response?.data?.message || 'Could not restore this location.', false, billingRequired)
     } finally {
       setRestoringCafeId(null)
     }

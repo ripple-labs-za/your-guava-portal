@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { AuthContext } from '@/contexts/AuthContext'
 import { Sidebar } from './Sidebar'
+import api from '@/lib/api'
 import type { ComponentProps, ReactNode } from 'react'
 
 vi.mock('@/assets/guava-icon.png', () => ({ default: 'icon.png' }))
@@ -13,7 +14,7 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-function renderSidebar(path: string, props: ComponentProps<typeof Sidebar> = {}) {
+function renderSidebar(path: string, props: ComponentProps<typeof Sidebar> = {}, userOptions: { cafeIds?: string[]; activeCafeId?: string } = {}) {
   const user = {
     id: 'user123',
     email: 'test@yourguava.com',
@@ -22,6 +23,7 @@ function renderSidebar(path: string, props: ComponentProps<typeof Sidebar> = {})
     orgId: 'org123',
     cafeIds: ['cafe123'],
     activeCafeId: 'cafe123',
+    ...userOptions,
   }
 
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -70,6 +72,32 @@ function expectInactive(label: string) {
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
+  })
+
+  it.each([['cafe123'], ['cafe123', 'cafe456']])('names the active cafe from allowed metadata when billing blocks its detail (%j)', async (...cafeIds) => {
+    vi.mocked(api.get).mockImplementation((url) => url === '/cafe/me'
+      ? Promise.reject({ response: { status: 402, data: { code: 'BILLING_REQUIRED' } } })
+      : Promise.resolve({ data: { cafes: [{ _id: 'cafe456', name: 'Other Cafe' }, { _id: 'cafe123', name: 'Active Cafe' }] } }))
+    renderSidebar('/team', {}, { cafeIds })
+    expect((await screen.findAllByText('Active Cafe')).length).toBeGreaterThan(0)
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/cafe/list')
+  })
+
+  it('does not guess the active cafe from another metadata row', async () => {
+    vi.mocked(api.get).mockImplementation((url) => url === '/cafe/me'
+      ? Promise.reject({ response: { status: 402 } })
+      : Promise.resolve({ data: { cafes: [{ _id: 'cafe456', name: 'Other Cafe' }] } }))
+    renderSidebar('/team')
+    await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalledWith('/cafe/list'))
+    expect(screen.queryByText('Other Cafe')).not.toBeInTheDocument()
+  })
+
+  it.each([401, 403, 500])('does not use the billing metadata fallback for another detail refusal (%s)', async (status) => {
+    vi.mocked(api.get).mockRejectedValue({ response: { status } })
+    renderSidebar('/team')
+    await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalledWith('/cafe/me'))
+    expect(vi.mocked(api.get)).not.toHaveBeenCalledWith('/cafe/list')
   })
 
   afterEach(() => {

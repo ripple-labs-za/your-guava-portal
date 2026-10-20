@@ -134,16 +134,33 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   }, [isOpen, isDesktop])
 
   useEffect(() => {
+    let cancelled = false
+    setCafeName('')
+    setCafeList([])
     if (!user) return
+    let listRequest: Promise<CafeOption[]> | null = null
+    const loadList = () => {
+      listRequest ??= api.get<{ success: boolean; cafes: CafeOption[] }>('/cafe/list').then(({ data }) => {
+        const cafes = data.cafes || []
+        if (!cancelled) setCafeList(cafes)
+        return cafes
+      }).catch(() => [])
+      return listRequest
+    }
     api.get('/cafe/me').then(({ data }) => {
-      setCafeName(data?.cafe?.name || '')
-    }).catch(() => {})
+      if (!cancelled) setCafeName(data?.cafe?.name || '')
+    }).catch((error) => {
+      if (cancelled || error?.response?.status !== 402) return
+      // The lapsed owner's allowed location metadata still identifies this tab's cafe.
+      void loadList().then((cafes) => {
+        if (!cancelled) setCafeName(cafes.find((cafe) => cafe._id === user.activeCafeId)?.name || '')
+      })
+    })
 
     if (user.cafeIds && user.cafeIds.length > 1) {
-      api.get<{ success: boolean; cafes: CafeOption[] }>('/cafe/list').then(({ data }) => {
-        setCafeList(data.cafes || [])
-      }).catch(() => {})
+      void loadList()
     }
+    return () => { cancelled = true }
   }, [user])
 
   const handleLogout = async () => {

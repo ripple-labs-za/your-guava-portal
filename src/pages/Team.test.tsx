@@ -621,6 +621,36 @@ describe('Team', () => {
     expect(await screen.findByRole('button', { name: /archive blouberg coffee/i })).toBeDisabled()
   })
 
+  it('explains a billing-blocked restore and links to Billing without claiming the location restored', async () => {
+    mockWithAccount({ used: 1, included: 2 }, [
+      { _id: 'c1', name: 'Blouberg Coffee' },
+      { _id: 'c9', name: 'Old Branch', archivedAt: '2026-09-01T00:00:00Z' },
+    ])
+    mockPost.mockRejectedValueOnce({ response: { status: 402, data: { code: 'BILLING_REQUIRED', message: 'Billing is required to continue.' } } })
+    renderWithAuth(<Team />)
+    await userEvent.click(await screen.findByRole('button', { name: /restore old branch/i }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Renew your plan in Billing to restore this location. It is still archived.')
+    expect(within(alert).getByRole('link', { name: 'Review billing' })).toHaveAttribute('href', '/settings?section=billing')
+    expect(screen.getByRole('button', { name: /restore old branch/i })).toBeEnabled()
+    expect(screen.queryByText(/Old Branch is active again/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    [402, 'PLAN_LIMIT_EXCEEDED', 'Location limit reached on the Starter plan.'],
+    [500, 'BILLING_REQUIRED', 'Temporary restore failure'],
+  ])('keeps a non-billing restore refusal distinct (%s/%s)', async (status, code, message) => {
+    mockWithAccount({ used: 1, included: 2 }, [
+      { _id: 'c1', name: 'Blouberg Coffee' },
+      { _id: 'c9', name: 'Old Branch', archivedAt: '2026-09-01T00:00:00Z' },
+    ])
+    mockPost.mockRejectedValueOnce({ response: { status, data: { code, message } } })
+    renderWithAuth(<Team />)
+    await userEvent.click(await screen.findByRole('button', { name: /restore old branch/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(screen.queryByRole('link', { name: 'Review billing' })).not.toBeInTheDocument()
+  })
+
   it('lists archived locations separately with a restore action', async () => {
     mockWithAccount({ used: 1, included: 2 }, [
       { _id: 'c1', name: 'Blouberg Coffee' },
