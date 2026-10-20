@@ -295,6 +295,25 @@ describe('AuthContext', () => {
     expect(sessionStorage.getItem(key)).toBe('private draft')
   })
 
+  it('removes other users\' Improvements drafts on sign-in and keeps the signing-in user\'s cafes', async () => {
+    const own = 'your-guava:improvement-draft:v1:u1:org1:c1'
+    const ownOtherCafe = 'your-guava:improvement-draft:v1:u1:org1:c2'
+    const other = 'your-guava:improvement-draft:v1:u2:org2:c1'
+    const similarId = 'your-guava:improvement-draft:v1:u10:org1:c1'
+    for (const key of [own, ownOtherCafe, other, similarId]) sessionStorage.setItem(key, 'private draft')
+    sessionStorage.setItem('unrelated', 'keep')
+    mockPost.mockResolvedValue({ data: { accessToken: 'token', user: { id: 'u1', name: 'Owner', role: 'owner', orgId: 'org1', activeCafeId: 'c1' } } })
+    render(<AuthProvider><TestConsumer /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    await userEvent.click(screen.getByText('Login'))
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('Owner'))
+    expect(sessionStorage.getItem(other)).toBeNull()
+    expect(sessionStorage.getItem(similarId)).toBeNull()
+    expect(sessionStorage.getItem(own)).toBe('private draft')
+    expect(sessionStorage.getItem(ownOtherCafe)).toBe('private draft')
+    expect(sessionStorage.getItem('unrelated')).toBe('keep')
+  })
+
   it('isOwner returns true for owner role', async () => {
     const mockUser = {
       id: 'u1',

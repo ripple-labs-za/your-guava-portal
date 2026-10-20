@@ -1,7 +1,7 @@
 import { createContext, useEffect, useState, type ReactNode } from 'react'
 import api, { API_CONFIG_ERROR, isSessionRejection, refreshAccessToken } from '@/lib/api'
 import { clearInsightChatStorage } from '@/lib/chatStorage'
-import { clearImprovementDrafts } from '@/lib/improvementDraft'
+import { clearImprovementDrafts, retainImprovementDraftsForUser } from '@/lib/improvementDraft'
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/lib/accessToken'
 import { CafeContextChangedError, clearTabCafeId, setTabCafeId } from '@/lib/cafeContext'
 import type { User } from '@/types'
@@ -128,6 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       password,
     })
     clearInsightChatStorage()
+    retainImprovementDraftsForUser(data.user.id)
     setAccessToken(data.accessToken)
     setTabCafeId(data.user.activeCafeId ?? null)
     setSignedOut(false)

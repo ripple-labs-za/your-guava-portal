@@ -85,6 +85,16 @@ describe('Improvements draft recovery', () => {
     expect(screen.getByLabelText('Title *')).toHaveValue('')
   })
 
+  it('does not reopen an untouched form after a remount', async () => {
+    const first = mount()
+    await openForm()
+    first.unmount()
+    mount()
+    await screen.findByText('No improvements logged yet')
+    expect(screen.queryByLabelText('Title *')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /log an improvement/i }).length).toBeGreaterThan(0)
+  })
+
   it('discards the draft only after a successful save', async () => {
     mocks.post.mockResolvedValue({ data: { improvement: { ticketNumber: 1 } } })
     const first = mount()

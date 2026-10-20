@@ -34,6 +34,10 @@ export function readImprovementDraft(scope: ImprovementDraftScope | null): Impro
 
 export function writeImprovementDraft(scope: ImprovementDraftScope | null, draft: ImprovementDraft): void {
   if (!scope) return
+  if (![draft.title, draft.description, draft.desiredOutcome].some((value) => value.trim().length > 0)) {
+    removeImprovementDraft(scope)
+    return
+  }
   try { sessionStorage.setItem(keyFor(scope), JSON.stringify(draft)) } catch { /* The form still works without storage. */ }
 }
 
@@ -49,4 +53,14 @@ export function clearImprovementDrafts(): void {
       if (key?.startsWith(PREFIX)) sessionStorage.removeItem(key)
     }
   } catch { /* Deliberate sign-out must still complete when storage is disabled. */ }
+}
+
+export function retainImprovementDraftsForUser(userId: string): void {
+  const ownPrefix = `${PREFIX}${encodeURIComponent(userId)}:`
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index)
+      if (key?.startsWith(PREFIX) && !key.startsWith(ownPrefix)) sessionStorage.removeItem(key)
+    }
+  } catch { /* Sign-in still works when storage is unavailable. */ }
 }
