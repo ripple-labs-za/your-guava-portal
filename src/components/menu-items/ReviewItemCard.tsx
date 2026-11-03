@@ -79,7 +79,7 @@ export function ReviewItemCard({
           />
           <Button
             aria-label={item.reviewStatus === 'needs_review'
-              ? `Keep ${item.name} as a new menu item`
+              ? `Keep as new item: ${item.name}`
               : `Keep the menu price for ${item.name}`}
             onClick={() => onResolve('confirm')}
             disabled={saving}

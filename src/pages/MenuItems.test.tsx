@@ -279,7 +279,7 @@ describe('MenuItems accessibility', () => {
 
     await waitFor(() => expect(screen.getByText('Cappucino Lrg')).toBeInTheDocument())
 
-    expect(screen.getByRole('button', { name: /Keep Cappucino Lrg as a new menu item/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Keep as new item: Cappucino Lrg/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Ignore the POS item Cappucino Lrg/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Run AI review for Cappucino Lrg/i })).toBeInTheDocument()
   })
@@ -544,9 +544,9 @@ describe('MenuItems counts and paging', () => {
   it('loads the next page of items that need a match', async () => {
     mockItems(unmatched, unmatched)
     render(<MenuItems />)
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(50))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep as new item: POS \d+$/i })).toHaveLength(50))
     await userEvent.click(screen.getByRole('button', { name: /show 50 more/i }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep as new item: POS \d+$/i })).toHaveLength(100))
     expect(mockGet).toHaveBeenCalledWith('/items/reconciliation', expect.objectContaining({ params: expect.objectContaining({ page: 2 }) }))
     expect(screen.getByText(/showing 100 of 300 items that need attention/i)).toBeInTheDocument()
   })
@@ -589,12 +589,12 @@ describe('MenuItems counts and paging', () => {
     mockItems([], unmatched)
     render(<MenuItems />)
     await userEvent.click(await screen.findByRole('button', { name: /show 50 more/i }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100))
-    await userEvent.click(screen.getByRole('button', { name: /^Keep POS 075 as a new menu item$/i }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Keep as new item: POS \d+$/i })).toHaveLength(100))
+    await userEvent.click(screen.getByRole('button', { name: /^Keep as new item: POS 075$/i }))
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith('/items/reconciliation', expect.objectContaining({ params: expect.objectContaining({ page: 2 }) })))
     await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(1))
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(screen.getAllByRole('button', { name: /^Keep POS \d+ as a new menu item$/i })).toHaveLength(100)
+    expect(screen.getAllByRole('button', { name: /^Keep as new item: POS \d+$/i })).toHaveLength(100)
     // Role queries over 100 cards are slow in jsdom: 5.5 to 6.4 s on a shared host against vitest's 5 s default (codex-b90-b, 18 Oct).
   }, 20_000)
 
@@ -652,11 +652,11 @@ it('lets the first import keep one spelling without keeping every new item', asy
     return Promise.resolve({ data: { success: true } })
   })
   render(<MenuItems />)
-  await userEvent.click(await screen.findByRole('button', { name: 'Keep Cappuccino as a new menu item' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Keep as new item: Cappuccino' }))
   expect(mockPost).toHaveBeenCalledWith('/items/canonical/resolve', expect.objectContaining({ action: 'confirm' }))
   expect(mockPost).toHaveBeenCalledTimes(1)
   await waitFor(() => expect(screen.queryByRole('button', { name: /keep all/i })).not.toBeInTheDocument())
-  expect(await screen.findByRole('button', { name: 'Keep New line 1 as a new menu item' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Keep as new item: New line 1' })).toBeInTheDocument()
   expect(screen.getByText('Need a match').nextElementSibling).toHaveTextContent('2')
 })
 
