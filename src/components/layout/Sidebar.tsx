@@ -162,7 +162,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       void loadList()
     }
     return () => { cancelled = true }
-  }, [user])
+  }, [user?.id, user?.activeCafeId, user?.cafeIds?.length])
 
   const handleLogout = async () => {
     await logout()

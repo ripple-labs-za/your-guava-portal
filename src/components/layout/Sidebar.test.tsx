@@ -71,6 +71,24 @@ function expectInactive(label: string) {
 }
 
 describe('Sidebar', () => {
+  it('does not reload cafes for a profile-only user object change but follows cafe context changes', async () => {
+    vi.mocked(api.get).mockImplementation(() => Promise.resolve({ data: { cafe: { name: 'One Cafe' }, cafes: [] } }))
+    const user = { id: 'u1', email: 'owner@example.com', name: 'Owner', role: 'owner' as const,
+      orgId: 'org1', cafeIds: ['c1'], activeCafeId: 'c1' }
+    const shell = (current: typeof user) => <MemoryRouter><AuthContext.Provider value={{ user: current,
+      isLoading: false, isOwner: true, login: vi.fn(), logout: vi.fn(), register: vi.fn(), switchCafe: vi.fn(),
+    }}><Sidebar /></AuthContext.Provider></MemoryRouter>
+    const view = render(shell(user))
+    await screen.findByText('One Cafe')
+    const initialCalls = vi.mocked(api.get).mock.calls.length
+    view.rerender(shell({ ...user, name: 'Updated name' }))
+    await waitFor(() => expect(screen.getByText('One Cafe')).toBeInTheDocument())
+    expect(api.get).toHaveBeenCalledTimes(initialCalls)
+    view.rerender(shell({ ...user, activeCafeId: 'c2', cafeIds: ['c1', 'c2'] }))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/cafe/list'))
+    expect(vi.mocked(api.get).mock.calls.filter(([url]) => url === '/cafe/me')).toHaveLength(2)
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(api.get).mockImplementation(() => new Promise(() => {}))
