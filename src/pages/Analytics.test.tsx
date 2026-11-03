@@ -70,6 +70,26 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 describe('Analytics', () => {
+  it('shows dashes in an unmeasured revenue window', async () => {
+    mockGet.mockResolvedValue({ data: { data: [], summary: { totalRevenue: 0, avgDailyRevenue: 0, openDays: 0, trend: null } } })
+    render(<Analytics />)
+    await screen.findByText('No revenue data for this period')
+    for (const label of ['Total Revenue', 'Avg Daily', 'Best Day']) {
+      expect(screen.getByText(label).parentElement?.children[1]).toHaveTextContent('—')
+    }
+  })
+
+  it('keeps measured zero revenue distinct from an empty window', async () => {
+    mockGet.mockResolvedValue({ data: {
+      data: [{ date: '2026-11-01', revenue: 0, transactions: 1 }],
+      summary: { totalRevenue: 0, avgDailyRevenue: 0, openDays: 1, trend: null, bestDay: { date: '2026-11-01', revenue: 0 } },
+    } })
+    render(<Analytics />)
+    await screen.findByText('Daily Revenue')
+    await waitFor(() => expect(screen.getByText('Total Revenue').parentElement?.children[1]).toHaveTextContent('R0'))
+    expect(screen.queryByText('No revenue data for this period')).not.toBeInTheDocument()
+  })
+
   const combinedWindow = { effectiveStartDay: '2026-08-21', effectiveEndDay: '2026-09-19', effectiveDays: 30,
     timezone: 'Africa/Johannesburg', days: 30 }
   const serveCombined = () => mockGet.mockImplementation((url: string) => {

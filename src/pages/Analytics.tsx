@@ -282,12 +282,12 @@ function RevenueTab({ period, onWindow }: { period: PeriodId; onWindow: (window:
           ))
         ) : data ? (
           <>
-            <KpiCard label="Total Revenue" value={formatZAR(data.totalRevenue)} icon={DollarSign} accent="#4DA63B" />
-            <KpiCard label="Avg Daily" value={formatZAR(data.avgDailyRevenue)} icon={CalendarDays} accent="#4A9ECC"
+            <KpiCard label="Total Revenue" value={data.data.length ? formatZAR(data.totalRevenue) : '—'} icon={DollarSign} accent="#4DA63B" />
+            <KpiCard label="Avg Daily" value={data.data.length ? formatZAR(data.avgDailyRevenue) : '—'} icon={CalendarDays} accent="#4A9ECC"
               sub={openDaysCaption(data.openDays)} />
             <KpiCard
               label="Best Day"
-              value={formatZAR(data.bestDay.revenue)}
+              value={data.data.length ? formatZAR(data.bestDay.revenue) : '—'}
               sub={data.bestDay.date ? formatDayKey(data.bestDay.date) : 'No data yet'}
               icon={TrendingUp}
               accent="#FFD166"
