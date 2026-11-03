@@ -20,6 +20,7 @@ describe('HowForecastWorks', () => {
     expect(screen.getByText(/weather that actually happened is stored/)).toBeVisible()
     expect(screen.getByText('Not connected')).toBeVisible()
     expect(screen.getByText('Location needed')).toBeVisible()
+    expect(screen.getByText(/Payday, local events and load shedding apply on\s+Growth and Pro/)).toBeVisible()
     expect(container.textContent).not.toMatch(/\bAI\b|machine learning|artificial intelligence/i)
   })
 })

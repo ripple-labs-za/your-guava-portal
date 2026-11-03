@@ -54,6 +54,10 @@ export function HowForecastWorks({ className = '' }: { className?: string }) {
               day&apos;s sales that normally falls in those hours.
             </li>
           </ul>
+          <p>
+            Weather, holidays and trading hours apply on every plan. Payday, local events and load shedding apply on
+            Growth and Pro.
+          </p>
           <p>Holidays, paydays and load shedding are South African and apply only to cafes in South Africa.</p>
         </Section>
 
@@ -91,6 +95,7 @@ export function HowForecastWorks({ className = '' }: { className?: string }) {
             <li><span className="text-text">Not connected</span>: the service that supplies this factor is not set up or did not respond. The factor is left out of the forecast until it works again.</li>
             <li><span className="text-text">Location needed</span>: the cafe has neither coordinates nor a city, so weather cannot be looked up. Add the city in Settings.</li>
             <li><span className="text-text">Not available yet</span>: the provider has not published this day yet, for example weather beyond its forecast range.</li>
+            <li><span className="text-text">Not available</span>: the provider had no data for this day, or its plan does not cover it.</li>
             <li><span className="text-text">Not available in your country</span>: a South African signal for a cafe elsewhere.</li>
           </ul>
         </Section>
