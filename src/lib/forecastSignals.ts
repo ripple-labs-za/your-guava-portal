@@ -33,7 +33,8 @@ export function weatherUnavailableReason(weather: ForecastWeatherSignal | null |
  */
 const OWNER_FIXABLE_SIGNALS: { match: RegExp; action: string; to: string }[] = [
   {
-    match: /coordinates are not (configured|set)/i,
+    // "Location needed" is the engine's reason since F-2 (no coordinates and no city); the older wording stays matched.
+    match: /coordinates are not (configured|set)|^Location needed$/i,
     action: 'Set cafe location',
     to: '/settings?section=general&edit=cafe',
   },

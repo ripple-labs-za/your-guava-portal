@@ -67,9 +67,10 @@ export function WeekHeader({
             }`
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-4">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
+      {/* #123: reflows like DayCard. At 200% text the rand figures (non-breaking spaces) overflowed narrow tracks and clipped. */}
       {/* Weekly predicted revenue */}
-      <Card className="min-w-0">
+      <Card className="min-w-0 break-words">
         <CardContent className="p-5">
           <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-guava-red/10">
@@ -77,7 +78,7 @@ export function WeekHeader({
             </div>
             <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">Weekly predicted revenue</p>
-              <p className="text-text text-xl font-semibold">
+              <p className="text-text text-xl font-semibold [overflow-wrap:anywhere]">
                 {formatZAR(weekTotal)}
               </p>
             </div>
@@ -86,7 +87,7 @@ export function WeekHeader({
       </Card>
 
       {/* Peak day */}
-      <Card className="min-w-0">
+      <Card className="min-w-0 break-words">
         <CardContent className="p-5">
           <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-guava-green/10">
@@ -95,7 +96,7 @@ export function WeekHeader({
             <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">Peak day</p>
               {peakDay ? (
-                <p className="text-text text-xl font-semibold">
+                <p className="text-text text-xl font-semibold [overflow-wrap:anywhere]">
                   {getDayName(forecastDateKey(peakDay))}{' '}
                   <span className="text-sm text-muted font-normal">
                     — {formatZAR(peakDay.totalPredictedRevenue)}
@@ -110,7 +111,7 @@ export function WeekHeader({
       </Card>
 
       {/* 30-day accuracy */}
-      <Card className="min-w-0">
+      <Card className="min-w-0 break-words">
         <CardContent className="p-5">
           <div className="flex flex-wrap items-start gap-3">
             <div className="p-2 rounded-lg bg-[#555555]/20">
@@ -118,7 +119,7 @@ export function WeekHeader({
             </div>
             <div className="min-w-0 flex-1 break-words">
               <p className="text-muted text-xs mb-1">30-day accuracy</p>
-              <p className={`text-xl font-semibold ${accuracyColor}`}>
+              <p className={`text-xl font-semibold [overflow-wrap:anywhere] ${accuracyColor}`}>
                 {accuracyLabel}
                 {accuracyStatus && (
                   <span className="text-xs font-normal text-muted ml-2">

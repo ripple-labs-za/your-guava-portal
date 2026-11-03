@@ -8,6 +8,8 @@ import History from './History'
 const mockGet = vi.fn()
 // /forecasts/factors gets its own mock so the history tests' queued answers stay in order.
 const mockFactorsGet = vi.fn()
+// /forecasts/accuracy (weekly accuracy, #117) likewise, so it never takes a history test's queued answer.
+const mockAccuracyGet = vi.fn(() => Promise.resolve({ data: { weekly: [] } }))
 let mockHistoryUser: { role: 'owner' | 'manager'; permissions?: { canSpendCredits: boolean } } = { role: 'owner' }
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mockHistoryUser }) }))
@@ -20,7 +22,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     default: {
       get: (url: string, ...rest: unknown[]) =>
-        url === '/forecasts/factors' ? mockFactorsGet(url, ...rest) : mockGet(url, ...rest),
+        url === '/forecasts/factors' ? mockFactorsGet(url, ...rest)
+          : url === '/forecasts/accuracy' ? mockAccuracyGet()
+            : mockGet(url, ...rest),
     },
   }
 })
@@ -184,8 +188,8 @@ describe('History page', () => {
 
   it('makes history statistic labels navigable headings', async () => {
     renderHistory()
-    expect(await screen.findByRole('heading', { name: 'Live forecast accuracy', level: 2 })).toBeInTheDocument()
-    for (const name of ['Backtest accuracy', 'Combined predicted', 'Combined actual', 'Combined variance']) {
+    expect(await screen.findByRole('heading', { name: 'Live revenue match', level: 2 })).toBeInTheDocument()
+    for (const name of ['Backtest revenue match', 'Combined predicted', 'Combined actual', 'Combined variance']) {
       expect(screen.getByRole('heading', { name, level: 2 })).toBeInTheDocument()
     }
   })
@@ -266,13 +270,27 @@ describe('History page', () => {
   })
 
   // UAT-06-S02: without the plan, the panel assumed learning was unlocked and told a Starter owner it was "Waiting for history".
-  it('tells a Starter owner the learning correction needs Pro', async () => {
+  // L-5: the overall correction runs on Starter too; only item and factor corrections need Pro.
+  it('tells a Starter owner that only item and factor corrections need Pro', async () => {
     mockFactorsGet.mockResolvedValue(factorsPayload('starter'))
     renderHistory()
-    expect(await screen.findByText('Pro plan required')).toBeVisible()
-    expect(screen.getByText('Learning is visible here, but future forecasts only apply it on Pro.')).toBeVisible()
-    expect(screen.queryByText('Waiting for history')).not.toBeInTheDocument()
+    expect(await screen.findByText('Item and factor corrections: Pro')).toBeVisible()
+    expect(screen.getByText(/Item and factor corrections are on the Pro plan\./)).toBeVisible()
+    expect(screen.queryByText('Pro plan required')).not.toBeInTheDocument()
     expect(mockFactorsGet).toHaveBeenCalledWith('/forecasts/factors')
+  })
+
+  // #117: one accuracy, Planning's definition from /forecasts/accuracy, shown by week; empty weeks are left out.
+  it('shows forecast accuracy by week from the accuracy endpoint', async () => {
+    mockAccuracyGet.mockImplementationOnce(() => Promise.resolve({ data: { weekly: [
+      { weekStart: '2026-10-19', days: 0, avgAccuracy: null, basis: 'live' },
+      { weekStart: '2026-10-26', days: 6, avgAccuracy: 84.6, basis: 'live' },
+    ] } } as never))
+    renderHistory()
+    expect(await screen.findByRole('heading', { name: 'Forecast accuracy by week' })).toBeVisible()
+    expect(screen.getByText('85%')).toBeVisible()
+    expect(screen.getByText('6 days')).toBeVisible()
+    expect(screen.queryByText('0 days')).not.toBeInTheDocument()
   })
 
   it('says learning is off when the factor rules switch it off', async () => {
@@ -302,8 +320,8 @@ describe('History page', () => {
 
     expect(screen.getByText(/Patchy rain nearby/)).toBeInTheDocument()
     expect(screen.getByText(/Local Market/)).toBeInTheDocument()
-    expect(screen.getByText('Live forecast accuracy')).toBeInTheDocument()
-    expect(screen.getByText('Backtest accuracy')).toBeInTheDocument()
+    expect(screen.getByText('Live revenue match')).toBeInTheDocument()
+    expect(screen.getByText('Backtest revenue match')).toBeInTheDocument()
     // The headline is the typical day, with the flattering period-total figure
     // demoted to the detail line.
     expect(screen.getByText(/Typical day across 1 live day/)).toBeInTheDocument()
@@ -483,7 +501,7 @@ describe('History page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/Days built before that point were kept/i)
     // The table, the accuracy panels and the learning panel all survive.
     expect(screen.getByText(/Patchy rain nearby/)).toBeInTheDocument()
-    expect(screen.getByText('Live forecast accuracy')).toBeInTheDocument()
+    expect(screen.getByText('Live revenue match')).toBeInTheDocument()
     expect(screen.getByText('Model Learning')).toBeInTheDocument()
     expect(screen.queryByText(/Existing history is unchanged/i)).not.toBeInTheDocument()
   })

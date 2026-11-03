@@ -43,10 +43,33 @@ describe('ModelLearningPanel', () => {
     expect(screen.getByText(/at least 3 matched item outcomes/i)).toBeInTheDocument()
   })
 
-  it('reports a plan lock ahead of any history verdict', () => {
+  // L-5: the overall correction runs on every plan, so a Starter cafe sees its own history verdict, with only the item and
+  // factor corrections marked as Pro.
+  it('runs the overall correction on every plan and marks only item and factor corrections as Pro', () => {
     render(<ModelLearningPanel sources={[]} settings={settings} entitlements={lockedEntitlements} />)
 
-    expect(screen.getByText('Pro plan required')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for history')).toBeInTheDocument()
+    expect(screen.getByText('Item and factor corrections: Pro')).toBeInTheDocument()
+    expect(screen.getByText(/Item and factor corrections are on the Pro plan/)).toBeInTheDocument()
+    expect(screen.getAllByText('On the Pro plan.')).toHaveLength(2)
+  })
+
+  // #116: a missing entitlement is locked, never unlocked by default.
+  it('fails closed when the entitlements are absent', () => {
+    const sources = [{
+      date: '2026-11-02',
+      factors: [],
+      calibration: {
+        sampleSize: 12, overallMultiplier: 1.05,
+        itemMultipliers: [{ itemName: 'Flat White', multiplier: 1.2, sampleSize: 6 }],
+        factorMultipliers: [{ key: 'payday', label: 'Payday', multiplier: 0.9, sampleSize: 4 }],
+      },
+    }] as unknown as Parameters<typeof ModelLearningPanel>[0]['sources']
+    render(<ModelLearningPanel sources={sources} settings={settings} />)
+
+    expect(screen.getByText('Item and factor corrections: Pro')).toBeInTheDocument()
+    expect(screen.queryByText('Flat White')).not.toBeInTheDocument()
+    expect(screen.queryByText('Payday')).not.toBeInTheDocument()
   })
 
   it('reports learning switched off in factor rules', () => {

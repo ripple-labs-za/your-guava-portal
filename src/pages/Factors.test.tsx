@@ -343,8 +343,9 @@ describe('Factors', () => {
     expect(screen.getAllByText('Events').length).toBeGreaterThan(0)
     expect(screen.getByText('+50%')).toBeInTheDocument()
     expect(screen.getByText('Model Learning')).toBeInTheDocument()
-    expect(screen.getByText('Pro plan required')).toBeInTheDocument()
-    expect(screen.getByText('Flat White')).toBeInTheDocument()
+    expect(screen.getByText('Item and factor corrections: Pro')).toBeInTheDocument()
+    // Item corrections apply only on Pro (L-5), so the panel lists none here rather than an item correction it will not apply.
+    expect(screen.getAllByText('On the Pro plan.')).toHaveLength(2)
   })
 
   // A brand-new cafe defaults to closed on Sunday, so its week is six

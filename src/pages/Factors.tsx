@@ -237,18 +237,36 @@ function NumberField({
   )
 }
 
+/** Whether a factor can act for this cafe now, from GET /forecasts/factors `status` (F-1). */
+interface FactorStatus {
+  key: string
+  state: 'connected' | 'built_in' | 'not_connected' | 'needs_location' | 'not_available' | 'locked'
+  connected: boolean
+  reason: string
+}
+
+const FACTOR_STATUS_BADGE: Partial<Record<FactorStatus['state'], string>> = {
+  not_connected: 'Not connected',
+  needs_location: 'Needs location',
+  not_available: 'Not available in your country',
+}
+
 function FactorRuleCard({
   title,
   icon,
   children,
   entitlement,
+  status,
 }: {
   title: string
   icon: ReactNode
   children: ReactNode
   entitlement?: ForecastFactorEntitlement
+  status?: FactorStatus
 }) {
   const locked = entitlement && !entitlement.unlocked
+  // A factor that cannot reach its data is said so plainly; it never reads as a live factor with no effect (F-1).
+  const unavailable = !locked && status ? FACTOR_STATUS_BADGE[status.state] : undefined
   return (
     <Card>
       <CardHeader>
@@ -258,11 +276,17 @@ function FactorRuleCard({
             <CardTitle>{title}</CardTitle>
           </div>
           {locked && <Badge variant="secondary">{formatPlanName(entitlement.requiredPlan)}</Badge>}
+          {unavailable && <Badge variant="warning">{unavailable}</Badge>}
         </div>
         {entitlement && (
           <CardDescription>
             {locked ? `Unlock on ${formatPlanName(entitlement.requiredPlan)}. ` : ''}{entitlement.summary}
           </CardDescription>
+        )}
+        {unavailable && status?.reason && (
+          <p className="text-sm text-amber-300" data-factor-status={status.state}>
+            {status.reason}. Forecasts leave this factor out until it is available.
+          </p>
         )}
       </CardHeader>
       {/* Not dimmed as a whole: the disabled controls dim themselves, and the
@@ -346,6 +370,7 @@ export default function Factors() {
   const [settings, setSettings] = useState<ForecastFactorSettings | null>(null)
   const [defaults, setDefaults] = useState<ForecastFactorSettings | null>(null)
   const [entitlements, setEntitlements] = useState<ForecastFactorEntitlements | null>(null)
+  const [factorStatus, setFactorStatus] = useState<FactorStatus[]>([])
   const [factorsLoadFailed, setFactorsLoadFailed] = useState(false)
   const [events, setEvents] = useState<LocalEvent[]>([])
   const [eventEffects, setEventEffects] = useState<EventSalesEffect[]>([])
@@ -407,6 +432,7 @@ export default function Factors() {
           defaults: ForecastFactorSettings
           settings: ForecastFactorSettings
           entitlements: ForecastFactorEntitlements
+          status?: FactorStatus[]
         }>('/forecasts/factors'),
         api.get<{ events: LocalEvent[] }>('/events'),
         api.get<{
@@ -424,6 +450,7 @@ export default function Factors() {
       setDefaults(factorRes.data.defaults)
       setSettings(factorRes.data.settings)
       setEntitlements(factorRes.data.entitlements)
+      setFactorStatus(factorRes.data.status ?? [])
       setEvents(eventRes.data.events)
       setEventEffects(effectRes?.data.effects || [])
       setEventEffectSummary(effectRes?.data.summary || null)
@@ -520,6 +547,7 @@ export default function Factors() {
     entitlements?.factors.find((factor) => factor.key === keyOrSection || factor.section === keyOrSection)
 
   const isUnlocked = (keyOrSection: string) => entitlementFor(keyOrSection)?.unlocked ?? true
+  const statusFor = (key: string) => factorStatus.find((entry) => entry.key === key)
   // A rule field is editable only where the save will be accepted: on a plan that unlocks it, by the owner (the API
   // refuses a manager's PUT with 403, and an editable field with a disabled Save invited exactly that; FB-018).
   const canEditRule = (keyOrSection: string) => isOwner && isUnlocked(keyOrSection)
@@ -577,9 +605,11 @@ export default function Factors() {
       const { data } = await api.put<{
         settings: ForecastFactorSettings
         entitlements: ForecastFactorEntitlements
+        status?: FactorStatus[]
       }>('/forecasts/factors', { settings })
       setSettings(data.settings)
       setEntitlements(data.entitlements)
+      if (data.status) setFactorStatus(data.status)
       showNotice('success', 'Factors saved. Future forecasts will regenerate.')
       await load()
     } catch (err) {
@@ -917,7 +947,7 @@ export default function Factors() {
             ) : tab === 'rules' && settings ? (
               <div className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  <FactorRuleCard title="Weather" icon={<CloudSun className="h-4 w-4 text-[#4A9ECC]" />} entitlement={entitlementFor('weather')}>
+                  <FactorRuleCard title="Weather" icon={<CloudSun className="h-4 w-4 text-[#4A9ECC]" />} entitlement={entitlementFor('weather')} status={statusFor('weather')}>
                     <ToggleRow label="Weather enabled" checked={settings.weather.enabled} disabled={!canEditRule('weather')} onChange={(value) => updateBoolean('weather', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <NumberField id="weather-hot" label="Hot day starts at" value={settings.weather.hotTemp} min={-10} max={45} suffix="C" disabled={!canEditRule('weather')} onChange={(value) => updateNumber('weather', 'hotTemp', value)} />
@@ -929,7 +959,7 @@ export default function Factors() {
                     </div>
                   </FactorRuleCard>
 
-                  <FactorRuleCard title="Calendar" icon={<CalendarDays className="h-4 w-4 text-guava-yellow" />} entitlement={entitlementFor('holiday')}>
+                  <FactorRuleCard title="Calendar" icon={<CalendarDays className="h-4 w-4 text-guava-yellow" />} entitlement={entitlementFor('holiday')} status={statusFor('holiday')}>
                     <ToggleRow label="Holiday factors enabled" checked={settings.holiday.enabled} disabled={!canEditRule('holiday')} onChange={(value) => updateBoolean('holiday', 'enabled', value)} />
                     <ToggleRow label="Payday factor enabled (Growth)" checked={settings.payday.enabled} disabled={!canEditRule('payday')} onChange={(value) => updateBoolean('payday', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -940,7 +970,7 @@ export default function Factors() {
                     </div>
                   </FactorRuleCard>
 
-                  <FactorRuleCard title="Load Shedding" icon={<Zap className="h-4 w-4 text-amber-300" />} entitlement={entitlementFor('loadShedding')}>
+                  <FactorRuleCard title="Load Shedding" icon={<Zap className="h-4 w-4 text-amber-300" />} entitlement={entitlementFor('loadShedding')} status={statusFor('loadShedding')}>
                     <ToggleRow label="Load shedding enabled" checked={settings.loadShedding.enabled} disabled={!canEditRule('loadShedding')} onChange={(value) => updateBoolean('loadShedding', 'enabled', value)} />
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                       <NumberField id="load-1-2" label="Stage 1-2" value={settings.loadShedding.stage1To2Pct} disabled={!canEditRule('loadShedding')} onChange={(value) => updateNumber('loadShedding', 'stage1To2Pct', value)} />

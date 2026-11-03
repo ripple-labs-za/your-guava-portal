@@ -580,6 +580,35 @@ describe('Dashboard', () => {
     expect(screen.queryByText(/three comparable weeks/i)).not.toBeInTheDocument()
   })
 
+  // #109: Planning's rule. A thin-history day has no figure, even when the engine holds a provisional non-zero total.
+  it('prints no forecast figure for a thin-history day even when the provisional total is not zero', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/forecasts/week')) {
+        return Promise.resolve({
+          data: {
+            forecasts: [{
+              ...mockForecast,
+              _id: 'f-thin',
+              date: '2026-03-28',
+              totalPredictedRevenue: 4321,
+              availability: { status: 'insufficient_data', reason: 'At least 2 observed matching trading days are required; 1 available' },
+            }],
+          },
+        })
+      }
+      if (url.includes('/transactions/stats')) return Promise.resolve({ data: { stats: mockStats } })
+      if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test' } } })
+      return Promise.reject(new Error('Unknown URL'))
+    })
+
+    render(<Dashboard />)
+
+    expect(await screen.findByText('Not enough history for this day yet')).toBeInTheDocument()
+    expect(screen.queryByText(/4[\s ]?321/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Target/)).not.toBeInTheDocument()
+    expect(screen.getByText('No item figures yet')).toBeInTheDocument()
+  })
+
   it('keeps a day with no forecast out of the weekly average', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/forecasts/week')) {

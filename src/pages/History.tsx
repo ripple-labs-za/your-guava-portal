@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
+import { WeeklyAccuracy } from '@/components/forecasts/WeeklyAccuracy'
 import { HistoryStatPanel as StatPanel } from '@/components/forecasts/HistoryStatPanel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -282,19 +283,19 @@ export default function History() {
                       further off. The daily average is what an operator
                       actually experiences when ordering stock. */}
                   <StatPanel
-                    label="Live forecast accuracy"
+                    label="Live revenue match"
                     value={formatPercent(meta.liveAccuracy?.avgDailyRevenueAccuracy)}
                     detail={historyAccuracyDetail(meta.liveAccuracy, 'live')}
                   />
                   <StatPanel
-                    label="Backtest accuracy"
+                    label="Backtest revenue match"
                     value={formatPercent(meta.backtestAccuracy?.avgDailyRevenueAccuracy)}
                     detail={historyAccuracyDetail(meta.backtestAccuracy, 'backtest')}
                   />
                 </>
               ) : (
                 <StatPanel
-                  label="Combined accuracy"
+                  label="Combined revenue match"
                   value={formatPercent(meta.avgDailyRevenueAccuracy ?? meta.avgRevenueAccuracy)}
                   detail={`Typical day · ${formatPercent(meta.overallRevenueAccuracy ?? meta.avgRevenueAccuracy)} on period totals`}
                 />
@@ -309,6 +310,8 @@ export default function History() {
             </div>
 
             {meta.backtestAccuracy?.note && <p className="text-xs text-muted">{meta.backtestAccuracy.note}</p>}
+            {/* #117: one accuracy, Planning's, by week. The panels above compare rand totals and are named for that. */}
+            <WeeklyAccuracy />
             {learningConfig && (
               <ModelLearningPanel
                 sources={history}
@@ -346,7 +349,7 @@ export default function History() {
                       <th className="px-4 py-3 text-right font-semibold">Predicted</th>
                       <th className="px-4 py-3 text-right font-semibold">Actual</th>
                       <th className="px-4 py-3 text-right font-semibold">Variance</th>
-                      <th className="px-4 py-3 text-right font-semibold">Accuracy</th>
+                      <th className="px-4 py-3 text-right font-semibold">Revenue match</th>
                       <th className="px-4 py-3 text-right font-semibold">Txns</th>
                     </tr>
                   </thead>

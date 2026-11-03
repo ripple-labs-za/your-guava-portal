@@ -72,22 +72,25 @@ export function ModelLearningPanel({
   unavailable = false,
 }: ModelLearningPanelProps) {
   const learningEntitlement = entitlements?.factors.find((factor: ForecastFactorEntitlement) => factor.key === 'learning')
-  const learningUnlocked = learningEntitlement?.unlocked ?? true
+  // Fails closed (#116): item and factor corrections are shown as applying only when the plan explicitly unlocks them.
+  // A missing or unloaded entitlement is locked, never unlocked by default.
+  const detailedUnlocked = learningEntitlement?.unlocked === true
   const learningEnabled = settings?.learning.enabled ?? true
   const snapshot = latestLearningSource(sources)
   const calibration = snapshot?.calibration
   const learningFactor = snapshot ? sourceFactors(snapshot).find((factor) => factor.key === 'learning') : undefined
   const sampleSize = calibration?.sampleSize ?? 0
   const overallCorrection = correctionFromMultiplier(calibration?.overallMultiplier)
-  const active = Boolean(learningUnlocked && learningEnabled && learningFactor?.active)
+  // The overall correction runs on every plan (L-5); whether it is applying is read from the forecast itself.
+  const active = Boolean(learningEnabled && learningFactor?.active)
 
-  const itemCorrections = topCorrections(calibration?.itemMultipliers, (entry) => entry.itemName || 'Item')
-  const factorCorrections = topCorrections(calibration?.factorMultipliers, (entry) => entry.label || entry.key || 'Factor')
+  const itemCorrections = detailedUnlocked ? topCorrections(calibration?.itemMultipliers, (entry) => entry.itemName || 'Item') : []
+  const factorCorrections = detailedUnlocked
+    ? topCorrections(calibration?.factorMultipliers, (entry) => entry.label || entry.key || 'Factor')
+    : []
 
   const status = unavailable
     ? { label: 'Status unavailable', variant: 'secondary' as const }
-    : !learningUnlocked
-    ? { label: 'Pro plan required', variant: 'pro' as const }
     : !learningEnabled
       ? { label: 'Off', variant: 'secondary' as const }
       : active
@@ -96,15 +99,15 @@ export function ModelLearningPanel({
           ? { label: 'Ready', variant: 'success' as const }
           : { label: 'Waiting for history', variant: 'warning' as const }
 
+  const planNote = detailedUnlocked ? '' : ' Item and factor corrections are on the Pro plan.'
   const description = unavailable
     ? 'The forecast service could not be reached, so this is not a reading on your model.'
-    : !learningUnlocked
-    ? 'Learning is visible here, but future forecasts only apply it on Pro.'
     : !learningEnabled
       ? 'Learning is disabled in factor rules.'
       : sampleSize < 3
-        ? 'At least 3 matched item outcomes are needed before corrections are applied.'
-        : 'Future forecasts use recent prediction misses to adjust demand.'
+        ? `At least 3 matched item outcomes are needed before the overall correction is applied.${planNote}`
+        : `Future forecasts use recent prediction misses to correct overall demand.${planNote}`
+  const lockedEmpty = 'On the Pro plan.'
 
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
@@ -117,6 +120,7 @@ export function ModelLearningPanel({
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-text">Model Learning</p>
               <Badge variant={status.variant}>{status.label}</Badge>
+              {!unavailable && !detailedUnlocked && <Badge variant="pro">Item and factor corrections: Pro</Badge>}
             </div>
             <p className="mt-1 text-sm text-muted">{description}</p>
           </div>
@@ -142,12 +146,12 @@ export function ModelLearningPanel({
           <CorrectionList
             title="Item corrections"
             corrections={unavailable ? [] : itemCorrections}
-            empty={unavailable ? 'Could not be loaded.' : 'No item-specific corrections yet.'}
+            empty={unavailable ? 'Could not be loaded.' : detailedUnlocked ? 'No item-specific corrections yet.' : lockedEmpty}
           />
           <CorrectionList
             title="Factor corrections"
             corrections={unavailable ? [] : factorCorrections}
-            empty={unavailable ? 'Could not be loaded.' : 'No factor-specific corrections yet.'}
+            empty={unavailable ? 'Could not be loaded.' : detailedUnlocked ? 'No factor-specific corrections yet.' : lockedEmpty}
           />
         </div>
       )}

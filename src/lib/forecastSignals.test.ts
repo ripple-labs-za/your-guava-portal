@@ -4,6 +4,7 @@ import {
   isLoadSheddingAvailable,
   isWeatherAvailable,
   loadSheddingUnavailableReason,
+  signalFix,
   weatherUnavailableReason,
 } from './forecastSignals'
 
@@ -21,6 +22,12 @@ describe('forecast signal availability', () => {
     }
     expect(isWeatherAvailable(unavailable)).toBe(false)
     expect(weatherUnavailableReason(unavailable)).toBe('Cafe coordinates are not configured')
+  })
+
+  it("offers the cafe-location fix for the engine's location reasons, old and new", () => {
+    expect(signalFix('Location needed')?.action).toBe('Set cafe location')
+    expect(signalFix('Cafe coordinates are not configured')?.action).toBe('Set cafe location')
+    expect(signalFix('Not connected: the weather provider is not set up')).toBeNull()
   })
 
   it('does not interpret a missing load-shedding stage as stage zero', () => {

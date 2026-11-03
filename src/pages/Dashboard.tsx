@@ -687,9 +687,10 @@ export default function Dashboard() {
       label: 'Forecast Revenue',
       // R0 on a day the engine could not answer is not a forecast of nothing,
       // and this is the most prominent figure on the screen. Planning refuses
-      // to print it; Today must not print it either.
+      // to print it; Today must not print it either. Planning's rule (#109): a day still building history has no figure at all,
+      // not a rough one, so Today shows none whatever the engine's provisional total is.
       value:
-        activeForecast && !(isAwaitingHistory && activeForecast.totalPredictedRevenue === 0)
+        activeForecast && !isAwaitingHistory
           ? formatZAR(activeForecast.totalPredictedRevenue)
           : '-',
       sub:
@@ -863,7 +864,7 @@ export default function Dashboard() {
           {activeForecast.availability.reason
             ? `${activeForecast.availability.reason}. `
             : 'This day does not yet have enough comparable trading days of sales. '}
-          Treat these numbers as a rough starting point, not a prep list to order against.
+          Guava shows no figures for this day until it has enough history, as Planning does.
         </div>
       )}
 
@@ -876,7 +877,7 @@ export default function Dashboard() {
             </h2>
             <div className="flex flex-wrap items-center gap-3">
               {isClosedDay && <Badge variant="destructive">Closed</Badge>}
-              {activeForecast.totalPredictedRevenue > 0 && (
+              {!isAwaitingHistory && activeForecast.totalPredictedRevenue > 0 && (
                 <span className="text-guava-green text-sm font-bold">
                   Target {formatZAR(activeForecast.totalPredictedRevenue)}
                 </span>
@@ -905,6 +906,11 @@ export default function Dashboard() {
                 message={activeForecast.availability?.reason || 'This café is closed for the day.'}
               />
             )
+          ) : isAwaitingHistory ? (
+            <ForecastStatusCard
+              title="No item figures yet"
+              message="Item quantities appear once this weekday has enough comparable trading days of sales."
+            />
           ) : activeForecastHasItems ? (
             <PredictedOutput items={activeForecast.items} coverage={activeForecast.forecastCoverage} />
           ) : (
