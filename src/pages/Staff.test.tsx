@@ -263,13 +263,13 @@ describe('Staff role gating', () => {
     renderAs('owner', <Staff />)
 
     await waitFor(() => expect(screen.getByText('Sarah')).toBeInTheDocument())
-    expect(screen.getByText('R45/hr')).toBeInTheDocument()
+    expect(screen.getByText(/^R45[,.]00\/hr$/)).toBeInTheDocument()
   })
 
-  it('formats the displayed hourly rate with the shared whole-rand money format', async () => {
+  it('shows the hourly rate to the cent, as stored and costed', async () => {
     mockStaffList([{ ...mockStaffMember, hourlyRate: 1245.75 }])
     renderAs('owner', <Staff />)
-    expect(await screen.findByText(/R1\s246\/hr/)).toBeInTheDocument()
+    expect(await screen.findByText(/R1\s245[,.]75\/hr/)).toBeInTheDocument()
   })
 })
 

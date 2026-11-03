@@ -21,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { LoadFailed, loadFailureReason } from '@/components/ui/load-failed'
 import api from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { formatZAR } from '@/lib/money'
+import { formatZARCents } from '@/lib/money'
 import { useAuth } from '@/hooks/useAuth'
 import { toLocalDateOnly } from '@/lib/date'
 import type { StaffMember, LeaveBalanceData } from '@/types'
@@ -486,7 +486,7 @@ function StaffCard({
           {rate !== null && (
             <div className="flex items-center gap-1.5 text-muted">
               <DollarSign className="w-3 h-3" />
-              <span>{formatZAR(rate)}/hr</span>
+              <span>{formatZARCents(rate)}/hr</span>
             </div>
           )}
           <div className="flex items-center gap-1.5 text-muted">

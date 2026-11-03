@@ -15,6 +15,13 @@ export function formatZAR(amount: number | null | undefined): string {
   return rands < 0 ? `-R${digits}` : `R${digits}`
 }
 
+/** An exact amount someone checks against a payslip or a till slip (a pay rate, a receipt total) keeps its cents. */
+export function formatZARCents(amount: number | null | undefined): string {
+  if (!isAmount(amount)) return '—'
+  const digits = Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return amount < 0 ? `-R${digits}` : `R${digits}`
+}
+
 /** A chart's axis below ten thousand reads like any other amount; from there it compacts to "R20k". */
 const COMPACT_FROM = 10000
 
