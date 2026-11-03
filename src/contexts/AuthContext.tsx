@@ -5,6 +5,7 @@ import { clearImprovementDrafts, retainImprovementDraftsForUser } from '@/lib/im
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/lib/accessToken'
 import { CafeContextChangedError, clearTabCafeId, setTabCafeId } from '@/lib/cafeContext'
 import type { User } from '@/types'
+import { rememberTabUser } from '@/lib/tabUser'
 
 interface AuthContextType {
   user: User | null
@@ -94,6 +95,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
         const response = await api.get<User>('/auth/me')
         if (active && response?.data) {
+          rememberTabUser(response.data.id)
           setUser(response.data)
           setBootstrapError(null)
         }
@@ -131,6 +133,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     retainImprovementDraftsForUser(data.user.id)
     setAccessToken(data.accessToken)
     setTabCafeId(data.user.activeCafeId ?? null)
+    rememberTabUser(data.user.id)
     setSignedOut(false)
     setUser(data.user)
   }

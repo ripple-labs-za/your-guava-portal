@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Link, useLocation, useNavigationType } from 'r
 import { AppLayout, RouteFocusContext } from '@/components/layout/AppLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { WORKFORCE_ENABLED } from '@/lib/features'
+import { tabUserId } from '@/lib/tabUser'
 
 const Login = lazy(() => import('@/pages/auth/Login'))
 const Signup = lazy(() => import('@/pages/auth/Signup'))
@@ -87,7 +88,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!user) {
     // A deliberate Sign Out keeps no return page (UAT-14-S20): the next sign-in, perhaps someone else's, starts on Today.
-    return <Navigate to='/login' replace state={signedOut ? undefined : { from: location.pathname + location.search }} />
+    return <Navigate to='/login' replace state={signedOut ? undefined : { from: location.pathname + location.search, fromUserId: tabUserId() }} />
   }
 
   return <>{children}</>

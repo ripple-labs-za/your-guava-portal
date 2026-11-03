@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import Login from './Login'
 import api, { isSessionRejection, refreshAccessToken } from '@/lib/api'
+import { clearAccessToken } from '@/lib/accessToken'
 
 // Mock the logo asset
 vi.mock('@/assets/logo.png', () => ({ default: 'logo.png' }))
@@ -47,9 +48,62 @@ describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    clearAccessToken()
+    sessionStorage.clear()
+    window.history.replaceState({}, '', '/login')
     vi.mocked(isSessionRejection).mockReturnValue(true)
     vi.mocked(refreshAccessToken).mockRejectedValue(new Error("No refresh session"))
     vi.mocked(api.get).mockRejectedValue(new Error('No refresh session'))
+  })
+
+  it('discards a remembered return path when a different user signs into an abandoned tab', async () => {
+    sessionStorage.setItem('yg.tabUserId', 'previous-user')
+    window.history.replaceState({ usr: { from: '/uploads/previous-user-upload' } }, '', '/login')
+    vi.mocked(api.post).mockResolvedValueOnce({ data: {
+      accessToken: 'new-token', user: { id: 'different-user', name: 'Different Owner', email: 'different@example.com', role: 'owner' },
+    } })
+    render(<Login />)
+    await userEvent.type(screen.getByLabelText(/email address/i), 'different@example.com')
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/today', { replace: true }))
+  })
+
+  it('retains a fresh visitor requested local page when no earlier user used the tab', async () => {
+    window.history.replaceState({ usr: { from: '/settings?section=billing' } }, '', '/login')
+    vi.mocked(api.post).mockResolvedValueOnce({ data: {
+      accessToken: 'fresh-token', user: { id: 'fresh-user', name: 'Fresh Owner', email: 'fresh@example.com', role: 'owner' },
+    } })
+    render(<Login />)
+    await userEvent.type(screen.getByLabelText(/email address/i), 'fresh@example.com')
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/settings?section=billing', { replace: true }))
+  })
+
+  it('restores an expired session return path when the same user signs in again', async () => {
+    sessionStorage.setItem('yg.tabUserId', 'returning-user')
+    window.history.replaceState({ usr: { from: '/uploads/old-upload' } }, '', '/login')
+    vi.mocked(api.post).mockResolvedValueOnce({ data: {
+      accessToken: 'renewed-token', user: { id: 'returning-user', name: 'Returning Owner', email: 'owner@example.com', role: 'owner' },
+    } })
+    render(<Login />)
+    await userEvent.type(screen.getByLabelText(/email address/i), 'owner@example.com')
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/uploads/old-upload', { replace: true }))
+  })
+
+  it('drops an unowned resource return path when an older tab has no identity stamp', async () => {
+    window.history.replaceState({ usr: { from: '/uploads/previous-owner-upload' } }, '', '/login')
+    vi.mocked(api.post).mockResolvedValueOnce({ data: {
+      accessToken: 'new-token', user: { id: 'new-user', name: 'New Owner', email: 'new@example.com', role: 'owner' },
+    } })
+    render(<Login />)
+    await userEvent.type(screen.getByLabelText(/email address/i), 'new@example.com')
+    await userEvent.type(screen.getByLabelText(/^password$/i), 'password123')
+    await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/today', { replace: true }))
   })
 
   it('renders login form with email and password fields', async () => {

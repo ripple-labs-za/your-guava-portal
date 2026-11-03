@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { AlertCircle, ArrowRight, CheckCircle } from 'lucide-react'
 import logo from '@/assets/logo.png'
 import api from '@/lib/api'
+import { tabUserId } from '@/lib/tabUser'
 
 const ERROR_ID = 'login-error'
 
@@ -38,8 +39,12 @@ export default function Login() {
     setIsLoading(true)
 
     try {
+      const fromUserId = (location.state as { fromUserId?: unknown } | null)?.fromUserId
+      const previousUserId = typeof fromUserId === 'string' ? fromUserId : tabUserId()
       await login(email, password)
-      navigate(returnTo, { replace: true })
+      // Older tabs predate the identity stamp. Their resource URLs cannot be attributed to the next person signing in.
+      const sameUser = previousUserId === null ? !returnTo.startsWith('/uploads/') : previousUserId === tabUserId()
+      navigate(sameUser ? returnTo : '/today', { replace: true })
     } catch (err: unknown) {
       const responseData =
         err &&

@@ -53,6 +53,13 @@ function TestConsumer() {
 }
 
 describe('AuthContext', () => {
+  it('keeps session expiry distinct from deliberate sign-out for same-user return navigation', async () => {
+    sessionStorage.setItem('yg.tabUserId', 'expired-user')
+    render(<AuthProvider><TestConsumer /></AuthProvider>)
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('signedOut')).toHaveTextContent('false')
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
