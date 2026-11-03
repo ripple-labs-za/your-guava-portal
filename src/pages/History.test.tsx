@@ -275,7 +275,7 @@ describe('History page', () => {
     mockFactorsGet.mockResolvedValue(factorsPayload('starter'))
     renderHistory()
     expect(await screen.findByText('Item and factor corrections: Pro')).toBeVisible()
-    expect(screen.getByText(/Item and factor corrections are on the Pro plan\./)).toBeVisible()
+    expect(screen.getByText(/Overall correction on; per-factor and per-item learning on Pro\./)).toBeVisible()
     expect(screen.queryByText('Pro plan required')).not.toBeInTheDocument()
     expect(mockFactorsGet).toHaveBeenCalledWith('/forecasts/factors')
   })
@@ -319,7 +319,8 @@ describe('History page', () => {
     )
 
     expect(screen.getByText(/Patchy rain nearby/)).toBeInTheDocument()
-    expect(screen.getByText(/Local Market/)).toBeInTheDocument()
+    // W-10: the chip is the factor that changed the figure, not the raw event name from the signals.
+    expect(screen.getByText('Events +22%')).toBeInTheDocument()
     expect(screen.getByText('Live revenue match')).toBeInTheDocument()
     expect(screen.getByText('Backtest revenue match')).toBeInTheDocument()
     // The headline is the typical day, with the flattering period-total figure

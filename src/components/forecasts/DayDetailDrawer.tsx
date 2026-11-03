@@ -201,6 +201,8 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
   const plannedItems = sortedItems.filter((item) => !isOccasionalSeller(item))
   const occasionalItems = sortedItems.filter((item) => isOccasionalSeller(item))
   const showConfidence = items.some((item) => item.confidence != null)
+  // W-02: when no buffer applies (e.g. Starter has no stock factor), suggested stock equals the prediction; hide it.
+  const showSuggested = items.some((item) => item.suggestedStock != null && item.suggestedStock !== item.predictedQty)
   const coverage = forecast.forecastCoverage
   const itemsTruncated =
     coverage != null &&
@@ -318,7 +320,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
                 </p>
                 {weekAvg > 0 && (
                   <p className={`text-sm mt-1 ${deltaColor}`}>
-                    {isNeutral ? 'On par with' : `${deltaPrefix}${delta.toFixed(0)}% vs`} weekly average
+                    {isNeutral ? 'On par with' : `${deltaPrefix}${delta.toFixed(0)}% vs`} this week's average
                   </p>
                 )}
               </>
@@ -429,7 +431,9 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
                       <tr className="border-b border-border">
                         <th scope="col" className="text-muted text-[10px] uppercase tracking-wider text-left font-medium pb-2">Item</th>
                         <th scope="col" className="text-muted text-[10px] uppercase tracking-wider text-right font-medium pb-2">Predicted demand</th>
-                        <th scope="col" className="text-muted text-[10px] uppercase tracking-wider text-right font-medium pb-2">Suggested stock</th>
+                        {showSuggested && (
+                          <th scope="col" className="text-muted text-[10px] uppercase tracking-wider text-right font-medium pb-2">Suggested stock</th>
+                        )}
                         {showConfidence && (
                           <th scope="col" className="text-muted text-[10px] uppercase tracking-wider text-right font-medium pb-2">Confidence</th>
                         )}
@@ -438,7 +442,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
                     <tbody>
                       {plannedItems.length === 0 && (
                         <tr>
-                          <td colSpan={showConfidence ? 4 : 3} className="text-muted text-xs py-3">
+                          <td colSpan={2 + (showSuggested ? 1 : 0) + (showConfidence ? 1 : 0)} className="text-muted text-xs py-3">
                             Every line on this day sells under {OCCASIONAL_SELLER_MAX_QTY} a day. Keep a few of each
                             on hand rather than ordering to a number.
                           </td>
@@ -450,7 +454,7 @@ export function DayDetailDrawer({ forecast, weekAvg, onClose }: Props) {
                             {item.itemName}
                           </th>
                           <td className="text-muted text-xs text-right py-2">{item.predictedQty}</td>
-                          <td className="text-muted text-xs text-right py-2">{item.suggestedStock ?? '—'}</td>
+                          {showSuggested && <td className="text-muted text-xs text-right py-2">{item.suggestedStock ?? '—'}</td>}
                           {showConfidence && (
                             <td
                               className={`text-xs text-right py-2 ${

@@ -865,7 +865,7 @@ export default function Settings() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="cafe-city">City</Label>
+                        <Label htmlFor="cafe-city">City (used for weather)</Label>
                         <Input id="cafe-city" value={cafeCity} onChange={(e) => setCafeCity(e.target.value)} placeholder="Cape Town" />
                       </div>
                       <div className="space-y-1.5">
@@ -900,14 +900,12 @@ export default function Settings() {
 
                 <div className="space-y-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-wider text-muted font-medium">Forecast coordinates</p>
-                    {/* These are not a precision refinement: forecast.service
-                        gates the entire weather factor on both being finite, so
-                        calling them "optional" told owners the product's headline
-                        capability was already on when it was off. */}
+                    <p className="text-[11px] uppercase tracking-wider text-muted font-medium">Forecast coordinates (optional)</p>
+                    {/* Since F-2 the weather is looked up by the cafe's city when these are blank,
+                        so they are an optional refinement and the city is what matters. */}
                     <p className="mt-1 text-xs text-muted">
-                      Weather is off until both are set — without coordinates, forecasts fall back to a plain
-                      same-weekday average and the Weather panels stay empty. Enter both values or leave both blank.
+                      Optional. Weather uses your city when coordinates are blank, so the city under Cafe details is the field that
+                      matters. Coordinates pin the exact spot; enter both values or leave both blank.
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

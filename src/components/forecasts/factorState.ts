@@ -83,10 +83,16 @@ export function classifyForecastFactors(forecast: FactorSource): ClassifiedFacto
 
   return (ordered.length > 0 ? ordered : sourceFactors).map((factor) => {
     const entitlement = entitlementsByKey.get(factor.key)
-    const locked = entitlement ? !entitlement.unlocked : false
+    // W-04 / L-5: the overall learning correction runs on every plan. Only Pro unlocks per-factor and per-item learning,
+    // and only on Pro is the stored learning switch the owner's choice; elsewhere it is a plan default the engine ignores.
+    const isLearning = factor.key === 'learning'
+    const learningOwnerSwitch = isLearning && entitlement?.unlocked === true
+    const locked = isLearning ? false : entitlement ? !entitlement.unlocked : false
     const section = FACTOR_SECTIONS[factor.key]
     const sectionSettings = section ? forecast.factorSettings?.[section] : undefined
-    const configuredOn = sectionSettings && 'enabled' in sectionSettings ? sectionSettings.enabled !== false : true
+    const configuredOn = isLearning && !learningOwnerSwitch
+      ? true
+      : sectionSettings && 'enabled' in sectionSettings ? sectionSettings.enabled !== false : true
     const off = !locked && !configuredOn
     const active = Boolean(factor.active && !locked && !off)
     const unavailableLabel = !locked && !off && !active ? factorUnavailableLabel(factor.reason) : null

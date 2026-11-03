@@ -410,8 +410,8 @@ describe('Dashboard', () => {
 
     // (20 100 + 18 000) over the two trading days is R19 050; spreading it over
     // all three calendar days would read R12 700.
-    expect(await screen.findByText(/Avg: R19\s?050\/day/)).toBeInTheDocument()
-    expect(screen.queryByText(/Avg: R12\s?700\/day/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/This week's average: R19\s?050\/day/)).toBeInTheDocument()
+    expect(screen.queryByText(/This week's average: R12\s?700\/day/)).not.toBeInTheDocument()
   })
 
   /** Mocks the four Today requests with a single week forecast. */
@@ -636,8 +636,8 @@ describe('Dashboard', () => {
     render(<Dashboard />)
 
     // R18 000 over the one day that has a forecast, not R9 000 over two.
-    expect(await screen.findByText(/Avg: R18\s?000\/day/)).toBeInTheDocument()
-    expect(screen.queryByText(/Avg: R9\s?000\/day/)).not.toBeInTheDocument()
+    expect(await screen.findByText(/This week's average: R18\s?000\/day/)).toBeInTheDocument()
+    expect(screen.queryByText(/This week's average: R9\s?000\/day/)).not.toBeInTheDocument()
   })
 
   it('shows a locked factor reason without needing a mouse hover', async () => {

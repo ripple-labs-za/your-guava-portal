@@ -75,7 +75,8 @@ export function ModelLearningPanel({
   // Fails closed (#116): item and factor corrections are shown as applying only when the plan explicitly unlocks them.
   // A missing or unloaded entitlement is locked, never unlocked by default.
   const detailedUnlocked = learningEntitlement?.unlocked === true
-  const learningEnabled = settings?.learning.enabled ?? true
+  // W-04: only on Pro is the stored switch the owner's choice; elsewhere it is a plan default the engine ignores.
+  const learningEnabled = detailedUnlocked ? (settings?.learning.enabled ?? true) : true
   const snapshot = latestLearningSource(sources)
   const calibration = snapshot?.calibration
   const learningFactor = snapshot ? sourceFactors(snapshot).find((factor) => factor.key === 'learning') : undefined
@@ -99,7 +100,7 @@ export function ModelLearningPanel({
           ? { label: 'Ready', variant: 'success' as const }
           : { label: 'Waiting for history', variant: 'warning' as const }
 
-  const planNote = detailedUnlocked ? '' : ' Item and factor corrections are on the Pro plan.'
+  const planNote = detailedUnlocked ? '' : ' Overall correction on; per-factor and per-item learning on Pro.'
   const description = unavailable
     ? 'The forecast service could not be reached, so this is not a reading on your model.'
     : !learningEnabled

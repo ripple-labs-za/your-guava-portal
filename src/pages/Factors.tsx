@@ -1,5 +1,5 @@
 import { weatherTempLabel } from '@/lib/forecastSignals'
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ClosedDayNotice } from '@/components/forecasts/ClosedDayNotice'
 import { Link } from 'react-router'
 import {
@@ -137,13 +137,16 @@ function ToggleRow({
   onChange: (value: boolean) => void
   disabled?: boolean
 }) {
+  const id = useId()
   return (
-    <label className={cn(
+    <label htmlFor={id} className={cn(
       'flex items-center justify-between gap-3 rounded-lg border border-border bg-[#111111] px-3 py-2.5',
       disabled && 'opacity-55'
     )}>
       <span className="text-sm font-medium text-text">{label}</span>
       <input
+        id={id}
+        aria-label={label}
         type="checkbox"
         checked={checked}
         disabled={disabled}

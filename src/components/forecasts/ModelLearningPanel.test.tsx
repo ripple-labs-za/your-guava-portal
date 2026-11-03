@@ -50,8 +50,17 @@ describe('ModelLearningPanel', () => {
 
     expect(screen.getByText('Waiting for history')).toBeInTheDocument()
     expect(screen.getByText('Item and factor corrections: Pro')).toBeInTheDocument()
-    expect(screen.getByText(/Item and factor corrections are on the Pro plan/)).toBeInTheDocument()
+    expect(screen.getByText(/Overall correction on; per-factor and per-item learning on Pro\./)).toBeInTheDocument()
     expect(screen.getAllByText('On the Pro plan.')).toHaveLength(2)
+  })
+
+  // W-04: below Pro the stored learning switch is a plan default the engine ignores, so it never reads as Off.
+  it('shows the overall correction as on below Pro even when the stored switch is off', () => {
+    render(<ModelLearningPanel sources={[]} settings={{ ...settings, learning: { enabled: false } }} entitlements={lockedEntitlements} />)
+
+    expect(screen.queryByText('Off')).not.toBeInTheDocument()
+    expect(screen.queryByText(/disabled in factor rules/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Waiting for history')).toBeInTheDocument()
   })
 
   // #116: a missing entitlement is locked, never unlocked by default.
@@ -72,11 +81,20 @@ describe('ModelLearningPanel', () => {
     expect(screen.queryByText('Payday')).not.toBeInTheDocument()
   })
 
-  it('reports learning switched off in factor rules', () => {
+  // On Pro the stored switch is the owner's choice (W-04), so switching it off reads as Off.
+  it('reports learning switched off in factor rules on Pro', () => {
+    const proEntitlements: ForecastFactorEntitlements = {
+      ...lockedEntitlements,
+      plan: 'pro',
+      factors: [{ ...lockedEntitlements.factors[0], unlocked: true }],
+      unlockedKeys: ['learning'],
+      lockedKeys: [],
+    }
     render(
       <ModelLearningPanel
         sources={[]}
         settings={{ ...settings, learning: { enabled: false } }}
+        entitlements={proEntitlements}
       />
     )
 

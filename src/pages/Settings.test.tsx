@@ -951,18 +951,16 @@ describe('Settings', () => {
       expect(mockPut).not.toHaveBeenCalled()
     })
 
-    it('says plainly that weather needs coordinates rather than calling them optional', async () => {
+    // W-06: since F-2 the weather is looked up by the cafe's city, so coordinates are optional and the city matters.
+    it('says the city is enough for weather and coordinates are optional', async () => {
       renderWithAuth(<Settings />)
       await userEvent.click(
         await screen.findByRole('button', { name: /edit cafe details/i })
       )
 
-      // They are the on/off switch for the product's headline capability, not a
-      // precision refinement: forecast.service gates the whole weather factor on
-      // Number.isFinite(lat) && Number.isFinite(lng).
-      expect(
-        screen.getByText(/weather.*(off|unavailable|not).*until/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Weather uses your city when coordinates are blank/)).toBeInTheDocument()
+      expect(screen.getByText('Forecast coordinates (optional)')).toBeInTheDocument()
+      expect(screen.getByLabelText('City (used for weather)')).toBeInTheDocument()
     })
   })
   it('opens the cafe editor when sent here to set the location', async () => {

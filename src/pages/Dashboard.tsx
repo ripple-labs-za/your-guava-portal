@@ -699,7 +699,7 @@ export default function Dashboard() {
         isAwaitingHistory
           ? 'Not enough history for this day yet'
           : tradingDayAvg != null
-            ? `Avg: ${formatZAR(tradingDayAvg)}/day`
+            ? `This week's average: ${formatZAR(tradingDayAvg)}/day`
             : undefined,
       icon: TrendingUp,
       accent: '#4DA63B',

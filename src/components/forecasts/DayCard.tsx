@@ -191,7 +191,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
             )}
             {mode === 'plan' && !isNeutral && (
               <p className={`text-xs ${revDeltaColor}`}>
-                {deltaPrefix}{delta.toFixed(0)}% vs avg
+                {deltaPrefix}{delta.toFixed(0)}% vs this week's average
               </p>
             )}
             {mode === 'plan' && isNeutral && weekAvg > 0 && (
@@ -223,7 +223,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                       <span className="text-muted text-[10px]">
                         Predicted: {item.predictedQty}
                       </span>
-                      {item.suggestedStock != null && (
+                      {item.suggestedStock != null && item.suggestedStock !== item.predictedQty && (
                         <span className="text-muted text-[10px]">
                           Suggested stock: {item.suggestedStock}
                         </span>

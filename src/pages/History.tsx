@@ -26,7 +26,6 @@ import type { ForecastFactorEntitlements, ForecastFactorSettings, ForecastHistor
 import { formatAccuracyPercent as formatPercent, historyAccuracyDetail, NOT_COUNTED_REASON } from '@/lib/historyAccuracy'
 import { parseDateOnly } from '@/lib/date'
 import {
-  isLoadSheddingAvailable,
   isWeatherAvailable,
   weatherUnavailableReason,
 } from '@/lib/forecastSignals'
@@ -72,26 +71,14 @@ function weatherLabel(row: ForecastHistoryRow) {
   return `${weatherTempLabel(weather)}, ${weather.condition}${rain}`
 }
 
+// W-10: a chip is a factor that changed this day's figure (the stored active factors), never a raw calendar
+// signal. A Starter day that is a payday showed "Payday" while payday was locked and had no effect.
 function factorLabels(row: ForecastHistoryRow) {
   const labels = new Map<string, string>()
-
   for (const factor of row.factorSummary || []) {
     if (!factor.label) continue
     labels.set(factor.key, factor.effect ? `${factor.label} ${factor.effect}` : factor.label)
   }
-
-  if (row.signals.isPublicHoliday) labels.set('publicHoliday', 'Public holiday')
-  if (row.signals.isSchoolHoliday) labels.set('schoolHoliday', 'School holiday')
-  if (row.signals.isPayday) labels.set('paydaySignal', 'Payday')
-  if (isLoadSheddingAvailable(row.signals) && row.signals.loadSheddingStage > 0) {
-    labels.set('loadSheddingSignal', `Stage ${row.signals.loadSheddingStage}`)
-  } else if (!isLoadSheddingAvailable(row.signals)) {
-    labels.set('loadSheddingUnavailable', 'Load shedding unavailable')
-  }
-  for (const event of row.signals.events || []) {
-    labels.set(`event-${event.name}`, event.name)
-  }
-
   return [...labels.values()]
 }
 
