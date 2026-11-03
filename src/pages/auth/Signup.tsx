@@ -213,9 +213,8 @@ export default function Signup() {
               <p className="text-muted text-xs mt-0.5">Prep list</p>
             </div>
             <div className="w-px h-8 bg-white/10 mt-1.5" />
-            <div className="text-center whitespace-nowrap">
-              <p className="text-guava-yellow text-2xl font-bold">Live</p>
-              <p className="text-muted text-xs mt-0.5">Weather signals</p>
+            <div className="text-center max-w-44">
+              <p className="text-guava-yellow text-sm font-semibold">Weather, holidays and events in every forecast</p>
             </div>
           </div>
         </div>
