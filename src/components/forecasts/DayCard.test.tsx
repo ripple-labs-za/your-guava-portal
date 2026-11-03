@@ -47,6 +47,28 @@ describe('DayCard', () => {
     expect(screen.getByText(/24°C/)).toBeInTheDocument()
   })
 
+  // W-13: the plan chips use the same words as Today and Factors (the shared factor classifier).
+  it('names an unreachable weather or load-shedding provider as Not connected', () => {
+    const forecast = {
+      ...mockForecast,
+      _id: 'f-nc',
+      date: '2026-04-01',
+      signals: {
+        ...mockForecast.signals,
+        weather: { available: false, condition: 'Unavailable', unavailableReason: 'Weather service is not configured' },
+        loadSheddingStage: null,
+        loadSheddingAvailable: false,
+        loadSheddingUnavailableReason: 'Not connected: the load-shedding provider is not set up',
+      },
+    } as unknown as Forecast
+
+    render(<DayCard forecast={forecast} weekAvg={20000} mode="plan" onClick={() => {}} />)
+
+    expect(screen.getByText(/Weather: Not connected/)).toBeInTheDocument()
+    expect(screen.getByText(/Load shedding: Not connected/)).toBeInTheDocument()
+    expect(screen.queryByText(/Weather unavailable|Load shedding unavailable/)).not.toBeInTheDocument()
+  })
+
   it('uses the explicit cafe-local dateKey instead of the UTC instant prefix', () => {
     render(
       <DayCard

@@ -1,4 +1,5 @@
 import { weatherTempLabel } from '@/lib/forecastSignals'
+import { factorUnavailableLabel } from './factorState'
 import { Cloud, Zap, Calendar, Banknote, Megaphone, ChevronRight } from 'lucide-react'
 import { ClosedDayNotice } from './ClosedDayNotice'
 import { Badge } from '@/components/ui/badge'
@@ -334,7 +335,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                 `${weatherTempLabel(signals.weather)} · ${signals.weather.condition}`
               ) : (
                 <>
-                  Weather unavailable
+                  Weather: {factorUnavailableLabel(weatherUnavailableReason(signals.weather)) ?? 'Not available'}
                   {/* The reason was in a `title` on a non-focusable badge —
                       mouse-hover only, so unreachable on a phone or by a
                       screen reader. */}
@@ -378,7 +379,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                 title={loadSheddingUnavailableReason(signals)}
               >
                 <Zap className="w-2.5 h-2.5 mr-1" />
-                Load shedding unavailable
+                Load shedding: {factorUnavailableLabel(loadSheddingUnavailableReason(signals)) ?? 'Not available'}
                 <span className="sr-only">: {loadSheddingUnavailableReason(signals)}</span>
               </Badge>
             )}
@@ -408,7 +409,7 @@ export function DayCard({ forecast, weekAvg, mode = 'plan', onClick }: Props) {
                 `${weatherTempLabel(signals.weather)} · ${signals.weather.condition}`
               ) : (
                 <>
-                  Weather unavailable
+                  Weather: {factorUnavailableLabel(weatherUnavailableReason(signals.weather)) ?? 'Not available'}
                   {/* The reason was in a `title` on a non-focusable badge —
                       mouse-hover only, so unreachable on a phone or by a
                       screen reader. */}

@@ -1,5 +1,5 @@
 import { weatherTempLabel } from '@/lib/forecastSignals'
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { ClosedDayNotice } from '@/components/forecasts/ClosedDayNotice'
 import { Link } from 'react-router'
 import {
@@ -883,36 +883,29 @@ export default function Factors() {
 
                   {/* Focusable: nothing inside is, so the columns past the
                       viewport were unreachable without a mouse. */}
-                  <div
-                    className="overflow-auto rounded-lg border border-border"
-                    role="region"
-                    aria-label="Live factors by day, scrollable"
-                    tabIndex={0}
-                  >
-                    <table className="w-full min-w-[760px] text-sm">
-                      <thead className="bg-[#111111] text-left text-xs uppercase tracking-wide text-[#9E9E9E]">
-                        <tr>
-                          <th className="px-3 py-2">Day</th>
-                          <th className="px-3 py-2">Forecast</th>
-                          <th className="px-3 py-2">Signals</th>
-                          <th className="px-3 py-2">Active factors</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {forecasts.map((forecast) => {
-                          const active = (forecast.factors || []).filter((factor) => factor.active)
-                          const availability = dayAvailability(forecast)
-                          const contradicted =
-                            availability === 'closed' && forecast.availability?.contradictsHistory
-                          return (
-                            <Fragment key={forecast._id}>
-                            <tr className="border-t border-border">
-                              {/* The cafe-local calendar key, as every other
-                                  forecast surface uses. */}
-                              <td className="px-3 py-3 text-text">{fmtDate(forecastDateKey(forecast))}</td>
-                              {/* R0 is only ever a real answer for a closed day.
-                                  A day still building history has no figure. */}
-                              <td className="px-3 py-3 text-muted">
+                  {/* W-12: one row per day that stacks at phone width (as Planning's day cards do) and lines up in
+                      columns from md, so nothing is clipped and no sideways scroll is needed. */}
+                  <div className="rounded-lg border border-border">
+                    <div aria-hidden="true" className="hidden grid-cols-[8rem_9rem_minmax(0,1fr)_minmax(0,1fr)] gap-3 bg-[#111111] px-3 py-2 text-left text-xs uppercase tracking-wide text-[#9E9E9E] md:grid">
+                      <span>Day</span>
+                      <span>Forecast</span>
+                      <span>Signals</span>
+                      <span>Active factors</span>
+                    </div>
+                    <ul aria-label="Live factors by day" className="divide-y divide-border text-sm">
+                      {forecasts.map((forecast) => {
+                        const active = (forecast.factors || []).filter((factor) => factor.active)
+                        const availability = dayAvailability(forecast)
+                        const contradicted =
+                          availability === 'closed' && forecast.availability?.contradictsHistory
+                        return (
+                          <li key={forecast._id} className="min-w-0 break-words px-3 py-3">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-[8rem_9rem_minmax(0,1fr)_minmax(0,1fr)] md:gap-3">
+                              {/* The cafe-local calendar key, as every other forecast surface uses. */}
+                              <p className="font-medium text-text">{fmtDate(forecastDateKey(forecast))}</p>
+                              {/* R0 is only ever a real answer for a closed day. A day still building history has no figure. */}
+                              <div className="text-muted">
+                                <span className="mr-2 text-xs text-[#9E9E9E] md:hidden">Forecast</span>
                                 {availability === 'awaiting_history' ? (
                                   <Badge variant="outline">Building history</Badge>
                                 ) : availability === 'closed' ? (
@@ -920,13 +913,15 @@ export default function Factors() {
                                 ) : (
                                   formatZAR(Number(forecast.totalPredictedRevenue || 0))
                                 )}
-                              </td>
-                              <td className="px-3 py-3 text-muted">
+                              </div>
+                              <div className="min-w-0 text-muted">
+                                <span className="mr-2 text-xs text-[#9E9E9E] md:hidden">Signals</span>
                                 {isWeatherAvailable(forecast.signals.weather)
                                   ? `${weatherTempLabel(forecast.signals.weather)} - ${forecast.signals.weather.condition}`
                                   : weatherUnavailableReason(forecast.signals.weather)}
-                              </td>
-                              <td className="px-3 py-3">
+                              </div>
+                              <div className="min-w-0">
+                                <span className="mb-1 block text-xs text-[#9E9E9E] md:hidden">Active factors</span>
                                 <div className="flex flex-wrap gap-1.5">
                                   {active.length === 0 ? (
                                     <span className="text-xs text-muted">None</span>
@@ -938,23 +933,18 @@ export default function Factors() {
                                     ))
                                   )}
                                 </div>
-                              </td>
-                            </tr>
-                            {/* Spans the row rather than squeezing into the
-                                Forecast cell, so a long reason cannot widen a
-                                column that every other day has to share. */}
+                              </div>
+                            </div>
+                            {/* Full width under the day, so a long reason wraps instead of being cut mid-word. */}
                             {contradicted && (
-                              <tr className="border-t border-border/40">
-                                <td colSpan={4} className="px-3 pb-3">
-                                  <ClosedDayNotice availability={forecast.availability} compact />
-                                </td>
-                              </tr>
+                              <div className="mt-2">
+                                <ClosedDayNotice availability={forecast.availability} compact />
+                              </div>
                             )}
-                            </Fragment>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </div>
                 </div>
               </div>
