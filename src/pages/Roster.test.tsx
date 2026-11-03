@@ -51,6 +51,13 @@ function getCurrentMonday() {
 }
 
 describe('Roster', () => {
+  it('links the empty staff sidebar to the first step in Staff', async () => {
+    mockGet.mockResolvedValue({ data: { shifts: [], staff: [], summaries: [] } })
+    render(<Roster />)
+    await screen.findByText('No staff found')
+    expect(screen.getByRole('link', { name: 'Add staff in Staff' })).toHaveAttribute('href', '/staff')
+  })
+
   beforeEach(() => {
     auth.isOwner = true
     vi.clearAllMocks()

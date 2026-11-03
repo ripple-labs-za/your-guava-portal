@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Link } from 'react-router'
 import {
   ChevronLeft,
   ChevronRight,
@@ -247,7 +248,10 @@ function StaffSidebar({
             })}
           </div>
         ) : (
-          <p className="text-muted text-xs text-center py-4">No staff found</p>
+          <div className="text-muted text-xs text-center py-4 space-y-2">
+            <p>No staff found</p>
+            <Link to="/staff" className="inline-block text-guava-green underline underline-offset-2">Add staff in Staff</Link>
+          </div>
         )}
       </CardContent>
     </Card>
