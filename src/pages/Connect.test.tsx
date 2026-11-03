@@ -55,6 +55,32 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 describe('Connect', () => {
+  it.each([0, 1])('excludes saved closed Sundays but keeps %i genuine open-day gaps', async (gaps) => {
+    const base = mockGet.getMockImplementation()!
+    const days = Array.from({ length: 30 }, (_, index) => {
+      const date = new Date()
+      date.setHours(12, 0, 0, 0)
+      date.setDate(date.getDate() - (30 - index))
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      return { date: key, weekday: date.getDay(), count: 1 }
+    }).filter((day) => day.weekday !== 0).slice(gaps)
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/cafe/me') return Promise.resolve({ data: { cafe: { name: 'Weekday Cafe', tradingHoursSaved: true,
+        tradingHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isOpen: dayOfWeek !== 0, openTime: '08:00', closeTime: '17:00' })),
+      } } })
+      if (url === '/transactions/status') return Promise.resolve({ data: { data: {
+        latestDataDate: days[days.length - 1]?.date, earliestDataDate: days[0]?.date, daysSinceLatest: 1,
+        totalTransactions: days.length, coverage30d: days,
+      } } })
+      return base(url)
+    })
+    render(<Connect />)
+    expect(await screen.findByText(gaps === 0
+      ? /No missing scheduled trading days in the last 30 completed days/
+      : /1 scheduled trading days in the last 30 completed days have no data/)).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem').some((item) => /closed in saved trading hours/.test(item.getAttribute('aria-label') || ''))).toBe(true)
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()

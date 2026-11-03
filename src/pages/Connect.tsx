@@ -23,6 +23,7 @@ import { confirmUpload as confirmUploadRequest, type ConfirmUploadResponse } fro
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 import { addLocalDays, parseDateOnly, toLocalDateOnly } from '@/lib/date'
+import type { Cafe, TradingHoursEntry } from '@/types'
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 const MAX_UPLOAD_ROWS = 10_000
@@ -245,6 +246,7 @@ function monthsSpan(earliest: string, latest: string): string {
 
 function DataStatusCard({
   status,
+  tradingHours,
   loading,
   error,
   uploadDisabled,
@@ -252,6 +254,7 @@ function DataStatusCard({
   onUploadClick,
 }: {
   status: DataStatus | null
+  tradingHours: TradingHoursEntry[]
   loading: boolean
   error: boolean
   uploadDisabled: boolean
@@ -262,7 +265,9 @@ function DataStatusCard({
   const today = toLocalDateOnly(new Date())
   const coverageMap = new Map<string, number>()
   status?.coverage30d.forEach((c) => coverageMap.set(c.date, c.count))
-  const emptyDayCount = days30.filter((day) => !(coverageMap.get(day) ?? 0)).length
+  const closedWeekdays = new Set(tradingHours.filter((day) => day.isOpen === false).map((day) => day.dayOfWeek))
+  const isScheduledClosed = (day: string) => closedWeekdays.has(parseDateOnly(day).getDay())
+  const emptyDayCount = days30.filter((day) => !isScheduledClosed(day) && !(coverageMap.get(day) ?? 0)).length
   const todayCount = coverageMap.get(today) ?? 0
 
   const daysSince = status?.daysSinceLatest ?? null
@@ -348,7 +353,9 @@ function DataStatusCard({
                 {days30.map((day) => {
                   const count = coverageMap.get(day)
                   const hasData = count !== undefined && count > 0
-                  const dayLabel = `${formatDate(day)}: ${count ?? 0} transactions`
+                  const dayLabel = !hasData && isScheduledClosed(day)
+                    ? `${formatDate(day)}: closed in saved trading hours`
+                    : `${formatDate(day)}: ${count ?? 0} transactions`
                   return (
                     <div
                       key={day}
@@ -357,7 +364,7 @@ function DataStatusCard({
                       title={dayLabel}
                       className={cn(
                         'w-3 h-6 rounded-sm cursor-default',
-                        hasData ? 'bg-guava-red' : 'bg-border'
+                        hasData ? 'bg-guava-red' : isScheduledClosed(day) ? 'border border-dashed border-border' : 'bg-border'
                       )}
                     />
                   )
@@ -378,7 +385,11 @@ function DataStatusCard({
                   neither readable by a screen reader nor safe for a colour
                   vision deficiency. This is the text equivalent. */}
               <p className="text-muted text-xs mt-1.5">
-                {emptyDayCount === 0
+                {closedWeekdays.size > 0
+                  ? emptyDayCount === 0
+                    ? 'No missing scheduled trading days in the last 30 completed days. Today is still in progress.'
+                    : `${emptyDayCount} scheduled trading days in the last 30 completed days have no data. Saved closed days are excluded. Today is still in progress.`
+                  : emptyDayCount === 0
                   ? 'All 30 completed days have data. Today is still in progress.'
                   : `${emptyDayCount} of the last 30 completed days have no data. Today is still in progress.`}
               </p>
@@ -414,6 +425,7 @@ export default function Connect() {
   const { isOwner } = useAuth()
   // ── Data status state ────────────────────────────────────────────
   const [dataStatus, setDataStatus] = useState<DataStatus | null>(null)
+  const [tradingHours, setTradingHours] = useState<TradingHoursEntry[]>([])
   const [dataStatusLoading, setDataStatusLoading] = useState(true)
   const [dataStatusError, setDataStatusError] = useState(false)
 
@@ -517,7 +529,12 @@ export default function Connect() {
     try {
       setDataStatusLoading(true)
       setDataStatusError(false)
-      const { data } = await api.get<{ success: boolean; data: DataStatus }>('/transactions/status', { signal })
+      const [{ data }, cafeResponse] = await Promise.all([
+        api.get<{ success: boolean; data: DataStatus }>('/transactions/status', { signal }),
+        api.get<{ cafe: Cafe }>('/cafe/me', { signal }).catch(() => null),
+      ])
+      const cafe = cafeResponse?.data?.cafe
+      setTradingHours(cafe?.tradingHoursSaved === false ? [] : cafe?.tradingHours || [])
       setDataStatus(data.data)
     } catch {
       if (!signal?.aborted) {
@@ -698,6 +715,7 @@ export default function Connect() {
         {/* ── Data Status Card ──────────────────────────────────────────── */}
         <DataStatusCard
           status={dataStatus}
+          tradingHours={tradingHours}
           loading={dataStatusLoading}
           error={dataStatusError}
           uploadDisabled={wizardOpen}
