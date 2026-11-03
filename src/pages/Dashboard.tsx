@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ClosedDayNotice } from '@/components/forecasts/ClosedDayNotice'
 import { SetupChecklistCard, type SetupItem } from '@/components/SetupChecklistCard'
+import { CafeSetupPrompt } from '@/components/CafeSetupPrompt'
 import { Link } from 'react-router'
 import {
   TrendingUp,
@@ -551,6 +552,7 @@ export default function Dashboard() {
   const [statsLoadFailed, setStatsLoadFailed] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [hasData, setHasData] = useState(true)
+  const [cafeSetup, setCafeSetup] = useState<{ locationSet: boolean; hoursSet: boolean } | null>(null)
   const [selectedDayIdx, setSelectedDayIdx] = useState(0)
   const [reloadToken, setReloadToken] = useState(0)
 
@@ -590,6 +592,12 @@ export default function Dashboard() {
 
         const loadedStats = statsRes.res?.data?.stats || null
         const cafe = cafeRes?.data?.cafe
+        setCafeSetup(cafe ? {
+          locationSet: Boolean(cafe.location?.address?.trim() || cafe.location?.city?.trim() ||
+            (Number.isFinite(cafe.location?.lat) && Number.isFinite(cafe.location?.lng))),
+          hoursSet: cafe.tradingHoursSaved === true ||
+            (cafe.tradingHoursSaved !== false && (cafe.tradingHours?.length || 0) > 0),
+        } : null)
         const nextLocationLabel = [cafe?.location?.address, cafe?.location?.city].filter(Boolean).join(', ')
 
         setWeekForecasts(loadedWeek)
@@ -647,7 +655,7 @@ export default function Dashboard() {
     const weatherFix = anyDay && !isWeatherAvailable(anyDay.signals.weather)
       ? signalFix(weatherUnavailableReason(anyDay.signals.weather))
       : null
-    if (weatherFix) {
+    if (weatherFix && cafeSetup?.locationSet !== false) {
       items.push({
         id: 'location',
         label: "Set your cafe's location so weather can adjust forecasts",
@@ -655,7 +663,7 @@ export default function Dashboard() {
       })
     }
     const contradicted = weekForecasts.find((f) => f.availability?.contradictsHistory)
-    if (contradicted) {
+    if (contradicted && cafeSetup?.hoursSet !== false) {
       // Name the weekday. "A day is set to closed" makes the owner hunt for
       // which switch, on a screen with seven of them.
       const dayName = parseDateOnly(forecastDateKey(contradicted)).toLocaleDateString('en-ZA', {
@@ -668,7 +676,7 @@ export default function Dashboard() {
       })
     }
     return items
-  }, [weekForecasts, fallbackForecast])
+  }, [weekForecasts, fallbackForecast, cafeSetup?.locationSet, cafeSetup?.hoursSet])
 
   const isClosedDay = activeForecast?.availability?.status === 'closed'
   const isAwaitingHistory = activeForecast?.availability?.status === 'insufficient_data'
@@ -735,10 +743,13 @@ export default function Dashboard() {
     },
   ]
 
+  const setupPrompt = cafeSetup ? <CafeSetupPrompt {...cafeSetup} /> : null
+
   // Empty state
   if (!isLoading && !hasData) {
     return (
       <AppLayout title="Today">
+        {setupPrompt}
         <div className="flex flex-col items-center justify-center min-h-100 text-center">
           <div className="w-14 h-14 rounded-xl bg-surface border border-border flex items-center justify-center mb-4">
             <AlertTriangle className="w-7 h-7 text-muted" />
@@ -755,6 +766,7 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Today">
+      {setupPrompt}
       {/* KPI Row */}
       <div
         className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-4 mb-6"
