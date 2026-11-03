@@ -28,6 +28,18 @@ describe('ModifierBreakdown', () => {
     expect(screen.queryByText(/Weather.*evaluated and had no effect/)).not.toBeInTheDocument()
   })
 
+  it('never counts a weather plan refusal or an empty provider answer as evaluated', () => {
+    renderBreakdown({
+      factors: [
+        factor('weather', 'Weather', 'Weather not available on the weather plan'),
+        factor('loadShedding', 'Load shedding', 'Load-shedding data unavailable'),
+      ],
+    } as Forecast)
+    expect(screen.getByText('Not available: Weather not available on the weather plan. Left out of this forecast.')).toBeInTheDocument()
+    expect(screen.getByText('Not available: Load-shedding data unavailable. Left out of this forecast.')).toBeInTheDocument()
+    expect(screen.queryByText(/evaluated and had no effect/)).not.toBeInTheDocument()
+  })
+
   it('offers the location fix when weather needs the cafe location, and says when weather is not published yet', () => {
     renderBreakdown({ factors: [factor('weather', 'Weather', 'Location needed')] } as Forecast)
     expect(screen.getByText('Location needed. Left out of this forecast.')).toBeInTheDocument()

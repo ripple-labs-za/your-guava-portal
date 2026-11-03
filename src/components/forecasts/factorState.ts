@@ -39,6 +39,11 @@ const UNAVAILABLE_REASONS: { match: RegExp; label: string }[] = [
     match: /not available yet|has not published|publishes at most|no stage for this area|No weather stored|not recorded for past/i,
     label: 'Not available yet',
   },
+  // The rest of the engine's no-data reasons: a plan refusal, an empty or implausible provider answer, the fallbacks.
+  {
+    match: /data (is )?unavailable|not available on the weather plan|provider returned (no data|implausible)|date is invalid/i,
+    label: 'Not available',
+  },
 ]
 
 /** The owner-facing label for a reason meaning the factor could not be evaluated, or null for an ordinary reason. */
