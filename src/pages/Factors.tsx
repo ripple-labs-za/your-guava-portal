@@ -20,6 +20,7 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
 import { EventEditForm } from '@/components/forecasts/EventEditForm'
+import { HowForecastWorks } from '@/components/forecasts/HowForecastWorks'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -752,6 +753,7 @@ export default function Factors() {
           </div>
         )}
 
+        <HowForecastWorks className="mb-4" />
         {entitlements && (
           <Card>
             <CardContent className="flex flex-col gap-3 pt-5 lg:flex-row lg:items-center lg:justify-between">

@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import type { Forecast } from '@/types'
 import { signalFix } from '@/lib/forecastSignals'
 import { classifyForecastFactors, formatPlan } from './factorState'
+import { HowForecastWorks } from './HowForecastWorks'
 
 const ICONS: Record<string, ReactNode> = {
   weather: <Cloud className="w-3.5 h-3.5" />,
@@ -145,6 +146,8 @@ export function ModifierBreakdown({ forecast, basis }: Props) {
           so {labels.length === 1 ? 'it was' : 'they were'} never evaluated for this day.
         </p>
       ))}
+
+      <HowForecastWorks className="mt-3" />
     </div>
   )
 }
