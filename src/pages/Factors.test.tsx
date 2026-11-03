@@ -291,6 +291,50 @@ describe('Factors', () => {
     mockPut.mockResolvedValue({ data: { settings, entitlements } })
   })
 
+  // ISSUES #96: an event can be edited in place through PUT /events/:id.
+  it('edits an event in place and shows the saved version', async () => {
+    mockPut.mockResolvedValueOnce({ data: { event: {
+      _id: 'event1', name: 'Saturday Market Day', date: '2099-06-13', impact: 'medium', recurring: true,
+    } } })
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: /events/i }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit event Saturday Market' }))
+    const form = screen.getByRole('form', { name: 'Edit event Saturday Market' })
+    const name = within(form).getByLabelText('Event name')
+    await userEvent.clear(name)
+    await userEvent.type(name, 'Saturday Market Day')
+    await userEvent.selectOptions(within(form).getByLabelText('Expected impact'), 'medium')
+    await userEvent.click(within(form).getByLabelText('Repeats every year on this date'))
+    await userEvent.click(within(form).getByRole('button', { name: 'Save event' }))
+
+    await waitFor(() => expect(mockPut).toHaveBeenCalledWith('/events/event1', {
+      name: 'Saturday Market Day', date: '2099-06-06', recurring: true, impact: 'medium', impactPct: '',
+    }))
+    // The page then re-reads /events (the fixture still returns the original), so the request is the proof.
+    expect(await screen.findByText('Event updated.')).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Edit event Saturday Market' })).not.toBeInTheDocument()
+  })
+
+  // ISSUES #72: a closure is labelled by its closure type, never by the preset +20% demand uplift.
+  it('labels closures by their type rather than a demand uplift', async () => {
+    const base = mockGet.getMockImplementation() as (url: string) => Promise<unknown>
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/events') {
+        return Promise.resolve({ data: { events: [
+          { _id: 'c1', name: 'Staff training', date: '2099-06-06', type: 'closure', impact: 'medium', recurring: false },
+          { _id: 'c2', name: 'Plumber', date: '2099-06-07', type: 'partial_closure', impact: 'medium', recurring: false,
+            closureWindow: { startTime: '08:00', endTime: '11:00' } },
+        ] } })
+      }
+      return base(url)
+    })
+    renderWithAuth(<Factors />)
+    await userEvent.click(await screen.findByRole('tab', { name: /events/i }))
+    expect(await screen.findByText('Closed all day')).toBeInTheDocument()
+    expect(screen.getByText('Partly closed 08:00-11:00')).toBeInTheDocument()
+    expect(screen.queryByText('+20%')).not.toBeInTheDocument()
+  })
+
   it('does not present failed live-factor requests as verified empty data', async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes('/cafe/me')) return Promise.resolve({ data: { cafe: { name: 'Test Cafe' } } })

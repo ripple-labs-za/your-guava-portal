@@ -13,11 +13,13 @@ import {
   Save,
   SlidersHorizontal,
   Trash2,
+  Pencil,
   Upload,
   Zap,
 } from 'lucide-react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
+import { EventEditForm } from '@/components/forecasts/EventEditForm'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,6 +60,12 @@ function nextFactorTab(current: FactorTab, key: string): FactorTab | null {
     : key === 'End' ? last
     : null
   return to == null ? null : FACTOR_TABS[to].key
+}
+
+// #72: the window of a partial closure, e.g. " 08:00-11:00", when the API sends one.
+const closureWindowLabel = (event: LocalEvent) => {
+  const window = (event as LocalEvent & { closureWindow?: { startTime?: string; endTime?: string } }).closureWindow
+  return window?.startTime && window?.endTime ? ` ${window.startTime}-${window.endTime}` : ''
 }
 
 const fmtPct = (value?: number | null) => {
@@ -390,6 +398,7 @@ export default function Factors() {
   const [eventSaving, setEventSaving] = useState(false)
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
   const [confirmingEventId, setConfirmingEventId] = useState<string | null>(null)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [weekRequestFailed, setWeekRequestFailed] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
   const [supportingDataWarning, setSupportingDataWarning] = useState('')
@@ -1120,7 +1129,20 @@ export default function Factors() {
                       <div className="space-y-2">
                         {sortedEvents.map((event) => {
                           const isPast = !event.recurring && eventDayKey(event) < todayKey
-                          return (
+                          return editingEventId === event._id ? (
+                            <EventEditForm
+                              key={event._id}
+                              event={event}
+                              onCancel={() => setEditingEventId(null)}
+                              onError={(message) => showNotice('error', message)}
+                              onSaved={async (saved) => {
+                                setEvents((current) => current.map((entry) => (entry._id === saved._id ? saved : entry)))
+                                setEditingEventId(null)
+                                showNotice('success', 'Event updated.')
+                                await load()
+                              }}
+                            />
+                          ) : (
                             <div
                               key={event._id}
                               className={cn(
@@ -1131,7 +1153,13 @@ export default function Factors() {
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-sm font-medium text-text">{event.name}</p>
-                                  <Badge variant="secondary">{fmtPct(event.impactPct ?? defaultEventPct(event.impact))}</Badge>
+                                  {event.type === 'closure' ? (
+                                    <Badge variant="destructive">Closed all day</Badge>
+                                  ) : event.type === 'partial_closure' ? (
+                                    <Badge variant="warning">Partly closed{closureWindowLabel(event)}</Badge>
+                                  ) : (
+                                    <Badge variant="secondary">{fmtPct(event.impactPct ?? defaultEventPct(event.impact))}</Badge>
+                                  )}
                                   {event.recurring && <Badge variant="secondary">Repeats yearly</Badge>}
                                   {isPast && <Badge variant="outline">Past</Badge>}
                                 </div>
@@ -1162,6 +1190,19 @@ export default function Factors() {
                                   </Button>
                                 </div>
                               ) : (
+                                <div className="flex shrink-0 items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Edit event ${event.name}`}
+                                  disabled={!eventsUnlocked || deletingEventId != null}
+                                  onClick={() => {
+                                    setConfirmingEventId(null)
+                                    setEditingEventId(event._id)
+                                  }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -1174,6 +1215,7 @@ export default function Factors() {
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
+                                </div>
                               )}
                             </div>
                           )
