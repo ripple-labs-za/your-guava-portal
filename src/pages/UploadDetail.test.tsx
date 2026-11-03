@@ -304,6 +304,7 @@ describe('UploadDetail', () => {
     renderUploadDetail()
 
     await waitFor(() => expect(screen.getByText(/Flat White/)).toBeInTheDocument())
+    expect(screen.getByText('R42')).toBeInTheDocument()
     expect(screen.getByText(/Showing 1-50 of 101/i)).toBeInTheDocument()
     expect(screen.getByText(/Page 1 of 3/i)).toBeInTheDocument()
 

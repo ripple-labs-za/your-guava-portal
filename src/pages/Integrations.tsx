@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
+import { formatZAR } from '@/lib/money'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -351,9 +352,7 @@ function ProviderCard({
                 <CheckCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   Sent{' '}
-                  {syncResult.summary.totalRevenue != null
-                    ? `R${syncResult.summary.totalRevenue.toLocaleString('en-ZA')}`
-                    : '—'}
+                  {formatZAR(syncResult.summary.totalRevenue)}
                   {syncResult.summary.transactionCount != null
                     ? ` (${syncResult.summary.transactionCount} txns)`
                     : ''}{' '}

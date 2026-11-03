@@ -10,6 +10,7 @@ import { ColumnMappingWizard } from '@/components/upload/ColumnMappingWizard'
 import { statusLabel, uploadSourceLabel } from '@/components/upload/UploadHistoryCard'
 import { deleteUploadConsequence, overlapNotice, readmissionOutcome, skippedRowSentences } from '@/lib/uploadMessages'
 import api from '@/lib/api'
+import { formatZAR } from '@/lib/money'
 import { API_ERROR_COPY, readApiError } from '@/lib/apiErrors'
 import { confirmUpload, confirmationKeyFor, severePartialImportDetails } from '@/lib/uploads'
 import type {
@@ -474,7 +475,7 @@ export default function UploadDetail() {
                           <td className="py-2 pr-4 whitespace-nowrap">{new Date(r.date).toLocaleString('en-ZA')}</td>
                           <td className="pr-4 whitespace-nowrap">{r.receiptId || '—'}</td>
                           <td className="min-w-48 pr-4">{(r.items ?? []).map((i) => `${i.quantity} × ${i.name}`).join(', ')}</td>
-                          <td className="text-right whitespace-nowrap">R{r.total?.toFixed(2)}</td>
+                          <td className="text-right whitespace-nowrap">{formatZAR(r.total)}</td>
                         </tr>
                       ))}
                     </tbody>
