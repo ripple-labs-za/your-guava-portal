@@ -704,9 +704,8 @@ export function AccountSettingsContent({ section = 'all' }: { section?: AccountS
     : null
   const { access, renewable, trialing, periodSummary, graceHeading, graceDetail, statusLabel } = billingPageState(account?.organization, isOwner)
 
-  // Read through the router hook so it reacts when the flag is cleared after a
-  // successful payment; the raw window.location read never did.
-  const billingRequired = searchParams.get('billing') === 'required'
+  // Billing guidance follows the server's current access, including visits without a redirect flag.
+  const billingRequired = access?.allowed === false
   const credits = account?.usage.guavaCredits ?? account?.usage.aiCredits
   const creditTotal = credits ? credits.included + credits.bonus : 0
   // Pack sizes offered by the organisation's current plan.

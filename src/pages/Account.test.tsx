@@ -535,6 +535,21 @@ describe('Account', () => {
     expect(mockPost.mock.calls.filter(([url]) => url === '/account/checkout')).toHaveLength(1)
   })
 
+  it('shows ended billing from the server without a URL flag', async () => {
+    window.history.pushState({}, '', '/account?section=billing')
+    serveOrganization({ billingStatus: 'past_due', billingAccess: { allowed: false, status: 'past_due', readOnly: false } })
+    renderWithAuth(<Account />)
+    expect(await screen.findByText(/your billing period has ended/i)).toBeInTheDocument()
+  })
+
+  it('ignores an obsolete billing-required URL flag when server access is active', async () => {
+    window.history.pushState({}, '', '/account?section=billing&billing=required')
+    serveOrganization({ billingAccess: { allowed: true, status: 'active', readOnly: false } })
+    renderWithAuth(<Account />)
+    await screen.findByText('Guava Credits')
+    expect(screen.queryByText(/your billing period has ended/i)).not.toBeInTheDocument()
+  })
+
   it.each([
     { label: '202 initializing', httpStatus: 202, paymentStatus: 'initializing', notice: /Secure checkout is still being prepared/i },
     { label: 'unpaid 200', httpStatus: 200, paymentStatus: 'pending', notice: /Checkout has not confirmed this payment yet/i },
