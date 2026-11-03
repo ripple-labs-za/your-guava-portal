@@ -114,7 +114,8 @@ describe('Team', () => {
       return Promise.resolve({ data: {} })
     })
     mockPost.mockRejectedValueOnce({ response: { status, data: {
-      message: status === 402 ? 'Seat limit reached on the Starter plan. Upgrade your plan or remove a member.' : 'Temporary failure',
+      code: status === 402 ? 'SEAT_LIMIT_REACHED' : undefined,
+      message: status === 402 ? 'Your plan has no available team seats.' : 'Temporary failure',
     } } })
     renderWithAuth(<Team />)
     await userEvent.click((await screen.findAllByRole('button', { name: /^add member$/i }))[0])
@@ -134,6 +135,25 @@ describe('Team', () => {
     } else {
       expect(within(dialog).queryByRole('link', { name: 'Review billing' })).not.toBeInTheDocument()
     }
+  })
+
+  it('does not infer a seat-limit refusal from another error message', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === '/team') return Promise.resolve({ data: { members: [], seats: { plan: 'starter', used: 1, included: 2, remaining: 1 } } })
+      if (url === '/cafe/list') return Promise.resolve({ data: { cafes: [{ _id: 'c1', name: 'One Cafe' }] } })
+      return Promise.resolve({ data: {} })
+    })
+    mockPost.mockRejectedValueOnce({ response: { status: 402, data: {
+      code: 'BILLING_REQUIRED', message: 'Seat limit reached is unrelated to this billing refusal.',
+    } } })
+    renderWithAuth(<Team />)
+    await userEvent.click((await screen.findAllByRole('button', { name: /^add member$/i }))[0])
+    const dialog = screen.getByRole('dialog', { name: 'Add team member' })
+    await userEvent.type(within(dialog).getByLabelText('Name'), 'Unsent Manager')
+    await userEvent.type(within(dialog).getByLabelText('Email'), 'unsent@example.com')
+    await userEvent.click(within(dialog).getByRole('button', { name: /^add member$/i }))
+    await screen.findByText('Seat limit reached is unrelated to this billing refusal.')
+    expect(within(dialog).queryByRole('link', { name: 'Review members' })).not.toBeInTheDocument()
   })
 
   it('renders team member list', async () => {

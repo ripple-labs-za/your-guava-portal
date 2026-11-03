@@ -531,7 +531,7 @@ export default function Team() {
       await fetchData()
     } catch (err: any) {
       const message = err?.response?.data?.message || 'Failed to add team member.'
-      showToast('error', message, err?.response?.status === 402 && /^Seat limit reached\b/.test(message))
+      showToast('error', message, err?.response?.data?.code === 'SEAT_LIMIT_REACHED')
     } finally {
       setInviting(false)
     }
@@ -545,7 +545,7 @@ export default function Team() {
       await fetchData()
     } catch (err: any) {
       const message = err?.response?.data?.message || 'Failed to resend invitation.'
-      showToast('error', message, err?.response?.status === 402 && /^Seat limit reached\b/.test(message))
+      showToast('error', message, err?.response?.data?.code === 'SEAT_LIMIT_REACHED')
     } finally {
       setInvitationActionId(null)
     }

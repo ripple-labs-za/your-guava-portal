@@ -37,6 +37,7 @@ const WAIT: ApiErrorAction = { kind: 'wait', label: 'Try again when the timer en
 const NONE: ApiErrorAction = { kind: 'none' }
 
 export const API_ERROR_COPY: Record<string, ApiErrorCopy> = {
+  SEAT_LIMIT_REACHED: { title: 'Your plan has no available team seats', body: 'Upgrade your plan or remove a member, then try again.', preferServerMessage: false, action: BILLING },
   ACCOUNTING_INTEGRATIONS_NOT_AVAILABLE: { title: 'Accounting integrations are not available yet', body: 'This connection is coming soon. Nothing was changed.', preferServerMessage: true, action: NONE },
   AI_CHAT_FAILED: { title: 'The AI analyst could not finish this answer', body: 'Anything above is what arrived before it stopped.', preferServerMessage: true, action: RETRY },
   AI_CHAT_INVALID_INPUT: { title: 'That question could not be sent', body: 'Shorten it or remove unusual characters, then ask again. Nothing was charged.', preferServerMessage: false, action: NONE },
