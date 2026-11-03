@@ -594,7 +594,7 @@ export default function Dashboard() {
         const cafe = cafeRes?.data?.cafe
         const hasSetupMetadata = cafe && ('location' in cafe || typeof cafe.tradingHoursSaved === 'boolean' || Array.isArray(cafe.tradingHours))
         setCafeSetup(hasSetupMetadata ? {
-          locationSet: Boolean(cafe.location?.address?.trim() || cafe.location?.city?.trim() ||
+          locationSet: Boolean(cafe.location?.city?.trim() ||
             (Number.isFinite(cafe.location?.lat) && Number.isFinite(cafe.location?.lng))),
           hoursSet: cafe.tradingHoursSaved === true ||
             (cafe.tradingHoursSaved !== false && (cafe.tradingHours?.length || 0) > 0),
