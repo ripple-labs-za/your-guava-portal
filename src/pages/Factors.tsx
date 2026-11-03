@@ -20,6 +20,7 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ModelLearningPanel } from '@/components/forecasts/ModelLearningPanel'
 import { EventEditForm } from '@/components/forecasts/EventEditForm'
+import { factorUnavailableLabel } from '@/components/forecasts/factorState'
 import { HowForecastWorks } from '@/components/forecasts/HowForecastWorks'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -918,7 +919,13 @@ export default function Factors() {
                                 <span className="mr-2 text-xs text-[#9E9E9E] md:hidden">Signals</span>
                                 {isWeatherAvailable(forecast.signals.weather)
                                   ? `${weatherTempLabel(forecast.signals.weather)} - ${forecast.signals.weather.condition}`
-                                  : weatherUnavailableReason(forecast.signals.weather)}
+                                  : (
+                                    // W-13: the shared classifier's words, as on Today and Planning; the engine's reason stays for screen readers.
+                                    <>
+                                      <span>{`Weather: ${factorUnavailableLabel(weatherUnavailableReason(forecast.signals.weather)) ?? 'Not available'}`}</span>
+                                      <span className="sr-only">: {weatherUnavailableReason(forecast.signals.weather)}</span>
+                                    </>
+                                  )}
                               </div>
                               <div className="min-w-0">
                                 <span className="mb-1 block text-xs text-[#9E9E9E] md:hidden">Active factors</span>
