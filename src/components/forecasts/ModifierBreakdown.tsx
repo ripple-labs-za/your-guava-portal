@@ -1,6 +1,8 @@
-import { Cloud, Zap, Calendar, Banknote, Megaphone, Sparkles, Clock } from 'lucide-react'
+import { Cloud, Zap, Calendar, Banknote, Megaphone, Sparkles, Clock, Scale } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 import type { Forecast } from '@/types'
+import { signalFix } from '@/lib/forecastSignals'
 import { classifyForecastFactors, formatPlan } from './factorState'
 
 const ICONS: Record<string, ReactNode> = {
@@ -14,7 +16,7 @@ const ICONS: Record<string, ReactNode> = {
 }
 
 interface Props {
-  forecast: Pick<Forecast, 'factors' | 'factorEntitlements' | 'factorSettings'>
+  forecast: Pick<Forecast, 'factors' | 'factorEntitlements' | 'factorSettings'> & { items?: Forecast['items'] }
   /** One sentence naming what the number is actually built from. */
   basis?: string | null
 }
@@ -33,13 +35,16 @@ function joinLabels(labels: string[]): string {
  * actually produced the figure. Now the basis comes first, the factors that
  * moved the number follow, and everything inert collapses into one line that
  * distinguishes a plan-locked factor from one the owner switched off from one
- * that simply had nothing to do today.
+ * that simply had nothing to do today. A factor that could not be evaluated
+ * (not connected, location needed, not available yet) gets its own line and is
+ * never counted among those "evaluated and had no effect today" (F-1).
  */
 export function ModifierBreakdown({ forecast, basis }: Props) {
   const classified = classifyForecastFactors(forecast)
   const applied = classified.filter((factor) => factor.state === 'active')
   const locked = classified.filter((factor) => factor.state === 'locked')
   const off = classified.filter((factor) => factor.state === 'off')
+  const unavailable = classified.filter((factor) => factor.state === 'unavailable')
   const neutral = classified.filter((factor) => factor.state === 'neutral')
 
   const lockedByPlan = new Map<string, string[]>()
@@ -47,6 +52,12 @@ export function ModifierBreakdown({ forecast, basis }: Props) {
     const plan = formatPlan(factor.requiredPlan) || 'a higher plan'
     lockedByPlan.set(plan, [...(lockedByPlan.get(plan) ?? []), factor.label])
   })
+
+  // F-5: items whose stacked factors were held inside the combined limit, with the first one's reason as the example.
+  const limited = (forecast.items ?? []).filter((item) =>
+    item.factors?.some((factor) => factor.key === 'factorLimit' && factor.active)
+  )
+  const limitExample = limited[0]?.factors?.find((factor) => factor.key === 'factorLimit')?.reason
 
   return (
     <div className="space-y-2">
@@ -83,11 +94,37 @@ export function ModifierBreakdown({ forecast, basis }: Props) {
         )
       })}
 
+      {limited.length > 0 && (
+        <div className="flex items-start gap-3 py-1.5" data-factor-limit>
+          <span className="text-amber-300"><Scale className="w-3.5 h-3.5" /></span>
+          <span className="text-xs font-medium w-24 shrink-0 text-text">Combined factor limit</span>
+          <span className="min-w-0 break-words text-xs text-muted">
+            Held on {limited.length} {limited.length === 1 ? 'item' : 'items'} so stacked factors stay within x0.5 to x1.6
+            {limitExample ? ` (${limited[0].itemName}: ${limitExample.replace(/; factors are kept within.*$/, '')})` : ''}.
+          </span>
+        </div>
+      )}
+
       {classified.length > 0 && applied.length === 0 && (
         <p className="text-xs text-muted">
           No factor moved this number today — it is the history above, unadjusted.
         </p>
       )}
+
+      {unavailable.map((factor) => {
+        const fix = signalFix(factor.reason)
+        return (
+          <p key={factor.key} className="flex flex-wrap items-center gap-x-1.5 text-xs text-amber-300" data-factor-state="unavailable">
+            <span className="font-medium">{factor.label}:</span>
+            <span>{factor.detail}. Left out of this forecast.</span>
+            {fix && (
+              <Link to={fix.to} className="font-medium underline underline-offset-2">
+                {fix.action}
+              </Link>
+            )}
+          </p>
+        )
+      })}
 
       {neutral.length > 0 && (
         <p className="text-xs text-muted">

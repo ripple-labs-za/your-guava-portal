@@ -321,9 +321,11 @@ function ImpactFactorsCard({ forecast }: { forecast: Forecast }) {
           ? formatPlan(factor.requiredPlan)
           : factor.state === 'off'
             ? 'Off'
-            : active
-              ? compactImpact(factor.adjustmentPct, factor.effect)
-              : '0%',
+            : factor.state === 'unavailable'
+              ? 'n/a'
+              : active
+                ? compactImpact(factor.adjustmentPct, factor.effect)
+                : '0%',
       detail: factor.detail,
       color: colors[factor.key] ?? '#9B59B6',
       active,
